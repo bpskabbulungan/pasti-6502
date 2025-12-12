@@ -75,25 +75,29 @@ export default function Home() {
         <div className="space-y-6 lg:flex-1">
           <Badge variant="secondary" className="border-border/60 bg-white/70 text-primary-color shadow-sm backdrop-blur">
             <Sparkles className="h-4 w-4" />
-            Sistem Antrean PST
+            PASTI 6502
           </Badge>
           <div className="space-y-3">
             <h1 className="text-3xl font-black leading-tight text-primary-color sm:text-4xl">
-              Masuk ke Dashboard Pelayanan Statistik Terpadu
+              Pelayanan Statistik Terpadu Terintegrasi
             </h1>
-            <p className="max-w-2xl text-base text-secondary-color sm:text-lg">
-              Kelola antrean, layanan, dan admin dengan pengalaman modern yang lebih ramah pengguna. Login untuk
-              memulai bekerja.
-            </p>
+            <div className="max-w-2xl space-y-3 text-base text-secondary-color sm:text-lg">
+              <p>
+                PASTI bukan sekadar akronim; ini standar layanan yang menuntun setiap proses, dari kedatangan hingga kebutuhan data terpenuhi.
+              </p>
+              <p>
+                Kami memastikan antrean tertib, alur yang jelas, dan kepastian waktu yang terukur. Masyarakat tidak hanya mendapatkan data yang dibutuhkan, tetapi juga pengalaman pelayanan yang nyaman dan terpercaya.
+              </p>
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
               <div className="rounded-full bg-primary/10 p-2 text-primary">
                 <ShieldCheck className="h-4 w-4" />
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-primary-color">Keamanan terjaga</p>
-                <p className="text-sm text-secondary-color">Autentikasi kredensial terenkripsi dan terintegrasi.</p>
+                <p className="font-semibold text-primary-color">Kelola Antrean</p>
+                <p className="text-sm text-secondary-color">Atur jalur antrean yang tertib sejak pendaftaran hingga pelayanan selesai.</p>
               </div>
             </div>
             <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
@@ -101,8 +105,17 @@ export default function Home() {
                 <Sparkles className="h-4 w-4" />
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-primary-color">Antarmuka modern</p>
-                <p className="text-sm text-secondary-color">Form ringan dengan indikator, ikon, dan status yang jelas.</p>
+                <p className="font-semibold text-primary-color">Responden SKD</p>
+                <p className="text-sm text-secondary-color">Pantau pengunjung agar menyelesaikan Survei Kebutuhan Data dengan cepat dan akurat.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
+              <div className="rounded-full bg-secondary/10 p-2 text-secondary-foreground">
+                <LockKeyhole className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-semibold text-primary-color">Akses Aman</p>
+                <p className="text-sm text-secondary-color">Autentikasi admin menjaga keamanan data antrean dan hasil survei.</p>
               </div>
             </div>
           </div>
@@ -112,7 +125,7 @@ export default function Home() {
           <Card className="border border-custom/80 bg-white/80 shadow-xl backdrop-blur dark:bg-card">
             <CardHeader className="space-y-1 text-center">
               <CardTitle className="text-2xl font-bold text-primary-color">Login Admin</CardTitle>
-              <p className="text-secondary-color text-sm">Masukkan kredensial untuk mengakses dashboard.</p>
+              <p className="text-secondary-color text-sm">Masukkan kredensial aman untuk mengakses dashboard layanan.</p>
             </CardHeader>
             <CardContent className="space-y-6">
               <Form {...form}>
@@ -178,14 +191,6 @@ export default function Home() {
                   </Button>
                 </form>
               </Form>
-
-              <div className="flex items-center justify-between rounded-lg border border-dashed border-border/80 bg-muted/40 px-4 py-3 text-sm text-secondary-color">
-                <div className="space-y-1">
-                  <p className="font-semibold text-primary-color">Hanya untuk admin</p>
-                  <p>Pastikan Anda menggunakan akun yang telah terdaftar.</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-primary" />
-              </div>
 
               <Button
                 variant="outline"
