@@ -1,57 +1,45 @@
-import prisma from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { rateLimit } from "@/lib/rate-limit";
+import { markSkdFilled } from "@api/modules/visitor-form";
 
 export async function POST(req: NextRequest) {
 	try {
-		const data = await req.json();
-		const { tempUuid, filled } = data;
-
-		// Validate required fields
-		if (!tempUuid || typeof filled !== "boolean") {
+		const limiter = await rateLimit(req, "visitor-form-skd", {
+			limit: 8,
+			windowMs: 60_000,
+		});
+		if (!limiter.allowed) {
 			return NextResponse.json(
-				{ error: "Missing required fields" },
+				{ error: "Terlalu banyak permintaan, coba lagi nanti." },
+				{ status: 429 }
+			);
+		}
+
+		const schema = z.object({
+			tempUuid: z.string().uuid("Link sementara tidak valid"),
+			filled: z.boolean(),
+		});
+
+		const parsed = schema.safeParse(await req.json());
+		if (!parsed.success) {
+			return NextResponse.json(
+				{ error: "Data tidak valid", details: parsed.error.flatten().fieldErrors },
 				{ status: 400 }
 			);
 		}
 
-		// Find and update the queue's SKD status
-		const updatedQueue = await prisma.queue.update({
-			where: { tempUuid },
-			data: { filledSKD: filled },
-			include: {
-				visitor: {
-					select: {
-						name: true,
-					},
-				},
-			},
-		});
+		const { tempUuid, filled } = parsed.data;
 
-		if (!updatedQueue) {
-			return NextResponse.json({ error: "Queue not found" }, { status: 404 });
-		}
+		const result = await markSkdFilled(tempUuid, filled);
 
-		// Create a notification about the SKD form submission
-		if (filled) {
-			await prisma.notification.create({
-				data: {
-					type: "SKD_FILLED",
-					title: "SKD Diisi",
-					message: `Pengunjung ${
-						updatedQueue.visitor.name
-					} telah mengisi form SKD untuk antrean #${
-						updatedQueue.queueNumber
-					}-${formatQueueDate(new Date(updatedQueue.createdAt))} `,
-					isRead: false,
-				},
-			});
+		if (!result.ok) {
+			return NextResponse.json({ error: result.error }, { status: result.status });
 		}
 
 		return NextResponse.json({
 			success: true,
-			message: filled
-				? "SKD form marked as filled"
-				: "SKD form marked as not filled",
+			message: result.message,
 		});
 	} catch (error) {
 		console.error("Error updating SKD status:", error);
@@ -61,8 +49,3 @@ export async function POST(req: NextRequest) {
 		);
 	}
 }
-const formatQueueDate = (date: Date): string => {
-	const day = date.getDate().toString().padStart(2, "0");
-	const month = (date.getMonth() + 1).toString().padStart(2, "0");
-	return `${day}${month}`;
-}; // Create notification for staff

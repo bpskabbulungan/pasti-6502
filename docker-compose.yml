@@ -2,9 +2,14 @@ services:
   # Next.js Application
   pasti:
     container_name: pasti_app
+    image: pasti_app
     build:
       context: .
       dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=.docker-cache
+      cache_to:
+        - type=local,dest=.docker-cache,mode=max
     ports:
       - "3001:3000"
     env_file:
@@ -12,17 +17,21 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://pasti.databenuanta.id}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
       - NEXT_PUBLIC_STATIC_UUID=${NEXT_PUBLIC_STATIC_UUID}
-      - NEXT_PUBLIC_WA_API_URL=${NEXT_PUBLIC_WA_API_URL:-https://pasti.databenuanta.id/wa-api}
+      - NEXT_PUBLIC_WA_API_URL=${NEXT_PUBLIC_WA_API_URL:-http://localhost:3001/wa-api}
       - WA_ADMIN_KEY=${WA_ADMIN_KEY}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - HOSTNAME=0.0.0.0
     depends_on:
       pasti_db:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
     volumes:
       - ./public:/app/public
+      - pasti_redis_data:/data
 
   # PostgreSQL Database
   pasti_db:
@@ -38,7 +47,7 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pasti_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   # WhatsApp Bot API (Optional - uncomment to use)
@@ -57,8 +66,17 @@ services:
   #   volumes:
   #     - wa_bot_data:/app/data
 
+  # Redis for rate limiting / caching
+  redis:
+    container_name: pasti_redis
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: unless-stopped
+    volumes:
+      - pasti_redis_data:/data
+
 volumes:
-  postgres_data:
-    external: true
-    name: sistem-antrean-pst_postgres_data 
+  pasti_postgres_data:
+    name: pasti_postgres_data
   wa_bot_data:
+  pasti_redis_data:

@@ -1,31 +1,22 @@
 import { ServiceStatus } from "@/generated/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth"; // Updated import path
-import prisma from "@/lib/prisma"; // Import shared prisma instance
+import { authOptions } from "@/lib/auth";
+import { createService, listServices } from "@api/modules/services";
 
 export async function GET(req: NextRequest) {
 	try {
-		// Check authentication
 		const session = await getServerSession(authOptions);
 		if (!session) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		// Get services with optional filter for status
 		const { searchParams } = new URL(req.url);
 		const statusFilter = searchParams.get("status") as ServiceStatus | null;
 
-		const where = statusFilter ? { status: statusFilter } : {};
+		const result = await listServices(statusFilter);
 
-		const services = await prisma.service.findMany({
-			where,
-			orderBy: {
-				createdAt: "desc",
-			},
-		});
-
-		return NextResponse.json({ services });
+		return NextResponse.json(result);
 	} catch (error) {
 		console.error("Error fetching services:", error);
 		return NextResponse.json(
@@ -37,32 +28,21 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
 	try {
-		// Check authentication
 		const session = await getServerSession(authOptions);
 		if (!session) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		// Parse request body
 		const body = await req.json();
 		const { name } = body;
 
-		if (!name) {
-			return NextResponse.json(
-				{ error: "Service name is required" },
-				{ status: 400 }
-			);
+		const result = await createService({ name });
+
+		if (!result.ok) {
+			return NextResponse.json({ error: result.error }, { status: result.status });
 		}
 
-		// Create new service
-		const service = await prisma.service.create({
-			data: {
-				name,
-				status: ServiceStatus.ACTIVE,
-			},
-		});
-
-		return NextResponse.json({ service }, { status: 201 });
+		return NextResponse.json({ service: result.service }, { status: 201 });
 	} catch (error) {
 		console.error("Error creating service:", error);
 		return NextResponse.json(

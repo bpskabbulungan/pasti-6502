@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -118,7 +115,7 @@ model Queue {
   filledSKD    Boolean     @default(false)
   trackingLink String?     @unique
 
-  @@unique([queueDate, serviceId, queueNumber]) // TODO: Confirm if numbering should be per-day-per-service; adjust unique scope if requirements differ.
+  @@unique([queueDate, queueNumber])
   @@index([visitorId])
   @@index([guestId])
   @@index([serviceId])

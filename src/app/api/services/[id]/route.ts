@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth"; // Updated import path
-import prisma from "@/lib/prisma"; // Import shared prisma instance
+import { authOptions } from "@/lib/auth";
+import {
+	deleteService,
+	getService,
+	updateService,
+} from "@api/modules/services";
 
 export async function GET(
 	req: NextRequest,
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		// Check authentication
 		const session = await getServerSession(authOptions);
 		if (!session) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,16 +25,12 @@ export async function GET(
 			);
 		}
 
-		// Get service details
-		const service = await prisma.service.findUnique({
-			where: { id },
-		});
-
-		if (!service) {
-			return NextResponse.json({ error: "Service not found" }, { status: 404 });
+		const result = await getService(id);
+		if (!result.ok) {
+			return NextResponse.json({ error: result.error }, { status: result.status });
 		}
 
-		return NextResponse.json({ service });
+		return NextResponse.json({ service: result.service });
 	} catch (error) {
 		console.error("Error fetching service:", error);
 		return NextResponse.json(
@@ -46,7 +45,6 @@ export async function PATCH(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		// Check authentication
 		const session = await getServerSession(authOptions);
 		if (!session) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -60,40 +58,23 @@ export async function PATCH(
 			);
 		}
 
-		// Parse request body
 		const body = await req.json();
 		const { name, status } = body;
 
-		if (!name && status === undefined) {
-			return NextResponse.json(
-				{ error: "No updates provided" },
-				{ status: 400 }
-			);
+		const statusValue =
+			status === undefined
+				? undefined
+				: status === true || status === "ACTIVE"
+					? "ACTIVE"
+					: "INACTIVE";
+
+		const result = await updateService(id, { name, status: statusValue });
+
+		if (!result.ok) {
+			return NextResponse.json({ error: result.error }, { status: result.status });
 		}
 
-		// Check if service exists
-		const existingService = await prisma.service.findUnique({
-			where: { id },
-		});
-
-		if (!existingService) {
-			return NextResponse.json({ error: "Service not found" }, { status: 404 });
-		}
-
-		// Update service
-		type ServiceStatus = "ACTIVE" | "INACTIVE";
-		const updatedData: { name?: string; status?: ServiceStatus } = {};
-		if (name) updatedData.name = name;
-		if (status !== undefined) {
-			updatedData.status = status ? "ACTIVE" : "INACTIVE"; // Map boolean to ServiceStatus
-		}
-
-		const service = await prisma.service.update({
-			where: { id },
-			data: updatedData,
-		});
-
-		return NextResponse.json({ service });
+		return NextResponse.json({ service: result.service });
 	} catch (error) {
 		console.error("Error updating service:", error);
 		return NextResponse.json(
@@ -108,7 +89,6 @@ export async function DELETE(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		// Check authentication
 		const session = await getServerSession(authOptions);
 		if (!session) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -122,19 +102,10 @@ export async function DELETE(
 			);
 		}
 
-		// Check if service exists
-		const existingService = await prisma.service.findUnique({
-			where: { id },
-		});
-
-		if (!existingService) {
-			return NextResponse.json({ error: "Service not found" }, { status: 404 });
+		const result = await deleteService(id);
+		if (!result.ok) {
+			return NextResponse.json({ error: result.error }, { status: result.status });
 		}
-
-		// Delete service
-		await prisma.service.delete({
-			where: { id },
-		});
 
 		return NextResponse.json({ success: true });
 	} catch (error) {

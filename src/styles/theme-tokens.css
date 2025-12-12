@@ -26,6 +26,9 @@
   --destructive-foreground: #FFFFFF;
   --ring: var(--primary);
   --input: var(--border);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 60%, transparent);
+  --shadow-soft: 0 15px 40px rgba(0, 0, 0, 0.04);
+  --shadow-strong: 0 20px 60px rgba(0, 0, 0, 0.08);
   
   /* Other UI variables */
   --radius: 0.625rem;
@@ -61,6 +64,9 @@
   --destructive-foreground: #1A1A1A;
   --ring: var(--primary);
   --input: var(--border);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 60%, transparent);
+  --shadow-soft: 0 15px 40px rgba(0, 0, 0, 0.18);
+  --shadow-strong: 0 20px 60px rgba(0, 0, 0, 0.28);
 }
 
 /* Utility classes for direct theme color access */

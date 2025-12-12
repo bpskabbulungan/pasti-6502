@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { Role } from "@/generated/prisma";
+import { getQueueDetail } from "@api/modules/queues";
+import type { QueueDetail } from "@shared/types/queue";
 
 export async function GET(req: Request) {
 	const pathname = new URL(req.url).pathname;
@@ -11,31 +15,21 @@ export async function GET(req: Request) {
 	}
 
 	try {
-		const queue = await prisma.queue.findUnique({
-			where: { id: queueId },
-			include: {
-				service: { select: { name: true } },
-				visitor: { select: { name: true, phone: true } },
-				guest: { select: { fullName: true, phone: true } },
-			},
-		});
-
-		if (!queue) {
-			return NextResponse.json({ error: "Queue not found" }, { status: 404 });
+		const session = await getServerSession(authOptions);
+		if (!session) {
+			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		return NextResponse.json({
-			queueId: queue.id,
-			queueNumber: queue.queueNumber,
-			status: queue.status,
-			queueType: queue.queueType,
-			serviceName: queue.service.name,
-			visitorName: queue.visitor?.name || queue.guest?.fullName || "Pengunjung",
-			createdAt: queue.createdAt,
-			startTime: queue.startTime,
-			endTime: queue.endTime,
-			updatedAt: queue.updatedAt,
-		});
+		if (![Role.ADMIN, Role.SUPERADMIN].includes(session.user.role)) {
+			return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+		}
+
+		const result = await getQueueDetail(queueId);
+		if (!result.ok) {
+			return NextResponse.json({ error: result.error }, { status: result.status });
+		}
+
+		return NextResponse.json<QueueDetail>(result.queue);
 	} catch (error) {
 		console.error("Error fetching queue status:", error);
 		return NextResponse.json(

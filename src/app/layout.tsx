@@ -32,9 +32,9 @@ export default function RootLayout({
   return (
     <html lang="id" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/icon_pst.png" />
-        <link rel="shortcut icon" href="/icon_pst.png" />
+        <link rel="icon" type="image/png" href="/icon_pst.png" />
         <link rel="apple-touch-icon" href="/icon_pst.png" />
+        <link rel="shortcut icon" href="/icon_pst.png" />
       </head>
       <body className={`${lato.variable} font-lato antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>

@@ -4,6 +4,7 @@ node_modules
 .gitignore
 .vscode
 .env
+.docker-cache
 *.log
 dist
 build

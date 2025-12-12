@@ -1,0 +1,9 @@
+.next
+node_modules
+dist
+build
+coverage
+src/generated
+public/qrcodes
+.docker-cache
+*.log

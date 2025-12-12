@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { sendWhatsAppBotReminder } from "@/lib/reminder-service";
+import { sendWhatsAppBotReminder } from "@api/modules/reminders";
+import type { ReminderResponse } from "@shared/types/reminder";
 
 export async function POST(req: NextRequest) {
 	try {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
 
 		const result = await sendWhatsAppBotReminder(phoneNumber, message);
 
-		return NextResponse.json(result, {
+		return NextResponse.json<ReminderResponse>(result, {
 			status: result.success ? 200 : 400,
 		});
 	} catch (error) {

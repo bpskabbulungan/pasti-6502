@@ -1,0 +1,18 @@
+services:
+  pasti:
+    environment:
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXT_PUBLIC_QR_BASE_URL=http://localhost:3000
+      - DATABASE_URL=postgresql://pst6502:bulungan6502@localhost:5432/pasti_db
+      - REDIS_URL=redis://localhost:6379
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - ./public:/app/public
+  redis:
+    ports:
+      - "6379:6379"
+  pasti_db:
+    ports:
+      - "5432:5432"

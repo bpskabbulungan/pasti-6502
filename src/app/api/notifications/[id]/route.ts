@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { markNotificationAsRead } from "@api/modules/notifications";
 
 export async function POST(
 	req: NextRequest,
@@ -15,53 +15,22 @@ export async function POST(
 
 		const { id: notificationId } = await params;
 
-		const notification = await prisma.notification.findUnique({
-			where: {
-				id: notificationId,
-			},
-		});
+		const result = await markNotificationAsRead(
+			notificationId,
+			session.user.id
+		);
 
-		if (!notification) {
+		if (!result.success) {
 			return NextResponse.json(
-				{ error: "Notification not found" },
-				{ status: 404 }
+				{ error: result.error },
+				{ status: result.status }
 			);
 		}
-
-		if (
-			notification.userId !== null &&
-			notification.userId !== session.user.id
-		) {
-			return NextResponse.json(
-				{
-					error:
-						"Forbidden: You are not authorized to update this notification",
-				},
-				{ status: 403 }
-			);
-		}
-
-		if (notification.isRead) {
-			return NextResponse.json({
-				success: true,
-				message: "Notification was already marked as read",
-				notification,
-			});
-		}
-
-		const updatedNotification = await prisma.notification.update({
-			where: {
-				id: notificationId,
-			},
-			data: {
-				isRead: true,
-			},
-		});
 
 		return NextResponse.json({
 			success: true,
-			message: "Notification marked as read",
-			notification: updatedNotification,
+			message: result.message,
+			notification: result.notification,
 		});
 	} catch (error: unknown) {
 		console.error("Error marking notification as read:", error);

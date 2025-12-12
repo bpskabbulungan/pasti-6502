@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
-FROM oven/bun:1.1.23 AS base
+FROM oven/bun:1.2.14 AS base
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Tools needed for phantomjs-prebuilt (bzip2)
 RUN --mount=type=cache,target=/var/cache/apt \
@@ -15,12 +16,13 @@ RUN --mount=type=cache,target=/var/cache/apt \
 
 FROM base AS deps
 ENV BUN_INSTALL_CACHE=/root/.cache/bun
+ARG BUN_CACHE_ID=bun-install-v2
 
-# Copy dependency manifests
-COPY bun.lock package.json package-lock.json ./
+# Copy dependency manifests (bun only)
+COPY bun.lock package.json ./
 
 # Install deps (keeps lockstep with bun.lock)
-RUN --mount=type=cache,target=/root/.cache/bun \
+RUN --mount=type=cache,id=${BUN_CACHE_ID},target=/root/.cache/bun \
     bun install --frozen-lockfile
 
 
@@ -33,14 +35,17 @@ COPY prisma ./prisma
 COPY src ./src
 COPY public ./public
 COPY tsconfig.json ./tsconfig.json
+COPY tsconfig.base.json ./tsconfig.base.json
 COPY next.config.ts ./next.config.ts
 COPY postcss.config.mjs ./postcss.config.mjs
 COPY eslint.config.mjs ./eslint.config.mjs
 COPY components.json ./components.json
 
 # Generate Prisma client and build
-RUN --mount=type=cache,target=/root/.cache/bun bunx prisma generate
-RUN --mount=type=cache,target=/root/.cache/bun bun run build
+RUN --mount=type=cache,id=${BUN_CACHE_ID},target=/root/.cache/bun bunx prisma generate
+RUN --mount=type=cache,id=${BUN_CACHE_ID},target=/root/.cache/bun \
+    --mount=type=cache,id=next-cache,target=/app/.next/cache \
+    bun run build
 
 
 FROM base AS runner

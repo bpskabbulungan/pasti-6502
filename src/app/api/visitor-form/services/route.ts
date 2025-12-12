@@ -1,10 +1,21 @@
-import { ServiceStatus } from "@/generated/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { rateLimit } from "@/lib/rate-limit";
+import { getVisitorServices } from "@api/modules/visitor-form";
+import type { VisitorFormServicesResponse } from "@shared/types/visitor-form";
 
 export async function GET(req: NextRequest) {
 	try {
-		// Get the UUID from the header
+		const limiter = await rateLimit(req, "visitor-form-services", {
+			limit: 20,
+			windowMs: 60_000,
+		});
+		if (!limiter.allowed) {
+			return NextResponse.json(
+				{ error: "Terlalu banyak permintaan, coba lagi nanti." },
+				{ status: 429 }
+			);
+		}
+
 		const visitorUuid = req.headers.get("x-visitor-uuid");
 
 		if (!visitorUuid) {
@@ -14,44 +25,14 @@ export async function GET(req: NextRequest) {
 			);
 		}
 
-		// Check if UUID exists and is valid
-		const tempVisitorLink = await prisma.tempVisitorLink.findUnique({
-			where: { uuid: visitorUuid },
+		const result = await getVisitorServices(visitorUuid);
+		if (!result.ok) {
+			return NextResponse.json({ error: result.error }, { status: result.status });
+		}
+
+		return NextResponse.json<VisitorFormServicesResponse>({
+			services: result.services,
 		});
-
-		if (!tempVisitorLink) {
-			return NextResponse.json(
-				{ error: "Invalid visitor UUID" },
-				{ status: 400 }
-			);
-		}
-
-		// Check if link is expired
-		if (new Date() > tempVisitorLink.expiresAt) {
-			return NextResponse.json({ error: "Link has expired" }, { status: 400 });
-		}
-
-		// Check if link has already been used
-		if (tempVisitorLink.used) {
-			return NextResponse.json(
-				{ error: "Link has already been used" },
-				{ status: 400 }
-			);
-		}
-
-		// Get available services
-		const services = await prisma.service.findMany({
-			where: {
-				status: ServiceStatus.ACTIVE,
-			},
-			select: {
-				id: true,
-				name: true,
-				status: true,
-			},
-		});
-
-		return NextResponse.json({ services });
 	} catch (error) {
 		console.error("Error fetching services:", error);
 		return NextResponse.json(

@@ -1,7 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-/prisma/seed.ts
-
 # dependencies
 /node_modules
 /.pnp
@@ -17,6 +13,7 @@
 
 # next.js
 /.next/
+src/.next/
 /out/
 
 # production
@@ -25,6 +22,14 @@
 # misc
 .DS_Store
 *.pem
+.docker-cache/
+
+# prisma
+/prisma-cache/
+/prisma-client-node_modules/
+/prisma-debug-output/
+/prisma-node_modules/
+/prisma-trace*.log
 
 # debug
 npm-debug.log*
@@ -41,3 +46,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+src/generated/prisma/

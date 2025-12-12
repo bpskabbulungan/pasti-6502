@@ -6,7 +6,7 @@ export async function middleware(request: NextRequest) {
 
 	// Define public paths that don't require authentication
 	// TODO: If /queue-display should be restricted (e.g., auth/IP allowlist), update public paths and add protections.
-	const publicPaths = ["/", "/visitor-form", "/guest", "/queue-display"];
+	const publicPaths = ["/", "/login", "/visitor-form", "/guest", "/queue-display"];
 	const isPublicPath = publicPaths.some(
 		(publicPath) => path === publicPath || path.startsWith(`${publicPath}/`)
 	);
