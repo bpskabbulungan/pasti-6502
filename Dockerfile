@@ -38,7 +38,6 @@ COPY tsconfig.json ./tsconfig.json
 COPY tsconfig.base.json ./tsconfig.base.json
 COPY next.config.ts ./next.config.ts
 COPY postcss.config.mjs ./postcss.config.mjs
-COPY eslint.config.mjs ./eslint.config.mjs
 COPY components.json ./components.json
 
 # Generate Prisma client and build
@@ -48,16 +47,25 @@ RUN --mount=type=cache,id=${BUN_CACHE_ID},target=/root/.cache/bun \
     bun run build
 
 
+FROM base AS prod-deps
+ENV BUN_INSTALL_CACHE=/root/.cache/bun
+ARG BUN_CACHE_ID=bun-install-v2
+
+COPY bun.lock package.json ./
+
+RUN --mount=type=cache,id=${BUN_CACHE_ID}-prod,target=/root/.cache/bun \
+    bun install --frozen-lockfile --production
+
+
 FROM base AS runner
 
 # Copy runtime artifacts
-COPY --from=deps --link /app/node_modules ./node_modules
-COPY --from=deps /app/bun.lock ./bun.lock
-COPY --from=deps /app/package.json ./package.json
+COPY --from=prod-deps --link /app/node_modules ./node_modules
+COPY --from=prod-deps /app/bun.lock ./bun.lock
+COPY --from=prod-deps /app/package.json ./package.json
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/src/generated ./src/generated
 COPY --from=builder --link /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 3000

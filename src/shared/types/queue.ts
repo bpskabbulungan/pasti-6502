@@ -1,4 +1,4 @@
-import type { QueueStatus, QueueType } from "@/shared/constants/enums";
+import type { QueueStatus, QueueType, Role } from "@/shared/constants/enums";
 
 export type QueueTracking = {
 	queueNumber: number;
@@ -71,6 +71,16 @@ export type QueueDisplayResponse = {
 	} | null;
 	hash?: string;
 	hasChanges?: boolean;
+};
+
+export type QueueDisplayAdmin = {
+	id: string;
+	name: string;
+	role: Role;
+};
+
+export type QueueDisplayAdminsResponse = {
+	admins: QueueDisplayAdmin[];
 };
 
 export type QueueListParams = {

@@ -29,9 +29,6 @@ services:
       pasti_redis:
         condition: service_started
     restart: unless-stopped
-    volumes:
-      - ./public:/app/public
-      - pasti_redis_data:/data
 
   # PostgreSQL Database
   pasti_db:

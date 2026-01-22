@@ -17,6 +17,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCcw, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { queuesApi } from "@/services/api/queues";
+import type { ErrorResponse } from "@shared/types/api";
+import type { QueueDetail } from "@shared/types/queue";
 
 type QueueStatus = "WAITING" | "CALLED" | "SERVING" | "COMPLETED" | "CANCELED";
 
@@ -32,6 +35,33 @@ type QueueData = {
 	endTime: string | null;
 	updatedAt: string;
 };
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+	if (typeof error !== "object" || !error) {
+		return fallback;
+	}
+
+	const errorDetails = (error as { details?: ErrorResponse }).details;
+	if (errorDetails?.error) {
+		return errorDetails.error;
+	}
+
+	const message = (error as { message?: string }).message;
+	return message || fallback;
+};
+
+const mapQueueDetail = (detail: QueueDetail): QueueData => ({
+	queueId: detail.id,
+	queueNumber: detail.queueNumber,
+	status: detail.status as QueueStatus,
+	queueType: detail.queueType,
+	serviceName: detail.serviceName ?? detail.service.name,
+	visitorName: detail.visitorName ?? detail.visitor.name,
+	createdAt: detail.createdAt as string,
+	startTime: detail.startTime as string | null,
+	endTime: detail.endTime as string | null,
+	updatedAt: detail.updatedAt as string,
+});
 
 const statusCopy: Record<
 	QueueStatus,
@@ -95,23 +125,13 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
 		if (!queueId) return;
 		setIsLoading(true);
 		try {
-			const response = await fetch(`/api/queue/${queueId}`, {
-				cache: "no-store",
-			});
-			const result = await response.json();
-
-			if (!response.ok) {
-				setError(result.error || "Gagal memuat status antrean");
-				setData(null);
-				return;
-			}
-
-			setData(result as QueueData);
+			const result = await queuesApi.detail(queueId);
+			setData(mapQueueDetail(result));
 			setError(null);
 			setLastUpdated(new Date());
 		} catch (err) {
 			console.error("Error fetching queue status", err);
-			setError("Terjadi kesalahan saat memuat status");
+			setError(getErrorMessage(err, "Terjadi kesalahan saat memuat status"));
 		} finally {
 			setIsLoading(false);
 		}

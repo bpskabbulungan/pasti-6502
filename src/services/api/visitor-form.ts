@@ -1,19 +1,25 @@
 import { apiFetch } from "./base-client";
+import type {
+	VisitorFormDynamicUuidResponse,
+	VisitorFormServicesResponse,
+	VisitorFormSubmitResponse,
+	VisitorFormTrackResponse,
+} from "@shared/types/visitor-form";
 
 export const visitorFormApi = {
 	getDynamicUuid: (staticUuid: string) =>
-		apiFetch(`/api/visitor-form/${staticUuid}`),
+		apiFetch<VisitorFormDynamicUuidResponse>(`/api/visitor-form/${staticUuid}`),
 	getServices: (visitorUuid: string) =>
-		apiFetch("/api/visitor-form/services", {
+		apiFetch<VisitorFormServicesResponse>("/api/visitor-form/services", {
 			headers: { "x-visitor-uuid": visitorUuid },
 		}),
 	submit: (payload: unknown) =>
-		apiFetch("/api/visitor-form/submit", {
+		apiFetch<VisitorFormSubmitResponse>("/api/visitor-form/submit", {
 			method: "POST",
 			body: payload,
 		}),
 	track: (visitorUuid: string, hash?: string) =>
-		apiFetch("/api/visitor-form/track", {
+		apiFetch<VisitorFormTrackResponse>("/api/visitor-form/track", {
 			headers: {
 				"x-visitor-uuid": visitorUuid,
 				...(hash ? { "x-queue-hash": hash } : {}),

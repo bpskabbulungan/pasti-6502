@@ -31,12 +31,13 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { useQueueDisplay } from "@/modules/queue-display/hooks/useQueueDisplay";
+import { queueDisplayApi } from "@/services/api/queue-display";
+import type {
+	QueueDisplayAdmin,
+	QueueDisplayAdminsResponse,
+} from "@shared/types/queue";
 
-interface Admin {
-    id: string;
-    name: string;
-    role: string;
-}
+type Admin = QueueDisplayAdmin;
 
 const formatTimestamp = (value: Date | null) =>
     value
@@ -75,17 +76,14 @@ export default function QueueDisplayPage() {
         refetch,
     } = useQueueDisplay({ adminId: selectedAdmin, dateFilter: selectedDateFilter });
 
-    const { data: adminData, error: adminError } = useSWR<{ admins: Admin[] }>(
-        "/api/queue-display/admins",
-        async (url: string) => {
-            const res = await fetch(url, { cache: "no-store" });
-            if (!res.ok) throw new Error("Failed to fetch admins");
-            return res.json();
-        },
-        { revalidateOnFocus: false }
-    );
+    const { data: adminData, error: adminError } =
+        useSWR<QueueDisplayAdminsResponse>(
+            ["queue-display-admins"],
+            () => queueDisplayApi.admins(),
+            { revalidateOnFocus: false }
+        );
 
-    const admins = adminData?.admins ?? [];
+    const admins: Admin[] = adminData?.admins ?? [];
 
     const highlightedQueue = useMemo(() => {
         if (nextQueue) return nextQueue;

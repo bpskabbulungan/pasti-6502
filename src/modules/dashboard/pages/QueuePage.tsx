@@ -14,13 +14,19 @@ import { formatDistance } from "date-fns";
 import { id } from "date-fns/locale";
 import { RefreshCw, Smartphone, AlertCircle, MessageSquareText } from "lucide-react";
 import { queuesApi } from "@/services/api/queues";
-import { remindersApi } from "@/services/api/reminders";
-import { visitorFormApi } from "@/services/api/visitor-form";
 import TableSkeleton from "@/modules/dashboard/components/skeletons/TableSkeleton";
 import QueueManagementSkeleton from "@/modules/dashboard/components/skeletons/QueueManagementSkeleton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { QueueDetail } from "@shared/types/queue";
+
+// Format queue time to DDMM format (eg. 1405 for May 14)
+const formatQueueTime = (isoDateString: string | Date): string => {
+    const date = new Date(isoDateString);
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Month is 0-indexed, so add 1
+    return `${day}${month}`;
+};
 
 type Queue = QueueDetail;
 
@@ -41,6 +47,8 @@ export default function QueueManagementPage() {
     const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
     const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
     const [pageLoading, setPageLoading] = useState(true); // Added for initial page load skeleton
+    const [limit, setLimit] = useState<number>(50);
+    const [totalQueues, setTotalQueues] = useState<number | null>(null);
 
     // Efficient polling with change detection
     const pollForChanges = useCallback(async () => {
@@ -49,29 +57,39 @@ export default function QueueManagementPage() {
                 status: activeTab,
                 hash: dataHash,
                 dateFilter,
+                limit,
             });
 
             if (data.hasChanges) {
                 setQueues(data.queues);
                 setDataHash(data.hash);
                 setLastUpdatedAt(new Date());
+                if (data.pagination?.total !== undefined) {
+                    setTotalQueues(data.pagination.total);
+                }
             }
         } catch (error) {
             console.error("Error polling for changes:", error);
         }
-    }, [activeTab, dataHash, dateFilter]);
+    }, [activeTab, dataHash, dateFilter, limit]);
 
     // Initial data loading when tab changes
-    const fetchQueues = useCallback(async (status: QueueStatus, filter: 'today' | 'all') => {
+    const fetchQueues = useCallback(async (status: QueueStatus, filter: 'today' | 'all', currentLimit: number) => {
         try {
             setLoading(true);
             const data = await queuesApi.list({
                 status,
                 dateFilter: filter,
+                limit: currentLimit,
             });
             setQueues(data.queues);
             setDataHash(data.hash || "");
             setLastUpdatedAt(new Date());
+            if (data.pagination?.total !== undefined) {
+                setTotalQueues(data.pagination.total);
+            } else {
+                setTotalQueues(data.queues?.length ?? null);
+            }
         } catch (error) {
             console.error("Error fetching queues:", error);
             toast.error("Terjadi kesalahan saat memuat antrean");
@@ -82,11 +100,11 @@ export default function QueueManagementPage() {
 
     // Initial data loading when tab changes and polling setup
     useEffect(() => {
-        fetchQueues(activeTab, dateFilter);
+        fetchQueues(activeTab, dateFilter, limit);
 
         const interval = setInterval(pollForChanges, 30000);
         return () => clearInterval(interval);
-    }, [activeTab, dateFilter, fetchQueues, pollForChanges]);
+    }, [activeTab, dateFilter, limit, fetchQueues, pollForChanges]);
 
     // Simulate initial page loading
     useEffect(() => {
@@ -98,6 +116,16 @@ export default function QueueManagementPage() {
         return () => clearTimeout(timer);
     }, []);
 
+    // Reset pagination when tab or filter changes
+    useEffect(() => {
+        setLimit(50);
+        setTotalQueues(null);
+    }, [activeTab, dateFilter]);
+
+    const handleLoadMore = () => {
+        setLimit((prev) => prev + 50);
+    };
+
     const handleServeQueue = async (queueId: string) => {
         try {
             await queuesApi.serve(queueId);
@@ -106,6 +134,17 @@ export default function QueueManagementPage() {
         } catch (error) {
             console.error("Error serving queue:", error);
             toast.error("Terjadi kesalahan saat melayani antrean");
+        }
+    };
+
+    const handleCallQueue = async (queueId: string) => {
+        try {
+            await queuesApi.call(queueId);
+            toast.success("Antrean dipanggil");
+            setNeedsRefresh(true);
+        } catch (error) {
+            console.error("Error calling queue:", error);
+            toast.error("Terjadi kesalahan saat memanggil antrean");
         }
     };
 
@@ -156,7 +195,7 @@ export default function QueueManagementPage() {
     const handleRemindSKD = (queue: Queue) => {
         setSelectedQueue(queue);
         setReminderMessage(
-            `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) 2025 BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
+            `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
         );
         setShowRemindSkdDialog(true);
     };
@@ -169,18 +208,14 @@ export default function QueueManagementPage() {
             setIsSendingReminder(true);
             setReminderError(null);
 
-            const result = await remindersApi.sendWaBot({
-                phoneNumber: selectedQueue.visitor.phone,
-                message: reminderMessage,
-            });
-
-            if (result.success) {
-                toast.success("Pengingat berhasil dikirim via WhatsApp Bot");
+            const data = await queuesApi.remindSkd(selectedQueue.id, reminderMessage);
+            if (data?.data?.whatsappUrl) {
+                window.open(data.data.whatsappUrl, "_blank");
+                toast.success("Link WhatsApp berhasil dibuka");
                 setShowRemindSkdDialog(false);
                 setNeedsRefresh(true);
             } else {
-                setReminderError(result.message);
-                toast.error(result.message);
+                toast.error("Gagal menyiapkan pengingat");
             }
         } catch (error) {
             console.error("Error preparing WhatsApp reminder:", error);
@@ -194,15 +229,40 @@ export default function QueueManagementPage() {
     // Function to send reminder via WhatsApp Bot
     const sendWhatsAppBotReminderHandler = async () => {
         if (!selectedQueue) return;
-        await prepareWhatsAppReminder();
+
+        try {
+            setIsSendingReminder(true);
+            setReminderError(null);
+
+            const result = await queuesApi.remindSkdBot(
+                selectedQueue.id,
+                reminderMessage
+            );
+
+            if (result.success) {
+                toast.success("Pengingat berhasil dikirim via WhatsApp Bot");
+                setShowRemindSkdDialog(false);
+                setNeedsRefresh(true);
+            } else {
+                setReminderError(result.message);
+                toast.error(result.message);
+            }
+        } catch (error) {
+            console.error("Error sending WhatsApp Bot reminder:", error);
+            setReminderError(
+                "Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot"
+            );
+            toast.error("Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot");
+        } finally {
+            setIsSendingReminder(false);
+        }
     };
 
     // Function to handle SKD check
     const handleMarkSkdFilled = async (queue: Queue, filled: boolean) => {
         try {
-            if (!queue.tempUuid) return;
-
-            await visitorFormApi.markSkd(queue.tempUuid, filled);
+            const status = filled ? "SUDAH_MENGISI" : "BELUM_MENGISI";
+            await queuesApi.updateSkdStatus(queue.id, status);
             toast.success(
                 filled ? "SKD ditandai telah diisi" : "SKD ditandai belum diisi"
             );
@@ -236,6 +296,33 @@ export default function QueueManagementPage() {
         // Add standard action buttons based on queue status
         switch (queue.status) {
             case "WAITING":
+                actions.push(
+                    <Button
+                        key="call"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCallQueue(queue.id)}
+                    >
+                        Panggil
+                    </Button>,
+                    <Button
+                        key="serve"
+                        size="sm"
+                        onClick={() => handleServeQueue(queue.id)}
+                    >
+                        Layani
+                    </Button>,
+                    <Button
+                        key="cancel"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleCancelQueue(queue.id)}
+                    >
+                        Batalkan
+                    </Button>
+                );
+                break;
+            case "CALLED":
                 actions.push(
                     <Button
                         key="serve"
@@ -282,24 +369,21 @@ export default function QueueManagementPage() {
         }
 
         return <div className="flex flex-wrap justify-end gap-2">{actions}</div>;
-    };
-
-    const getTableColumns = () => (
+    }; const getTableColumns = () => (
         <>
             <TableHead className="w-16">No</TableHead>
             <TableHead>Nama</TableHead>
             <TableHead>Layanan</TableHead>
+            <TableHead>Tipe</TableHead>
             <TableHead>Waktu</TableHead>
             <TableHead>Status SKD</TableHead>
             <TableHead>Link Tracking</TableHead>
             <TableHead className="text-right">Aksi</TableHead>
         </>
-    );
-
-    // Function to render queue rows
+    );    // Function to render queue rows
     const renderQueueRow = (queue: Queue) => (
         <TableRow key={queue.id}>
-            <TableCell className="font-medium">{queue.queueNumber}</TableCell>
+            <TableCell className="font-medium">{queue.queueNumber}-{formatQueueTime(queue.createdAt)}</TableCell>
             <TableCell>
                 <div>
                     <p>{queue.visitor.name}</p>
@@ -310,6 +394,17 @@ export default function QueueManagementPage() {
                 </div>
             </TableCell>
             <TableCell>{queue.service.name}</TableCell>
+            <TableCell>
+                {queue.queueType === "ONLINE" ? (
+                    <span className="inline-flex items-center bg-blue-50 px-2 py-1 rounded-full ring-1 ring-blue-600/20 ring-inset font-medium text-blue-700 text-xs">
+                        Online
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center bg-green-50 px-2 py-1 rounded-full ring-1 ring-green-600/20 ring-inset font-medium text-green-700 text-xs">
+                        Offline
+                    </span>
+                )}
+            </TableCell>
             <TableCell>
                 <div>
                     <p className="text-muted-foreground text-xs">
@@ -375,10 +470,10 @@ export default function QueueManagementPage() {
     // Additional effect for manual refresh when needed (triggered by actions like serve, complete, cancel)
     useEffect(() => {
         if (needsRefresh) {
-            fetchQueues(activeTab, dateFilter);
+            fetchQueues(activeTab, dateFilter, limit);
             setNeedsRefresh(false);
         }
-    }, [needsRefresh, activeTab, dateFilter, fetchQueues]);
+    }, [needsRefresh, activeTab, dateFilter, limit, fetchQueues]);
 
     const handleManualRefresh = () => {
         if (loading) return; // Prevent multiple refreshes if already loading
@@ -387,7 +482,7 @@ export default function QueueManagementPage() {
             .toUpperCase()
             + activeTab.slice(1).toLowerCase().replace("_", " ");
         toast.info(`Memperbarui data untuk tab "${tabName}"...`);
-        fetchQueues(activeTab, dateFilter);
+        fetchQueues(activeTab, dateFilter, limit);
     };
 
     if (pageLoading) {
@@ -413,6 +508,16 @@ export default function QueueManagementPage() {
                             <SelectItem value="all">Semua</SelectItem>
                         </SelectContent>
                     </Select>
+                    <div className="hidden md:block text-sm text-muted-foreground">
+                        Menampilkan {queues.length} dari {totalQueues ?? "…"} antrean
+                    </div>
+                    <Button
+                        variant="secondary"
+                        onClick={handleLoadMore}
+                        disabled={loading || (totalQueues !== null && queues.length >= totalQueues)}
+                    >
+                        Muat 50 lagi
+                    </Button>
                     <Button onClick={handleManualRefresh} disabled={loading}>
                         {loading ? (
                             <>
@@ -441,8 +546,9 @@ export default function QueueManagementPage() {
                 value={activeTab}
                 onValueChange={(value) => setActiveTab(value as QueueStatus)}
             >
-                <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full">
+                <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full">
                     <TabsTrigger value="WAITING">Menunggu</TabsTrigger>
+                    <TabsTrigger value="CALLED">Dipanggil</TabsTrigger>
                     <TabsTrigger value="SERVING">Sedang Dilayani</TabsTrigger>
                     <TabsTrigger value="COMPLETED">Selesai</TabsTrigger>
                     <TabsTrigger value="CANCELED">Dibatalkan</TabsTrigger>
@@ -471,6 +577,34 @@ export default function QueueManagementPage() {
                                 </Table>
                             ) : (
                                 <p>Tidak ada antrean menunggu.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* CALLED Tab */}
+                <TabsContent value="CALLED">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Antrean Dipanggil</CardTitle>
+                            <CardDescription>
+                                Daftar pengunjung yang sudah dipanggil oleh petugas.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {loading && activeTab === "CALLED" ? (
+                                <TableSkeleton columns={7} rows={5} />
+                            ) : queues.length > 0 ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>{getTableColumns()}</TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {queues.map((queue) => renderQueueRow(queue))}
+                                    </TableBody>
+                                </Table>
+                            ) : (
+                                <p>Tidak ada antrean dipanggil.</p>
                             )}
                         </CardContent>
                     </Card>

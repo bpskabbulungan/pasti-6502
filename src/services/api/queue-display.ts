@@ -1,5 +1,8 @@
 import { apiFetch } from "./base-client";
-import type { QueueDisplayResponse } from "@shared/types/queue";
+import type {
+	QueueDisplayAdminsResponse,
+	QueueDisplayResponse,
+} from "@shared/types/queue";
 
 export const queueDisplayApi = {
 	get: (params?: { adminId?: string; dateFilter?: string; hash?: string }) => {
@@ -18,4 +21,5 @@ export const queueDisplayApi = {
 			headers: params?.hash ? { "x-queue-hash": params.hash } : undefined,
 		});
 	},
+	admins: () => apiFetch<QueueDisplayAdminsResponse>("/api/queue-display/admins"),
 };

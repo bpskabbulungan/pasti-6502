@@ -1,5 +1,9 @@
 import { apiFetch } from "./base-client";
-import type { QueueListParams, QueueListResponse } from "@shared/types/queue";
+import type {
+	QueueDetail,
+	QueueListParams,
+	QueueListResponse,
+} from "@shared/types/queue";
 import type { ReminderResponse } from "@shared/types/reminder";
 
 export const queuesApi = {
@@ -26,7 +30,7 @@ export const queuesApi = {
 			method: "PATCH",
 			body: { status },
 		}),
-	detail: (id: string) => apiFetch(`/api/queue/${id}`),
+	detail: (id: string) => apiFetch<QueueDetail>(`/api/queue/${id}`),
 	list: (params?: QueueListParams) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set("status", params.status);

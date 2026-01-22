@@ -35,6 +35,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Gender, LastEducation, Purpose } from "@/shared/constants/enums";
+import { guestApi } from "@/services/api/guest";
+import type { ErrorResponse } from "@shared/types/api";
 
 const guestFormSchema = z.object({
 	fullName: z.string().min(2, "Nama lengkap minimal 2 karakter"),
@@ -155,6 +157,20 @@ type SubmissionResult = {
 	guestName: string;
 };
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+	if (typeof error !== "object" || !error) {
+		return fallback;
+	}
+
+	const errorDetails = (error as { details?: ErrorResponse }).details;
+	if (errorDetails?.error) {
+		return errorDetails.error;
+	}
+
+	const message = (error as { message?: string }).message;
+	return message || fallback;
+};
+
 export default function GuestForm() {
 	const router = useRouter();
 	const [submission, setSubmission] = useState<SubmissionResult | null>(null);
@@ -195,22 +211,10 @@ export default function GuestForm() {
 		};
 
 		try {
-			const response = await fetch("/api/guest", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(payload),
-			});
+			const result = await guestApi.submit(payload);
+			const data = result.data;
 
-			const result = await response.json();
-
-			if (!response.ok) {
-				toast.error(result.error || "Gagal membuat antrean baru");
-				return;
-			}
-
-			setSubmission(result.data);
+			setSubmission(data);
 			toast.success("Buku tamu tersimpan, nomor antrean dibuat");
 			form.reset({
 				fullName: "",
@@ -224,12 +228,14 @@ export default function GuestForm() {
 				occupation: values.occupation ?? "Pelajar/Mahasiswa",
 				purpose: values.purpose,
 			});
-			if (result.data.queueId) {
-				router.push(`/guest/queue/${result.data.queueId}`);
+			if (data.queueId) {
+				router.push(`/guest/queue/${data.queueId}`);
 			}
 		} catch (error) {
 			console.error("Error submitting guest form", error);
-			toast.error("Terjadi kesalahan, coba lagi sebentar lagi");
+			toast.error(
+				getErrorMessage(error, "Terjadi kesalahan, coba lagi sebentar lagi")
+			);
 		}
 	};
 

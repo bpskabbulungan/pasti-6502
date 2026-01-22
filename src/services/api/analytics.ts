@@ -2,10 +2,11 @@ import { apiFetch } from "./base-client";
 import type { AnalyticsSummary } from "@shared/types/analytics";
 
 export const analyticsApi = {
-	summary: (params?: { startDate?: string; endDate?: string }) => {
+	summary: (params?: { startDate?: string; endDate?: string; hash?: string }) => {
 		const search = new URLSearchParams();
 		if (params?.startDate) search.set("startDate", params.startDate);
 		if (params?.endDate) search.set("endDate", params.endDate);
+		if (params?.hash) search.set("hash", params.hash);
 		const url =
 			search.size > 0 ? `/api/analytics?${search.toString()}` : "/api/analytics";
 		return apiFetch<AnalyticsSummary>(url);
