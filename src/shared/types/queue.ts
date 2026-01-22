@@ -1,4 +1,4 @@
-import { QueueStatus, QueueType } from "@/generated/prisma";
+import type { QueueStatus, QueueType } from "@/shared/constants/enums";
 
 export type QueueTracking = {
 	queueNumber: number;

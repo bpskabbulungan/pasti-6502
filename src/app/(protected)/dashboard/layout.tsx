@@ -17,7 +17,7 @@ import {
 import { useEffect, useState } from "react"; // Added useEffect
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Role } from "@/generated/prisma";
+import { Role } from "@/shared/constants/enums";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import NotificationsDropdown from "@/modules/notifications/components/notifications-dropdown";

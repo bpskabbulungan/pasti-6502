@@ -5,6 +5,8 @@ import type { ReminderResponse } from "@shared/types/reminder";
 export const queuesApi = {
 	serve: (id: string) =>
 		apiFetch(`/api/queue/${id}/serve`, { method: "POST" }),
+	call: (id: string) =>
+		apiFetch(`/api/queue/${id}/call`, { method: "POST" }),
 	complete: (id: string) =>
 		apiFetch(`/api/queue/${id}/complete`, { method: "POST" }),
 	cancel: (id: string) =>
@@ -13,6 +15,16 @@ export const queuesApi = {
 		apiFetch<ReminderResponse>(`/api/queue/${id}/remind-skd`, {
 			method: "POST",
 			body: { message },
+		}),
+	remindSkdBot: (id: string, message?: string) =>
+		apiFetch<ReminderResponse>(`/api/queue/${id}/remind-skd-bot`, {
+			method: "POST",
+			body: { message },
+		}),
+	updateSkdStatus: (id: string, status: "BELUM_MENGISI" | "SUDAH_MENGISI") =>
+		apiFetch(`/api/queue/${id}/skd`, {
+			method: "PATCH",
+			body: { status },
 		}),
 	detail: (id: string) => apiFetch(`/api/queue/${id}`),
 	list: (params?: QueueListParams) => {

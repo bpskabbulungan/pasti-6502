@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Gender, LastEducation, Purpose } from "@/generated/prisma";
+import { Gender, LastEducation, Purpose } from "@/shared/constants/enums";
 
 const guestFormSchema = z.object({
 	fullName: z.string().min(2, "Nama lengkap minimal 2 karakter"),

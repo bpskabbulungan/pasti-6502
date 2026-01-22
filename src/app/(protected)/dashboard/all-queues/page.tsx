@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label"; // Added Label import
-import { QueueStatus } from "@/generated/prisma";
+import { QueueStatus } from "@/shared/constants/enums";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Search } from "lucide-react";
 import TableSkeleton from "@/modules/dashboard/components/skeletons/TableSkeleton";
 
@@ -303,6 +303,8 @@ export default function AllQueuesPage() {
         switch (status) {
             case "WAITING":
                 return <span className="bg-yellow-100 px-2 py-1 rounded-full font-semibold text-yellow-800 text-xs">Menunggu</span>;
+            case "CALLED":
+                return <span className="bg-amber-100 px-2 py-1 rounded-full font-semibold text-amber-800 text-xs">Dipanggil</span>;
             case "SERVING":
                 return <span className="bg-blue-100 px-2 py-1 rounded-full font-semibold text-blue-800 text-xs">Sedang Dilayani</span>;
             case "COMPLETED":

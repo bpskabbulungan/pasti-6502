@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LoginForm } from "@/components/LoginForm";
-import { LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
+import { CalendarClock, QrCode, ShieldCheck, Sparkles } from "lucide-react";
 
 export default function LoginPage() {
   return (
@@ -25,53 +25,59 @@ export default function LoginPage() {
           </Badge>
           <div className="space-y-3">
             <h1 className="text-3xl font-black leading-tight text-primary-color sm:text-4xl">
-              Masuk untuk mengelola Pelayanan Statistik Terpadu
+              Pelayanan Statistik Terpadu dan Terintegrasi
             </h1>
             <div className="max-w-2xl space-y-3 text-base text-secondary-color sm:text-lg">
               <p>
-                Pastikan pelayanan berjalan lancar dengan antrean yang tertib,
-                monitoring SKD, dan akses aman untuk admin.
+                PASTI merupakan komitmen BPS Kabupaten Bulungan dalam memberikan pelayanan statistik kepada masyarakat yang berkunjung ke Pelayanan Statistik Terpadu (PST).
               </p>
               <p>
-                Login untuk melanjutkan pengelolaan data pengunjung dan
-                pengalaman pelayanan yang prima.
+                Melalui penerapan alur pelayanan yang terstruktur dan terukur, PASTI menjamin proses pelayananan statistik berjalan secara efektif, transparan, dan akuntabel, sekaligus mengedepankan kenyamanan serta kualitas pelayanan bagi masyarakat.
               </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
             <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
               <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <ShieldCheck className="h-4 w-4" />
+                <CalendarClock className="h-4 w-4" />
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-primary-color">Kelola Antrean</p>
+                <p className="font-semibold text-primary-color">Jadwal Petugas</p>
                 <p className="text-sm text-secondary-color">
-                  Atur jalur antrean yang tertib mulai dari pendaftaran hingga
-                  pelayanan selesai.
+                  Penugasan petugas layanan diatur secara otomatis setiap hari guna menjamin pemerataan beban kerja, ketertiban pelaksanaan tugas, serta keberlangsungan pelayanan yang konsisten.
                 </p>
               </div>
             </div>
             <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
               <div className="rounded-full bg-accent/10 p-2 text-accent">
-                <Sparkles className="h-4 w-4" />
+                <QrCode className="h-4 w-4" />
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-primary-color">Responden SKD</p>
+                <p className="font-semibold text-primary-color">Buku Tamu Digital</p>
                 <p className="text-sm text-secondary-color">
-                  Monitoring pengunjung agar menyelesaikan Survei Kebutuhan Data
-                  dengan cepat dan akurat.
+                  Pengunjung melakukan pengisian buku tamu secara mandiri melalui pemindaian QR Code tanpa perlu proses login, sehingga pelayanan menjadi lebih cepat dan efisien.
                 </p>
               </div>
             </div>
             <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
               <div className="rounded-full bg-secondary/10 p-2 text-secondary-foreground">
-                <LockKeyhole className="h-4 w-4" />
+                <ShieldCheck className="h-4 w-4" />
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-primary-color">Keamanan Akses</p>
+                <p className="font-semibold text-primary-color">Antrean Pelayanan</p>
                 <p className="text-sm text-secondary-color">
-                  Autentikasi admin menjaga keamanan data pengunjung PST dan
-                  hasil SKD dari responden.
+                  Sistem antrean dikelola secara otomatis untuk memastikan ketertiban, kejelasan urutan layanan, serta kepastian waktu pelayanan bagi setiap pengunjung.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
+              <div className="rounded-full bg-primary/10 p-2 text-primary">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-semibold text-primary-color">Monitoring SKD</p>
+                <p className="text-sm text-secondary-color">
+                  Pemantauan status pengisian Survei Kebutuhan Data (SKD) dilakukan secara terintegrasi dan didukung dengan pengiriman pesan pengingat melalui WhatsApp untuk memastikan responden melakukan pengisian survei.
                 </p>
               </div>
             </div>

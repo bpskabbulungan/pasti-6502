@@ -1,5 +1,21 @@
 import { z } from "zod";
-import { Gender, LastEducation, Purpose, QueueType } from "@/generated/prisma";
+import {
+	Gender,
+	LastEducation,
+	Purpose,
+	QueueType,
+} from "@/shared/constants/enums";
+
+const genderValues = Object.values(Gender) as [Gender, ...Gender[]];
+const lastEducationValues = Object.values(LastEducation) as [
+	LastEducation,
+	...LastEducation[],
+];
+const purposeValues = Object.values(Purpose) as [Purpose, ...Purpose[]];
+const queueTypeValues = Object.values(QueueType) as [
+	QueueType,
+	...QueueType[],
+];
 
 export const visitorSubmissionSchema = z.object({
 	name: z.string().min(2, "Nama lengkap minimal 2 karakter"),
@@ -31,10 +47,10 @@ export const visitorSubmissionSchema = z.object({
 		.string()
 		.min(2, "Asal/Instansi minimal 2 karakter")
 		.max(150),
-	gender: z.nativeEnum(Gender, {
+	gender: z.enum(genderValues, {
 		required_error: "Jenis kelamin wajib dipilih",
 	}),
-	lastEducation: z.nativeEnum(LastEducation, {
+	lastEducation: z.enum(lastEducationValues, {
 		required_error: "Pendidikan terakhir wajib dipilih",
 	}),
 	occupation: z.enum(
@@ -50,12 +66,12 @@ export const visitorSubmissionSchema = z.object({
 		],
 		{ required_error: "Pekerjaan wajib dipilih" }
 	),
-	purpose: z.nativeEnum(Purpose, {
+	purpose: z.enum(purposeValues, {
 		required_error: "Keperluan wajib dipilih",
 	}),
 	serviceId: z.string().min(1, "Layanan harus dipilih"),
 	tempUuid: z.string().min(1, "Link sementara tidak valid"),
-	queueType: z.nativeEnum(QueueType, {
+	queueType: z.enum(queueTypeValues, {
 		required_error: "Tipe antrean wajib dipilih",
 	}),
 });

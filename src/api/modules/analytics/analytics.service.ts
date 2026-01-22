@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import prisma from "@api/infrastructure/database/prisma";
-import { QueueStatus, Prisma } from "@/generated/prisma";
+import { QueueStatus, Prisma } from "@prisma/client";
 
 type DateRange = {
 	startDate: Date;
@@ -229,6 +229,7 @@ export async function getAnalyticsSummary(startDate: Date, endDate: Date) {
 
 		switch (queue.status) {
 			case QueueStatus.WAITING:
+			case QueueStatus.CALLED:
 			case QueueStatus.SERVING:
 				dayData!.waiting += 1;
 				break;

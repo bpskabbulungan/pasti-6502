@@ -9,13 +9,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { QueueStatus, Role } from "@/generated/prisma";
+import { QueueStatus, Role } from "@/shared/constants/enums";
 import { formatDistance } from "date-fns";
 import { id } from "date-fns/locale";
 import { RefreshCw, Smartphone, AlertCircle, MessageSquareText } from "lucide-react";
 import { queuesApi } from "@/services/api/queues";
-import { remindersApi } from "@/services/api/reminders";
-import { visitorFormApi } from "@/services/api/visitor-form";
 import TableSkeleton from "@/modules/dashboard/components/skeletons/TableSkeleton";
 import QueueManagementSkeleton from "@/modules/dashboard/components/skeletons/QueueManagementSkeleton";
 import { Label } from "@/components/ui/label";
@@ -139,6 +137,17 @@ export default function QueueManagementPage() {
         }
     };
 
+    const handleCallQueue = async (queueId: string) => {
+        try {
+            await queuesApi.call(queueId);
+            toast.success("Antrean dipanggil");
+            setNeedsRefresh(true);
+        } catch (error) {
+            console.error("Error calling queue:", error);
+            toast.error("Terjadi kesalahan saat memanggil antrean");
+        }
+    };
+
     const handleCompleteQueue = async (queueId: string) => {
         try {
             await queuesApi.complete(queueId);
@@ -186,7 +195,7 @@ export default function QueueManagementPage() {
     const handleRemindSKD = (queue: Queue) => {
         setSelectedQueue(queue);
         setReminderMessage(
-            `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) 2025 BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
+            `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
         );
         setShowRemindSkdDialog(true);
     };
@@ -225,10 +234,10 @@ export default function QueueManagementPage() {
             setIsSendingReminder(true);
             setReminderError(null);
 
-            const result = await remindersApi.sendWaBot({
-                phoneNumber: selectedQueue.visitor.phone,
-                message: reminderMessage,
-            });
+            const result = await queuesApi.remindSkdBot(
+                selectedQueue.id,
+                reminderMessage
+            );
 
             if (result.success) {
                 toast.success("Pengingat berhasil dikirim via WhatsApp Bot");
@@ -252,9 +261,8 @@ export default function QueueManagementPage() {
     // Function to handle SKD check
     const handleMarkSkdFilled = async (queue: Queue, filled: boolean) => {
         try {
-            if (!queue.tempUuid) return;
-
-            await visitorFormApi.markSkd(queue.tempUuid, filled);
+            const status = filled ? "SUDAH_MENGISI" : "BELUM_MENGISI";
+            await queuesApi.updateSkdStatus(queue.id, status);
             toast.success(
                 filled ? "SKD ditandai telah diisi" : "SKD ditandai belum diisi"
             );
@@ -288,6 +296,33 @@ export default function QueueManagementPage() {
         // Add standard action buttons based on queue status
         switch (queue.status) {
             case "WAITING":
+                actions.push(
+                    <Button
+                        key="call"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCallQueue(queue.id)}
+                    >
+                        Panggil
+                    </Button>,
+                    <Button
+                        key="serve"
+                        size="sm"
+                        onClick={() => handleServeQueue(queue.id)}
+                    >
+                        Layani
+                    </Button>,
+                    <Button
+                        key="cancel"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleCancelQueue(queue.id)}
+                    >
+                        Batalkan
+                    </Button>
+                );
+                break;
+            case "CALLED":
                 actions.push(
                     <Button
                         key="serve"
@@ -511,8 +546,9 @@ export default function QueueManagementPage() {
                 value={activeTab}
                 onValueChange={(value) => setActiveTab(value as QueueStatus)}
             >
-                <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full">
+                <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full">
                     <TabsTrigger value="WAITING">Menunggu</TabsTrigger>
+                    <TabsTrigger value="CALLED">Dipanggil</TabsTrigger>
                     <TabsTrigger value="SERVING">Sedang Dilayani</TabsTrigger>
                     <TabsTrigger value="COMPLETED">Selesai</TabsTrigger>
                     <TabsTrigger value="CANCELED">Dibatalkan</TabsTrigger>
@@ -541,6 +577,34 @@ export default function QueueManagementPage() {
                                 </Table>
                             ) : (
                                 <p>Tidak ada antrean menunggu.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* CALLED Tab */}
+                <TabsContent value="CALLED">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Antrean Dipanggil</CardTitle>
+                            <CardDescription>
+                                Daftar pengunjung yang sudah dipanggil oleh petugas.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {loading && activeTab === "CALLED" ? (
+                                <TableSkeleton columns={7} rows={5} />
+                            ) : queues.length > 0 ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>{getTableColumns()}</TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {queues.map((queue) => renderQueueRow(queue))}
+                                    </TableBody>
+                                </Table>
+                            ) : (
+                                <p>Tidak ada antrean dipanggil.</p>
                             )}
                         </CardContent>
                     </Card>

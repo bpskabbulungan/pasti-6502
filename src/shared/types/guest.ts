@@ -1,4 +1,4 @@
-import type { QueueStatus } from "@/generated/prisma";
+import type { QueueStatus } from "@/shared/constants/enums";
 
 export type GuestSubmissionResponse = {
 	success: true;

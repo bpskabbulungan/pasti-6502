@@ -1,5 +1,6 @@
 import prisma from "@api/infrastructure/database/prisma";
-import { QueueStatus, Role } from "@/generated/prisma";
+import { QueueStatus, Role } from "@prisma/client";
+import { sendWhatsAppBotReminder } from "@api/modules/reminders";
 import type { QueueDetail } from "@shared/types/queue";
 
 const formatQueueDate = (date: Date): string => {
@@ -69,8 +70,12 @@ export async function serveQueue(queueId: string, adminId: string) {
 	if (!queue) {
 		return { ok: false as const, status: 404, error: "Queue not found" };
 	}
-	if (queue.status !== QueueStatus.WAITING) {
-		return { ok: false as const, status: 400, error: "Queue is not in waiting status" };
+	if (queue.status !== QueueStatus.WAITING && queue.status !== QueueStatus.CALLED) {
+		return {
+			ok: false as const,
+			status: 400,
+			error: "Queue is not in waiting or called status",
+		};
 	}
 
 	const adminUser = await prisma.user.findUnique({
@@ -196,7 +201,11 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 		return { ok: false as const, status: 404, error: "Queue not found" };
 	}
 
-	const allowedStatuses: QueueStatus[] = [QueueStatus.WAITING, QueueStatus.SERVING];
+	const allowedStatuses: QueueStatus[] = [
+		QueueStatus.WAITING,
+		QueueStatus.CALLED,
+		QueueStatus.SERVING,
+	];
 	if (!allowedStatuses.includes(queue.status)) {
 		return { ok: false as const, status: 400, error: "Queue cannot be canceled in its current state" };
 	}
@@ -284,7 +293,9 @@ export async function prepareSkdReminder(queueId: string, message?: string) {
 		phoneNumber = "62" + phoneNumber;
 	}
 
-	const defaultMessage = `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) 2025 BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`;
+	const skdLink =
+		process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
+	const defaultMessage = `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: ${skdLink}`;
 	const reminderMessage = message || defaultMessage;
 
 	const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(
@@ -299,4 +310,155 @@ export async function prepareSkdReminder(queueId: string, message?: string) {
 			phone: queue.visitor.phone,
 		},
 	};
+}
+
+export async function callQueue(queueId: string, adminId: string) {
+	const queue = await prisma.queue.findUnique({
+		where: { id: queueId },
+	});
+
+	if (!queue) {
+		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+	if (queue.status !== QueueStatus.WAITING) {
+		return { ok: false as const, status: 400, error: "Queue is not in waiting status" };
+	}
+
+	const adminUser = await prisma.user.findUnique({
+		where: { id: adminId },
+		select: { id: true, name: true },
+	});
+
+	if (!adminUser) {
+		return { ok: false as const, status: 404, error: "Admin user not found in database" };
+	}
+
+	const updatedQueue = await prisma.queue.update({
+		where: { id: queueId },
+		data: {
+			status: QueueStatus.CALLED,
+			adminId,
+		},
+		include: {
+			visitor: {
+				select: {
+					name: true,
+					phone: true,
+					institution: true,
+				},
+			},
+			service: {
+				select: {
+					name: true,
+				},
+			},
+			admin: {
+				select: {
+					name: true,
+				},
+			},
+		},
+	});
+
+	await prisma.notification.create({
+		data: {
+			type: "QUEUE_CALLED",
+			title: "Antrean Dipanggil",
+			message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
+				new Date(updatedQueue.createdAt)
+			)} (${
+				updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
+			}) telah dipanggil oleh ${adminUser.name}`,
+			isRead: false,
+		},
+	});
+
+	return { ok: true as const, queue: updatedQueue };
+}
+
+export async function updateSkdStatusByQueueId(queueId: string, filled: boolean) {
+	const queue = await prisma.queue.findUnique({
+		where: { id: queueId },
+		include: {
+			visitor: { select: { name: true } },
+		},
+	});
+
+	if (!queue) {
+		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+
+	const updatedQueue = await prisma.queue.update({
+		where: { id: queueId },
+		data: { filledSKD: filled },
+	});
+
+	if (filled) {
+		await prisma.notification.create({
+			data: {
+				type: "SKD_FILLED",
+				title: "SKD Diisi",
+				message: `Pengunjung ${queue.visitor.name} telah mengisi form SKD untuk antrean #${
+					queue.queueNumber
+				}-${formatQueueDate(new Date(queue.createdAt))} `,
+				isRead: false,
+			},
+		});
+	}
+
+	return {
+		ok: true as const,
+		message: filled ? "SKD form marked as filled" : "SKD form marked as not filled",
+		queue: updatedQueue,
+	};
+}
+
+export async function triggerSkdReminderBot(queueId: string, message?: string) {
+	const queue = await prisma.queue.findUnique({
+		where: { id: queueId },
+		include: {
+			visitor: {
+				select: {
+					name: true,
+					phone: true,
+				},
+			},
+		},
+	});
+
+	if (!queue) {
+		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+
+	if (queue.filledSKD) {
+		return {
+			ok: false as const,
+			status: 400,
+			error: "SKD sudah diisi, pengingat tidak diperlukan",
+		};
+	}
+
+	const skdLink =
+		process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
+	const defaultMessage = `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: ${skdLink}`;
+	const reminderMessage = message || defaultMessage;
+
+	const result = await sendWhatsAppBotReminder(queue.visitor.phone, reminderMessage);
+
+	if (result.success) {
+		await prisma.notification.create({
+			data: {
+				type: "REMINDER_SKD",
+				title: "Pengingat SKD",
+				message: `Pengingat SKD telah dikirim ke ${queue.visitor.name}`,
+				isRead: false,
+			},
+		});
+	}
+
+	if (!result.success) {
+		return { ok: false as const, status: 400, error: result.message };
+	}
+
+	return { ok: true as const, data: result.data };
 }

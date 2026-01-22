@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { QueueStatus, Role } from "@/generated/prisma";
+import { QueueStatus, Role } from "@/shared/constants/enums";
 import { formatDistance } from "date-fns";
 import { id } from "date-fns/locale";
 import { RefreshCw, Smartphone, AlertCircle, MessageSquareText } from "lucide-react";

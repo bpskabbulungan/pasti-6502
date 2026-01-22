@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCcw, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 
-type QueueStatus = "WAITING" | "SERVING" | "COMPLETED" | "CANCELED";
+type QueueStatus = "WAITING" | "CALLED" | "SERVING" | "COMPLETED" | "CANCELED";
 
 type QueueData = {
 	queueId: string;
@@ -41,6 +41,11 @@ const statusCopy: Record<
 		title: "Menunggu giliran",
 		desc: "Silakan bersabar, petugas akan memanggil sesuai urutan.",
 		badge: "bg-yellow-100 text-yellow-800",
+	},
+	CALLED: {
+		title: "Dipanggil",
+		desc: "Antrean Anda sedang dipanggil, silakan menuju loket.",
+		badge: "bg-amber-100 text-amber-800",
 	},
 	SERVING: {
 		title: "Sedang dilayani",

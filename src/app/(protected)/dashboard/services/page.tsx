@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Role, ServiceStatus } from "@/generated/prisma";
+import { Role, ServiceStatus } from "@/shared/constants/enums";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Plus, Power, PowerOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";

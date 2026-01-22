@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { QueueStatus } from "@/generated/prisma";
+import { QueueStatus } from "@prisma/client";
 import { getQueues } from "@api/modules/queues";
 import type { QueueListResponse } from "@shared/types/queue";
 

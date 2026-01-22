@@ -1,4 +1,4 @@
-import { ServiceStatus } from "@/generated/prisma";
+import { ServiceStatus } from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
 
 type ServiceCreateInput = {

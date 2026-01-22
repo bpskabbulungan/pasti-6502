@@ -1,6 +1,6 @@
 services:
   # Next.js Application
-  pasti:
+  pasti_app:
     container_name: pasti_app
     image: pasti_app
     build:
@@ -21,12 +21,12 @@ services:
       - NEXT_PUBLIC_STATIC_UUID=${NEXT_PUBLIC_STATIC_UUID}
       - NEXT_PUBLIC_WA_API_URL=${NEXT_PUBLIC_WA_API_URL:-http://localhost:3001/wa-api}
       - WA_ADMIN_KEY=${WA_ADMIN_KEY}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - REDIS_URL=${REDIS_URL:-redis://pasti_redis:6379}
       - HOSTNAME=0.0.0.0
     depends_on:
       pasti_db:
         condition: service_healthy
-      redis:
+      pasti_redis:
         condition: service_started
     restart: unless-stopped
     volumes:
@@ -36,7 +36,7 @@ services:
   # PostgreSQL Database
   pasti_db:
     container_name: pasti_db
-    image: postgres:15-alpine
+    image: pasti_postgres:15-alpine
     environment:
       - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER not set}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
@@ -67,9 +67,9 @@ services:
   #     - wa_bot_data:/app/data
 
   # Redis for rate limiting / caching
-  redis:
+  pasti_redis:
     container_name: pasti_redis
-    image: redis:7-alpine
+    image: pasti_redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     restart: unless-stopped
     volumes:

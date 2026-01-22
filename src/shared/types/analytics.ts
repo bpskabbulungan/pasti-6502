@@ -1,4 +1,4 @@
-import { QueueStatus } from "@/generated/prisma";
+import type { QueueStatus } from "@/shared/constants/enums";
 
 export type AnalyticsServiceDistribution = {
 	name: string;

@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import prisma from "@api/infrastructure/database/prisma";
-import { QueueStatus } from "@/generated/prisma";
+import { QueueStatus } from "@prisma/client";
 
 const hashPayload = (payload: unknown) =>
 	createHash("md5").update(JSON.stringify(payload)).digest("hex");
@@ -15,7 +15,7 @@ export async function getDashboardStats(clientHash?: string | null) {
 		await Promise.all([
 			prisma.queue.count({
 				where: {
-					status: QueueStatus.WAITING,
+					status: { in: [QueueStatus.WAITING, QueueStatus.CALLED] },
 					queueDate: { gte: startOfToday, lt: endOfToday },
 				},
 			}),

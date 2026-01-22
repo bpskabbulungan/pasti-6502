@@ -1,5 +1,5 @@
 import "module-alias/register";
-import { PrismaClient, Role, ServiceStatus } from "../src/generated/prisma";
+import { PrismaClient, Role, ServiceStatus } from "@prisma/client";
 import bcryptjs from "bcryptjs";
 import * as fs from "fs";
 import * as path from "path";

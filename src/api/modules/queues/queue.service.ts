@@ -1,4 +1,4 @@
-import { Prisma, QueueStatus } from "@/generated/prisma";
+import { Prisma, QueueStatus } from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
 import { generateQueueHash } from "./queue.utils";
 import type { QueueDetail } from "@shared/types/queue";

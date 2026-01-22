@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { Role } from "@/generated/prisma";
+import { Role } from "@prisma/client";
 import { getQueueDetail } from "@api/modules/queues";
 import type { QueueDetail } from "@shared/types/queue";
 

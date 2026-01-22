@@ -6,7 +6,7 @@ import {
 	QueueStatus,
 	QueueType,
 	ServiceStatus,
-} from "@/generated/prisma";
+} from "@prisma/client";
 import { visitorSubmissionSchema } from "@shared/schemas/visitor-form";
 import type { VisitorFormTrackResponse } from "@shared/types/visitor-form";
 

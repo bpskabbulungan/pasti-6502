@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Role } from "@/generated/prisma";
+import { Role } from "@/shared/constants/enums";
 import Link from "next/link";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Hourglass, Users, CheckCircle, XCircle, RefreshCcw, Settings } from "lucide-react";

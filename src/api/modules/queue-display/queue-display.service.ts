@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import prisma from "@api/infrastructure/database/prisma";
-import { Prisma, QueueStatus } from "@/generated/prisma";
+import { Prisma, QueueStatus } from "@prisma/client";
 
 const generateHash = (data: unknown) => {
 	const dataString = JSON.stringify(data);
@@ -20,7 +20,7 @@ export async function getQueueDisplay(params: {
 	today.setHours(0, 0, 0, 0);
 
 	const servingWhereClause: Prisma.QueueWhereInput = {
-		status: QueueStatus.SERVING,
+		status: { in: [QueueStatus.CALLED, QueueStatus.SERVING] },
 	};
 
 	const nextQueueWhereClause: Prisma.QueueWhereInput = {
@@ -60,7 +60,7 @@ export async function getQueueDisplay(params: {
 			},
 		},
 		orderBy: {
-			startTime: "asc",
+			queueNumber: "asc",
 		},
 	});
 

@@ -7,11 +7,11 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Tools needed for phantomjs-prebuilt (bzip2)
+# Tools needed for phantomjs-prebuilt (bzip2) and Prisma (openssl)
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists \
     apt-get update && \
-    apt-get install -y --no-install-recommends bzip2 && \
+    apt-get install -y --no-install-recommends bzip2 openssl && \
     rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps

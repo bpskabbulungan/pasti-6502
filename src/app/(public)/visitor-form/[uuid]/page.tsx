@@ -33,11 +33,11 @@ import {
 } from "@/components/ui/select";
 import { SelectTrigger } from "@/app/(public)/visitor-form/visitor-form-select";
 import {
-    Gender,
-    LastEducation,
-    Purpose,
-    ServiceStatus,
-} from "@/generated/prisma";
+	Gender,
+	LastEducation,
+	Purpose,
+	ServiceStatus,
+} from "@/shared/constants/enums";
 import { Badge } from "@/components/ui/badge";
 import {
     AlertCircle,
@@ -452,6 +452,15 @@ export default function VisitorFormPage() {
                         className="bg-yellow-100 ml-2 text-yellow-800"
                     >
                         Menunggu
+                    </Badge>
+                );
+            case "CALLED":
+                return (
+                    <Badge
+                        variant="outline"
+                        className="bg-amber-100 ml-2 text-amber-800"
+                    >
+                        Dipanggil
                     </Badge>
                 );
             case "SERVING":

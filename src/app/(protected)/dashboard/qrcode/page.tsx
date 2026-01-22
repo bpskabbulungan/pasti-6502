@@ -1,6 +1,5 @@
 "use client";
 
-import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Download } from "lucide-react";
@@ -15,7 +14,7 @@ export default function QRCodePage() {
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
-		const generateQr = async () => {
+		const resolveQr = async () => {
 			let staticUuid = process.env.NEXT_PUBLIC_STATIC_UUID;
 
 			if (!staticUuid) {
@@ -43,6 +42,12 @@ export default function QRCodePage() {
 				}
 			}
 
+			if (!staticUuid) {
+				setError("Static UUID belum dikonfigurasi.");
+				setIsLoading(false);
+				return;
+			}
+
 			const preferredBaseUrl = process.env.NEXT_PUBLIC_QR_BASE_URL || "";
 
 			const origin =
@@ -62,34 +67,37 @@ export default function QRCodePage() {
 				: origin;
 			const targetUrl = `${normalizedOrigin}/visitor-form/${staticUuid}`;
 
-			try {
-				const dataUrl = await QRCode.toDataURL(targetUrl, {
-					color: { dark: "#13254e", light: "#FFFFFF" },
-					width: 300,
-					margin: 1,
-				});
-				setQrImage(dataUrl);
-				setQrTargetUrl(targetUrl);
-			} catch (err) {
-				console.error("Failed to generate QR code", err);
-				setError("Gagal membuat QR code. Coba muat ulang halaman.");
-			} finally {
-				setIsLoading(false);
-			}
+			setQrImage(
+				`/api/qrcode/image?uuid=${encodeURIComponent(staticUuid)}`
+			);
+			setQrTargetUrl(targetUrl);
+			setIsLoading(false);
 		};
 
-		generateQr();
+		resolveQr();
 	}, []);
 
-	const handleDownload = () => {
+	const handleDownload = async () => {
 		if (!qrImage) return;
 
-		const link = document.createElement("a");
-		link.href = qrImage;
-		link.download = "pst_qrcode.png";
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
+		try {
+			const res = await fetch(qrImage);
+			if (!res.ok) {
+				throw new Error("Failed to fetch QR code image");
+			}
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = "pst_qrcode.png";
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error("Failed to download QR code", err);
+			setError("Gagal mengunduh QR code. Coba lagi.");
+		}
 	};
 
 	return (

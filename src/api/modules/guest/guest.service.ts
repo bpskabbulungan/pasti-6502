@@ -1,5 +1,10 @@
 import { nanoid } from "nanoid";
-import { Purpose, QueueStatus, QueueType, ServiceStatus } from "@/generated/prisma";
+import {
+	Purpose,
+	QueueStatus,
+	QueueType,
+	ServiceStatus,
+} from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
 import { guestSchema } from "@shared/schemas/guest";
 

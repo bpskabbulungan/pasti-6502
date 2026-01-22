@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth"; // Updated import path
 import bcryptjs from "bcryptjs";
 import prisma from "@/lib/prisma"; // Import shared prisma instance
-import { Role } from "@/generated/prisma"; // Add this import
+import { Role } from "@prisma/client"; // Add this import
 
 // PATCH - Update a user
 export async function PATCH(

@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -15,6 +14,7 @@ enum Role {
 
 enum QueueStatus {
   WAITING
+  CALLED
   SERVING
   COMPLETED
   CANCELED
@@ -93,6 +93,11 @@ enum Purpose {
   LAINNYA
 }
 
+enum DutyCycleStatus {
+  ACTIVE
+  COMPLETED
+}
+
 model Queue {
   id           String      @id @default(uuid())
   queueNumber  Int
@@ -122,6 +127,44 @@ model Queue {
   @@index([createdAt])
   @@index([status, createdAt])
   @@unique([queueDate, queueNumber])
+}
+
+model StaffMember {
+  id        String        @id @default(uuid())
+  name      String
+  phone     String?
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  schedules DutySchedule[]
+}
+
+model DutyCycle {
+  id         String           @id @default(uuid())
+  cycleNumber Int
+  status     DutyCycleStatus  @default(ACTIVE)
+  staffOrder Json
+  currentIndex Int            @default(0)
+  startedAt  DateTime         @default(now())
+  completedAt DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  schedules  DutySchedule[]
+}
+
+model DutySchedule {
+  id           String       @id @default(uuid())
+  scheduleDate DateTime
+  staffId      String
+  staff        StaffMember  @relation(fields: [staffId], references: [id])
+  cycleId      String
+  cycle        DutyCycle    @relation(fields: [cycleId], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([scheduleDate])
+  @@index([staffId])
+  @@index([cycleId])
 }
 
 model QRCode {

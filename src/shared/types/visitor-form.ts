@@ -1,4 +1,8 @@
-import type { ServiceStatus, QueueType, QueueStatus } from "@/generated/prisma";
+import type {
+	ServiceStatus,
+	QueueType,
+	QueueStatus,
+} from "@/shared/constants/enums";
 
 export type VisitorFormService = {
 	id: string;

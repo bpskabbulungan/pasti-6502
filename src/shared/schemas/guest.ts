@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { Gender, LastEducation, Purpose } from "@/generated/prisma";
+import {
+	Gender,
+	LastEducation,
+	Purpose,
+} from "@/shared/constants/enums";
+
+const genderValues = Object.values(Gender) as [Gender, ...Gender[]];
+const lastEducationValues = Object.values(LastEducation) as [
+	LastEducation,
+	...LastEducation[],
+];
+const purposeValues = Object.values(Purpose) as [Purpose, ...Purpose[]];
 
 export const guestSchema = z.object({
 	fullName: z.string().min(2, "Nama lengkap minimal 2 karakter"),
@@ -37,10 +48,10 @@ export const guestSchema = z.object({
 		.string()
 		.min(2, "Asal/Instansi minimal 2 karakter")
 		.max(150),
-	gender: z.nativeEnum(Gender, {
+	gender: z.enum(genderValues, {
 		required_error: "Jenis kelamin wajib dipilih",
 	}),
-	lastEducation: z.nativeEnum(LastEducation, {
+	lastEducation: z.enum(lastEducationValues, {
 		required_error: "Pendidikan terakhir wajib dipilih",
 	}),
 	occupation: z.enum(
@@ -56,7 +67,7 @@ export const guestSchema = z.object({
 		],
 		{ required_error: "Pilih pekerjaan" }
 	),
-	purpose: z.nativeEnum(Purpose, {
+	purpose: z.enum(purposeValues, {
 		required_error: "Keperluan wajib dipilih",
 	}),
 });

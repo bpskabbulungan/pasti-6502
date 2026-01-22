@@ -1,4 +1,4 @@
-import { Role } from "@/generated/prisma";
+import { Role } from "@prisma/client";
 import bcryptjs from "bcryptjs";
 import prisma from "@api/infrastructure/database/prisma";
 

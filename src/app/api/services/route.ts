@@ -1,4 +1,4 @@
-import { ServiceStatus } from "@/generated/prisma";
+import { ServiceStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
