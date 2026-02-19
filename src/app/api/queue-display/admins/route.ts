@@ -4,10 +4,10 @@ import { Role } from "@prisma/client";
 
 export async function GET() {
 	try {
-		// Get all superadmins and admins
+		// Get all admins and petugas
 		const admins = await prisma.user.findMany({
 			where: {
-				OR: [{ role: Role.ADMIN }, { role: Role.SUPERADMIN }],
+				OR: [{ role: Role.ADMIN }, { role: Role.PETUGAS }],
 			},
 			select: {
 				id: true,
@@ -15,7 +15,7 @@ export async function GET() {
 				role: true,
 			},
 			orderBy: {
-				role: "asc", // SUPERADMIN first, then ADMIN
+				role: "asc", // ADMIN first, then PETUGAS
 			},
 		});
 

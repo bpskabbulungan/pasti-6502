@@ -103,18 +103,18 @@ async function seedUsers(): Promise<SeededCredential[]> {
 		update: {
 			password: adminHashedPassword,
 			name: "Admin",
-			role: Role.SUPERADMIN,
+			role: Role.ADMIN,
 		},
 		create: {
 			username: adminUsername,
 			password: adminHashedPassword,
 			name: "Admin",
-			role: Role.SUPERADMIN,
+			role: Role.ADMIN,
 		},
 	});
 
 	credentials.push({
-		role: Role.SUPERADMIN,
+		role: Role.ADMIN,
 		username: admin.username,
 		password: adminFromEnv ? undefined : adminPassword,
 		source: adminFromEnv ? "SEED_ADMIN_PASSWORD" : "generated",
@@ -132,18 +132,18 @@ async function seedUsers(): Promise<SeededCredential[]> {
 		update: {
 			password: operatorHashedPassword,
 			name: "Petugas PST",
-			role: Role.ADMIN,
+			role: Role.PETUGAS,
 		},
 		create: {
 			username: operatorUsername,
 			password: operatorHashedPassword,
 			name: "Petugas PST",
-			role: Role.ADMIN,
+			role: Role.PETUGAS,
 		},
 	});
 
 	credentials.push({
-		role: Role.ADMIN,
+		role: Role.PETUGAS,
 		username: operator.username,
 		password: operatorFromEnv ? undefined : operatorPassword,
 		source: operatorFromEnv ? "SEED_OPERATOR_PASSWORD" : "generated",

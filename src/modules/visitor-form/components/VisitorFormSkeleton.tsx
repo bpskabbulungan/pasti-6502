@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function VisitorFormSkeleton() {
 	return (
-		<div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 dark:bg-background">
+		<div className="flex min-h-full items-center justify-center px-4 py-12">
 			<div className="w-full max-w-4xl bg-white dark:bg-card rounded-xl shadow-sm border border-border p-6 md:p-8">
 				<div className="mb-6 space-y-2">
 					<div className="flex items-center gap-3">

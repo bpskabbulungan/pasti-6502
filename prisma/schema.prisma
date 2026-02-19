@@ -3,13 +3,13 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 enum Role {
-  SUPERADMIN
   ADMIN
+  PETUGAS
 }
 
 enum QueueStatus {
@@ -30,7 +30,7 @@ model User {
   username      String         @unique
   password      String
   name          String
-  role          Role           @default(ADMIN)
+  role          Role           @default(PETUGAS)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   queues        Queue[]        @relation("AdminQueue")

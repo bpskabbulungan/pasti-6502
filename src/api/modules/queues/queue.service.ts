@@ -119,25 +119,14 @@ type AllQueuesParams = {
 	clientHash?: string;
 };
 
-export async function getAllQueuesToday({
+export async function getAllQueues({
 	clientHash = "",
 }: AllQueuesParams): Promise<{
 	queues: QueueDetail[];
 	hash: string;
 	hasChanges: boolean;
 }> {
-	const startOfToday = new Date();
-	startOfToday.setHours(0, 0, 0, 0);
-	const endOfToday = new Date(startOfToday);
-	endOfToday.setDate(endOfToday.getDate() + 1);
-
 	const queues = await prisma.queue.findMany({
-		where: {
-			queueDate: {
-				gte: startOfToday,
-				lt: endOfToday,
-			},
-		},
 		include: {
 			visitor: {
 				select: {
@@ -157,9 +146,10 @@ export async function getAllQueuesToday({
 				},
 			},
 		},
-		orderBy: {
-			queueNumber: "asc",
-		},
+		orderBy: [
+			{ createdAt: "desc" },
+			{ queueNumber: "asc" },
+		],
 	});
 
 	const serverHash = generateQueueHash(queues);

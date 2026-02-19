@@ -1,131 +1,167 @@
 import Link from "next/link";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
+import PageBackground from "@/components/page-background";
+import {
+  ArrowRight,
+  CalendarClock,
+  ClipboardList,
+  ListOrdered,
+  QrCode,
+  Sparkles,
+} from "lucide-react";
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
 
 export default function Home() {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#FFF4EC] via-white to-[#FFE5D3] dark:from-background dark:via-[#1f1f1f] dark:to-background">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(247,144,57,0.16),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(154,5,1,0.12),transparent_30%)]" />
-      <div className="absolute -left-16 top-24 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
-      <div className="absolute -right-10 bottom-12 h-64 w-64 rounded-full bg-secondary/20 blur-3xl" />
+    <div className="relative isolate flex min-h-full flex-col">
+      <PageBackground className="bg-gradient-to-br from-[#FFF4EC] via-white to-[#FFE5D3] dark:from-background dark:via-[#1f1f1f] dark:to-background" />
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(247,144,57,0.16),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(154,5,1,0.12),transparent_30%)]" />
+        <div className="absolute -left-16 top-24 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute -right-10 bottom-12 h-64 w-64 rounded-full bg-secondary/20 blur-3xl" />
+      </div>
 
-      <header className="relative z-20">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-6">
+      <div className="fixed top-0 inset-x-0 z-30 border-b border-border/60 bg-white/90 backdrop-blur dark:bg-background/85 md:hidden">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-5">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <img src="/icon_pst.png" alt="PST" className="h-6 w-6" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-base font-bold text-primary-color">PASTI 6502</p>
+              <p className="text-xs text-secondary-color">Pelayanan Statistik Terpadu</p>
+            </div>
+          </Link>
+          <div className="ml-auto flex items-center">
+            <ThemeToggle />
+          </div>
+        </div>
+      </div>
+
+      <header className="relative z-20 hidden md:block">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Sparkles className="h-5 w-5" />
+              <img src="/icon_pst.png" alt="PST" className="h-8 w-8" />
             </div>
             <div>
               <p className="text-lg font-bold text-primary-color">PASTI 6502</p>
-              <p className="text-sm text-secondary-color">
-                Pelayanan Statistik Terpadu
-              </p>
+              <p className="text-sm text-secondary-color">Pelayanan Statistik Terpadu</p>
             </div>
           </Link>
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <Link href="/login">
-              <Button className="gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90">
-                Login
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="relative z-10">
-        <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-14">
-          <div className="space-y-6 max-w-3xl">
-            <Badge
-              variant="secondary"
-              className="border-border/60 bg-white/70 text-primary-color shadow-sm backdrop-blur"
-            >
-              <Sparkles className="h-4 w-4" />
-              PASTI 6502
-            </Badge>
-            <div className="space-y-3">
-              <h1 className="text-3xl font-black leading-tight text-primary-color sm:text-4xl">
-                Pelayanan Statistik Terpadu Terintegrasi (PASTI)
-              </h1>
-              <div className="space-y-3 text-base text-secondary-color sm:text-lg">
-                <p>
-                  PASTI bukan sekadar akronim, PASTI merupakan komitmen standar
-                  pelayanan yang menuntun setiap proses, dari kedatangan hingga
-                  kebutuhan data terpenuhi.
-                </p>
-                <p>
-                  Kami memastikan antrean tertib, alur yang jelas, dan kepastian
-                  waktu yang terukur. Masyarakat tidak hanya mendapatkan data
-                  yang dibutuhkan, tetapi juga pengalaman pelayanan yang nyaman
-                  dan prima.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Link href="/login">
-                <Button className="gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90">
-                  Masuk Admin
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+          <div className="flex items-center justify-center gap-3 sm:justify-end">
+            <div className="hidden items-center gap-3 sm:flex">
               <Link href="/queue-display">
                 <Button
                   variant="outline"
                   className="border-border bg-white/70 backdrop-blur dark:bg-background"
                 >
-                  Lihat Tampilan Antrean
+                  Tampilan Antrean
+                </Button>
+              </Link>
+              <Link href="/login">
+                <Button className="gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90">
+                  Login
+                  <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
             </div>
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
           </div>
+        </div>
+      </header>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <div className="space-y-1">
-                <p className="font-semibold text-primary-color">
-                  Kelola Antrean
-                </p>
-                <p className="text-sm text-secondary-color">
-                  Atur jalur antrean yang tertib mulai dari pendaftaran hingga
-                  pelayanan selesai.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
-              <div className="rounded-full bg-accent/10 p-2 text-accent">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div className="space-y-1">
-                <p className="font-semibold text-primary-color">
-                  Responden SKD
-                </p>
-                <p className="text-sm text-secondary-color">
-                  Monitoring pengunjung agar menyelesaikan Survei Kebutuhan Data
-                  dengan cepat dan akurat.
+      <main className="relative z-10 flex-1">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-16 px-5 pb-20 pt-28 sm:px-6 md:pt-8 lg:px-8">
+          <section className="mx-auto flex w-full max-w-4xl flex-col items-center gap-6 text-center">
+            <div className="w-full space-y-3">
+              <h1
+                className={`${plusJakarta.className} w-full text-center text-3xl font-extrabold leading-tight text-primary-color sm:text-4xl lg:text-5xl`}
+              >
+                PASTI 6502
+              </h1>
+              <div className="mx-auto mt-4 w-full max-w-3xl space-y-3 text-base text-secondary-color [text-align:justify] [text-justify:inter-word] sm:mt-3 sm:text-lg">
+                <p>
+                  Pelayanan Statistik Terpadu dan Terintegrasi (PASTI) adalah komitmen BPS Kabupaten
+                  Bulungan untuk menyediakan layanan statistik bagi masyarakat melalui Pelayanan
+                  Statistik Terpadu (PST). Alur layanan yang terstruktur memastikan proses berjalan
+                  efektif, transparan, dan akuntabel, sekaligus meningkatkan kenyamanan pengunjung.
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-3 rounded-xl border border-custom bg-white/70 p-4 shadow-sm backdrop-blur dark:bg-card">
-              <div className="rounded-full bg-secondary/10 p-2 text-secondary-foreground">
-                <LockKeyhole className="h-4 w-4" />
+          </section>
+
+          <section className="grid w-full auto-rows-fr gap-6 grid-cols-1 sm:grid-cols-2">
+            <div className="flex w-full h-full items-start gap-4 rounded-2xl border border-custom/80 bg-white/80 p-6 shadow-sm backdrop-blur dark:bg-card">
+              <div className="shrink-0 rounded-full bg-primary/10 p-2 text-primary">
+                <CalendarClock className="h-4 w-4" />
               </div>
-              <div className="space-y-1">
-                <p className="font-semibold text-primary-color">
-                  Keamanan Akses
-                </p>
-                <p className="text-sm text-secondary-color">
-                  Autentikasi admin menjaga keamanan data pengunjung PST dan
-                  hasil SKD dari responden.
+              <div className="space-y-2">
+                <p className="font-semibold text-primary-color">Jadwal Petugas PST</p>
+                <p className="text-sm text-secondary-color [text-align:justify] [text-justify:inter-word]">
+                  Penugasan otomatis disertai notifikasi pengingat lewat WhatsApp untuk memastikan
+                  layanan selalu siap.
                 </p>
               </div>
             </div>
+            <div className="flex w-full h-full items-start gap-4 rounded-2xl border border-custom/80 bg-white/80 p-6 shadow-sm backdrop-blur dark:bg-card">
+              <div className="shrink-0 rounded-full bg-accent/10 p-2 text-accent">
+                <QrCode className="h-4 w-4" />
+              </div>
+              <div className="space-y-2">
+                <p className="font-semibold text-primary-color">Buku Tamu PST</p>
+                <p className="text-sm text-secondary-color [text-align:justify] [text-justify:inter-word]">
+                  Pendaftaran digital dengan QR code untuk memudahkan pencatatan data pengunjung.
+                </p>
+              </div>
+            </div>
+            <div className="flex w-full h-full items-start gap-4 rounded-2xl border border-custom/80 bg-white/80 p-6 shadow-sm backdrop-blur dark:bg-card">
+              <div className="shrink-0 rounded-full bg-secondary/10 p-2 text-secondary-foreground">
+                <ListOrdered className="h-4 w-4" />
+              </div>
+              <div className="space-y-2">
+                <p className="font-semibold text-primary-color">Antrean Pelayanan PST</p>
+                <p className="text-sm text-secondary-color [text-align:justify] [text-justify:inter-word]">
+                  Manajemen antrean digital untuk memastikan layanan berjalan tertib dan efisien.
+                </p>
+              </div>
+            </div>
+            <div className="flex w-full h-full items-start gap-4 rounded-2xl border border-custom/80 bg-white/80 p-6 shadow-sm backdrop-blur dark:bg-card">
+              <div className="shrink-0 rounded-full bg-primary/10 p-2 text-primary">
+                <ClipboardList className="h-4 w-4" />
+              </div>
+              <div className="space-y-2">
+                <p className="font-semibold text-primary-color">Survei Kebutuhan Data (SKD)</p>
+                <p className="text-sm text-secondary-color [text-align:justify] [text-justify:inter-word]">
+                  Pemantauan pengisian SKD sekaligus pengiriman pengingat lewat WhatsApp.
+                </p>
+              </div>
+            </div>
+          </section>
+          <div className="flex w-full flex-col gap-3 sm:hidden">
+            <Link href="/queue-display" className="w-full">
+              <Button
+                variant="outline"
+                className="w-full border-border bg-white/70 backdrop-blur dark:bg-background"
+              >
+                Tampilan Antrean
+              </Button>
+            </Link>
+            <Link href="/login" className="w-full">
+              <Button className="w-full gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90">
+                Login
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </div>
         </div>
       </main>

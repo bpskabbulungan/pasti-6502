@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import PageBackground from "@/components/page-background";
 import { RefreshCcw, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { queuesApi } from "@/services/api/queues";
 import type { ErrorResponse } from "@shared/types/api";
@@ -148,9 +149,10 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
 	}, [queueId]);
 
 	return (
-		<main className="relative min-h-screen bg-gradient-to-b from-background via-background to-primary/5 px-4 py-8">
-			<div className="pointer-events-none absolute left-6 top-8 h-28 w-28 rounded-full bg-primary/20 blur-3xl md:left-16" />
-			<div className="pointer-events-none absolute right-10 top-24 h-32 w-32 rounded-full bg-secondary/30 blur-3xl" />
+		<main className="relative isolate min-h-full px-4 py-8">
+			<PageBackground className="bg-gradient-to-b from-background via-background to-primary/5" />
+			<div className="pointer-events-none fixed left-6 top-8 -z-10 h-28 w-28 rounded-full bg-primary/20 blur-3xl md:left-16" />
+			<div className="pointer-events-none fixed right-10 top-24 -z-10 h-32 w-32 rounded-full bg-secondary/30 blur-3xl" />
 			<div className="relative mx-auto flex max-w-3xl flex-col gap-5">
 				<Card className="border-none bg-card/90 shadow-xl backdrop-blur">
 					<CardHeader className="space-y-2">

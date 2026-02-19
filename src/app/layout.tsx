@@ -1,27 +1,34 @@
 import type { Metadata } from "next";
-import { Lato } from "next/font/google";
+import { Poppins } from "next/font/google";
 import "./globals.css";
 import "@/styles/theme-tokens.css";
 import AuthProvider from "@/components/auth/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import LoadingTransition from "@/components/loading-transition";
-import { Suspense } from 'react';
+import { Suspense } from "react";
+import SiteFooter from "@/components/site-footer";
 
-const lato = Lato({
+const poppins = Poppins({
   weight: ["100", "300", "400", "700", "900"],
   subsets: ["latin"],
-  variable: "--font-lato",
+  variable: "--font-poppins",
 });
 
+const appUrl =
+  process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+const appIconPng = "/icon_pst.png";
+const appIconIco = "/favicon.ico";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   icons: {
-    icon: "/icon_pst.png",
-    shortcut: "/icon_pst.png",
-    apple: "/icon_pst.png",
+    icon: appIconIco,
+    apple: appIconPng,
+    shortcut: appIconIco,
   },
-  title: "PST BPS Bulungan - Sistem Antrean",
-  description: "Sistem Antrean Pelayanan Statistik Terpadu BPS Kabupaten Bulungan",
+  title: "PASTI 6502 - Pelayanan Statistik Terpadu",
+  description: "Pelayanan Statistik Terpadu dan Terintegrasi PST 6502",
 };
 
 export default function RootLayout({
@@ -32,16 +39,20 @@ export default function RootLayout({
   return (
     <html lang="id" suppressHydrationWarning>
       <head>
-        <link rel="icon" type="image/png" href="/icon_pst.png" />
-        <link rel="apple-touch-icon" href="/icon_pst.png" />
-        <link rel="shortcut icon" href="/icon_pst.png" />
+        <link rel="icon" href={appIconIco} />
+        <link rel="icon" type="image/png" href={appIconPng} />
+        <link rel="apple-touch-icon" href={appIconPng} />
+        <link rel="shortcut icon" href={appIconIco} />
       </head>
-      <body className={`${lato.variable} font-lato antialiased`}>
+      <body className={`${poppins.variable} font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
             <Suspense fallback={null}>
               <LoadingTransition>
-                {children}
+                <div className="flex min-h-screen flex-col">
+                  <div className="flex-1 min-h-0">{children}</div>
+                  <SiteFooter />
+                </div>
               </LoadingTransition>
             </Suspense>
             <Toaster />

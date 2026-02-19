@@ -17,10 +17,10 @@ export async function PATCH(
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		// Check if user is a superadmin
-		if (session.user.role !== Role.SUPERADMIN) {
+		// Check if user is an admin
+		if (session.user.role !== Role.ADMIN) {
 			return NextResponse.json(
-				{ error: "Only superadmins can update users" },
+				{ error: "Only admins can update users" },
 				{ status: 403 }
 			);
 		}
@@ -38,10 +38,10 @@ export async function PATCH(
 			return NextResponse.json({ error: "User not found" }, { status: 404 });
 		}
 
-		// Prevent updating superadmin
-		if (existingUser.role === Role.SUPERADMIN) {
+		// Prevent updating admin
+		if (existingUser.role === Role.ADMIN) {
 			return NextResponse.json(
-				{ error: "Cannot update superadmin account" },
+				{ error: "Cannot update admin account" },
 				{ status: 403 }
 			);
 		}
@@ -107,10 +107,10 @@ export async function DELETE(
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		// Check if user is a superadmin
-		if (session.user.role !== Role.SUPERADMIN) {
+		// Check if user is an admin
+		if (session.user.role !== Role.ADMIN) {
 			return NextResponse.json(
-				{ error: "Only superadmins can delete users" },
+				{ error: "Only admins can delete users" },
 				{ status: 403 }
 			);
 		}
@@ -126,10 +126,10 @@ export async function DELETE(
 			return NextResponse.json({ error: "User not found" }, { status: 404 });
 		}
 
-		// Prevent deleting superadmin
-		if (existingUser.role === Role.SUPERADMIN) {
+		// Prevent deleting admin
+		if (existingUser.role === Role.ADMIN) {
 			return NextResponse.json(
-				{ error: "Cannot delete superadmin account" },
+				{ error: "Cannot delete admin account" },
 				{ status: 403 }
 			);
 		}

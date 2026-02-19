@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		if (![Role.ADMIN, Role.SUPERADMIN].includes(session.user.role)) {
+		if (![Role.ADMIN, Role.PETUGAS].includes(session.user.role)) {
 			return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 		}
 

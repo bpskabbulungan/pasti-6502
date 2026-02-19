@@ -171,7 +171,7 @@ export default function AllQueuesPage() {
     const fetchAllQueues = useCallback(async () => {
         try {
             // setLoading(true); // setLoading is handled by callers
-            const data = await queuesApi.listAllToday();
+            const data = await queuesApi.listAll();
             setQueues(data.queues);
             setDataHash(data.hash || "");
             setLastUpdatedAt(new Date()); // Update lastUpdatedAt
@@ -202,7 +202,7 @@ export default function AllQueuesPage() {
     // New polling function
     const pollForAllQueuesChanges = useCallback(async () => {
         try {
-            const data = await queuesApi.listAllToday(dataHashRef.current);
+            const data = await queuesApi.listAll(dataHashRef.current);
             if (data.hash && data.hash !== dataHashRef.current) {
                 setQueues(data.queues);
                 setDataHash(data.hash);
@@ -333,9 +333,9 @@ export default function AllQueuesPage() {
     return (
         <div className="space-y-4">
             <div>
-                <h1 className="font-bold text-2xl">Semua Antrean</h1>
+                <h1 className="font-bold text-2xl">Riwayat Antrean</h1>
                 <p className="text-muted-foreground">
-                    Lihat dan cari semua antrean pengunjung PST
+                    Lihat dan cari riwayat antrean pengunjung PST
                 </p>
             </div>
 

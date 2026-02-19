@@ -27,7 +27,7 @@ RUN --mount=type=cache,id=${BUN_CACHE_ID},target=/root/.cache/bun \
 
 
 FROM deps AS builder
-ARG DATABASE_URL=postgresql://placeholder:placeholder@sistem_antrean_db:5432/sistem_antrean
+ARG DATABASE_URL=mysql://placeholder:placeholder@pasti_db:3306/pasti_db
 ENV DATABASE_URL=${DATABASE_URL}
 
 # Copy source

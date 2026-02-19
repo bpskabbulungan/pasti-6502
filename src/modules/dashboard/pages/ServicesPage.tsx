@@ -48,9 +48,9 @@ export default function ServicesManagementPage() {
     const [newServiceName, setNewServiceName] = useState("");
     const [serviceStatus, setServiceStatus] = useState(true); // true = ACTIVE, false = INACTIVE
 
-    // Check if user is superadmin
+    // Check if user is admin
     useEffect(() => {
-        if (session && session.user.role !== Role.SUPERADMIN) {
+        if (session && session.user.role !== Role.ADMIN) {
             toast.error("Anda tidak memiliki akses ke halaman ini");
             router.push("/dashboard");
         }
@@ -159,9 +159,9 @@ export default function ServicesManagementPage() {
         setDeleteDialogOpen(true);
     };
 
-    if (session?.user?.role !== Role.SUPERADMIN) {
+    if (session?.user?.role !== Role.ADMIN) {
         return (
-            <div className="flex justify-center items-center h-screen">
+            <div className="flex min-h-full items-center justify-center">
                 <p>Loading...</p>
             </div>
         );

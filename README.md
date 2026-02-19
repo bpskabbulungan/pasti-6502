@@ -9,7 +9,7 @@ Pasti adalah sistem antrean digital untuk Pelayanan Statistik Terpadu BPS Kabupa
 - Layar antrean publik untuk TV/monitor; QR bisa diunduh dari dashboard.
 - Notifikasi antrean baru dan pengingat SKD via WA Bot (opsional).
 - Statistik antrean harian, sebaran layanan, kinerja petugas, ekspor CSV/JSON.
-- Dibangun dengan Next.js, React, Tailwind, Prisma, PostgreSQL, NextAuth, Bun.
+- Dibangun dengan Next.js, React, Tailwind, Prisma, MySQL, NextAuth, Bun.
 
 ## Daftar Isi
 
@@ -22,7 +22,7 @@ Pasti adalah sistem antrean digital untuk Pelayanan Statistik Terpadu BPS Kabupa
 ## Prasyarat
 
 - Bun 1.1.x atau Node.js 18+ (disarankan Bun sesuai Dockerfile)
-- PostgreSQL 15+ (bisa lokal atau via docker compose)
+- MySQL 8.0+ (bisa lokal atau via docker compose)
 - Git, Docker, dan docker compose (jika ingin jalan dengan kontainer)
 
 ## Catatan Penting
@@ -32,6 +32,7 @@ Pasti adalah sistem antrean digital untuk Pelayanan Statistik Terpadu BPS Kabupa
 - Wajib gunakan nilai unik untuk `NEXTAUTH_SECRET` dan `NEXT_PUBLIC_STATIC_UUID`.
 - WA Bot opsional; jika `NEXT_PUBLIC_WA_API_URL` atau `WA_ADMIN_KEY` kosong, pengingat SKD tidak dijalankan.
 - Jika memakai docker compose, port default 3001 (host) -> 3000 (container); ubah `NEXTAUTH_URL` jika mapping berbeda.
+- Jika beralih dari PostgreSQL ke MySQL, regenerasi migration Prisma (lihat langkah di bagian Instalasi).
 
 ## Quickstart
 
@@ -49,7 +50,11 @@ Pasti adalah sistem antrean digital untuk Pelayanan Statistik Terpadu BPS Kabupa
 Isi `.env` dengan nilai aman. Contoh minimal:
 
 ```env
-DATABASE_URL="postgresql://USER:PASSWORD@pasti_db:5432/pasti_db"
+DATABASE_URL="mysql://USER:PASSWORD@pasti_db:3306/pasti_db"
+MYSQL_ROOT_PASSWORD="root_password"
+MYSQL_DATABASE="pasti_db"
+MYSQL_USER="pasti_user"
+MYSQL_PASSWORD="pasti_password"
 NEXTAUTH_SECRET="ganti_dengan_string_acak"
 NEXTAUTH_URL="http://localhost:3000"        # jika docker compose (3001:3000), gunakan http://localhost:3001
 NEXT_PUBLIC_STATIC_UUID="uuid_statis_qr"
@@ -64,9 +69,17 @@ WA_ADMIN_KEY="server_only_admin_key"                 # opsional, jangan diawali 
 
 `NEXT_PUBLIC_STATIC_UUID` dipakai untuk QR statis; perintah seed membuat `public/qrcodes/pst-qrcode.png` yang mengarah ke `/visitor-form/<UUID>`.
 
+### Catatan Migrasi (MySQL)
+
+Jika sebelumnya memakai PostgreSQL, migration yang ada tidak kompatibel dengan MySQL. Arsipkan/hapus folder `prisma/migrations` lama lalu buat ulang migration:
+
+```bash
+bunx prisma migrate dev --name init
+```
+
 ### 2) Mode Lokal (Bun)
 
-- Pastikan PostgreSQL aktif dan `DATABASE_URL` sudah benar.
+- Pastikan MySQL aktif dan `DATABASE_URL` sudah benar.
 - Jalankan:
 
 ```bash
@@ -87,12 +100,12 @@ docker compose up -d --build
 ```
 
 - App: host `3001` -> container `3000` (ubah `NEXTAUTH_URL` jika port beda).
-- DB: service `pasti_db` (lihat user/pass default di `docker-compose.yml`).
+- DB: service `pasti_db` (MySQL, lihat user/pass di `docker-compose.yml`).
 - Deploy migrasi (wajib) dan seed dev (opsional):
 
 ```bash
-docker compose exec pasti bunx prisma migrate deploy
-docker compose exec pasti bun run db:seed    # hanya di dev
+docker compose exec pasti_app bunx prisma migrate deploy
+docker compose exec pasti_app bun run db:seed    # hanya di dev
 ```
 
 - Untuk mengaktifkan WA Bot, buka komentar service `wa-bot` dan set `ADMIN_KEY` sesuai.

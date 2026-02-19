@@ -274,7 +274,7 @@ export default function QueueManagementPage() {
     };
 
     const getActionButtons = (queue: Queue) => {
-        const isSuperAdmin = session?.user?.role === Role.SUPERADMIN;
+        const isAdmin = session?.user?.role === Role.ADMIN;
         const actions = [];
 
         // Add "Remind SKD" button for queues that haven't filled SKD
@@ -342,9 +342,9 @@ export default function QueueManagementPage() {
                 );
                 break;
             case "SERVING":
-                // Only show complete button if the current admin is serving this queue or is superadmin
+                // Only show complete button if the current admin is serving this queue or is admin
                 if (
-                    isSuperAdmin ||
+                    isAdmin ||
                     (queue.admin && queue.admin.name === session?.user?.name)
                 ) {
                     actions.push(

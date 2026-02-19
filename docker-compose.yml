@@ -30,21 +30,22 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # PostgreSQL Database
+  # MySQL Database
   pasti_db:
     container_name: pasti_db
-    image: pasti_postgres:15-alpine
+    image: mysql:8.0
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER not set}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
-      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB not set}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD not set}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:?MYSQL_DATABASE not set}
+      - MYSQL_USER=${MYSQL_USER:?MYSQL_USER not set}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:?MYSQL_PASSWORD not set}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 5
     volumes:
-      - pasti_postgres_data:/var/lib/postgresql/data
+      - pasti_mysql_data:/var/lib/mysql
     restart: unless-stopped
 
   # WhatsApp Bot API (Optional - uncomment to use)
@@ -73,7 +74,7 @@ services:
       - pasti_redis_data:/data
 
 volumes:
-  pasti_postgres_data:
-    name: pasti_postgres_data
+  pasti_mysql_data:
+    name: pasti_mysql_data
   wa_bot_data:
   pasti_redis_data:

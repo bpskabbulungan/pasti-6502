@@ -52,7 +52,7 @@ export async function createUser(input: CreateUserInput) {
 			name,
 			username,
 			password: hashedPassword,
-			role: role || Role.ADMIN,
+			role: role || Role.PETUGAS,
 		},
 		select: {
 			id: true,

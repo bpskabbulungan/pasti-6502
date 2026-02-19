@@ -9,7 +9,7 @@ export default function UIShowcaseLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="bg-[var(--background)] min-h-screen">
+        <div className="bg-[var(--background)] min-h-full">
             <div className="mx-auto p-4 container">
                 <Link
                     href="/dashboard"

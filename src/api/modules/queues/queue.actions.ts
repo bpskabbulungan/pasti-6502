@@ -144,7 +144,7 @@ export async function completeQueue(queueId: string, userId: string, role: Role)
 		return { ok: false as const, status: 400, error: "Queue is not currently being served" };
 	}
 
-	if (role !== Role.SUPERADMIN && queue.adminId !== userId) {
+	if (role !== Role.ADMIN && queue.adminId !== userId) {
 		return { ok: false as const, status: 403, error: "You are not authorized to complete this queue" };
 	}
 
@@ -212,7 +212,7 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 
 	if (
 		queue.status === QueueStatus.SERVING &&
-		role !== Role.SUPERADMIN &&
+		role !== Role.ADMIN &&
 		queue.adminId !== userId
 	) {
 		return { ok: false as const, status: 403, error: "You are not authorized to cancel this queue" };

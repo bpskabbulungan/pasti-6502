@@ -1,4 +1,4 @@
-export { getQueues, getAllQueuesToday } from "./queue.service";
+export { getQueues, getAllQueues } from "./queue.service";
 export { generateQueueHash } from "./queue.utils";
 export {
 	getQueueDetail,

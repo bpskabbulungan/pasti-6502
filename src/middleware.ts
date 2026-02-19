@@ -59,7 +59,8 @@ export const config = {
 		 * 2. /_next (Next.js system files)
 		 * 3. /qrcodes (Static files)
 		 * 4.  /sitemap.xml, /robots.txt (static files)
+		 * 5.  Any file with an extension (e.g. .png, .ico, .css, .js)
 		 */
-		"/((?!api|_next|qrcodes|sitemap.xml|robots.txt).*)",
+		"/((?!api|_next|qrcodes|sitemap.xml|robots.txt|.*\\..*).*)",
 	],
 };

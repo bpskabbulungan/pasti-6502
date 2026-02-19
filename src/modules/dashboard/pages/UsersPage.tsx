@@ -56,7 +56,7 @@ export default function UsersManagementPage() {
     const [confirmPassword, setConfirmPassword] = useState("");
 
     useEffect(() => {
-        if (session && session.user.role !== Role.SUPERADMIN) {
+        if (session && session.user.role !== Role.ADMIN) {
             toast.error("Anda tidak memiliki akses ke halaman ini");
             router.push("/dashboard");
         }
@@ -80,7 +80,7 @@ export default function UsersManagementPage() {
     };
     const stats = useMemo(() => {
         const adminCount = users.filter((user) => user.role === Role.ADMIN).length;
-        const superAdminCount = users.filter((user) => user.role === Role.SUPERADMIN).length;
+        const petugasCount = users.filter((user) => user.role === Role.PETUGAS).length;
         const latest = users.reduce<string | null>((acc, user) => {
             if (!acc) return user.createdAt;
             return new Date(user.createdAt).getTime() > new Date(acc).getTime() ? user.createdAt : acc;
@@ -89,7 +89,7 @@ export default function UsersManagementPage() {
         return {
             total: users.length,
             admins: adminCount,
-            superadmins: superAdminCount,
+            petugas: petugasCount,
             latestCreatedAt: latest,
         };
     }, [users]);
@@ -113,15 +113,15 @@ export default function UsersManagementPage() {
                 name: newName,
                 username: newUsername,
                 password: newPassword,
-                role: Role.ADMIN,
+                role: Role.PETUGAS,
             });
-            toast.success("Admin berhasil ditambahkan");
+            toast.success("Petugas berhasil ditambahkan");
             setAddDialogOpen(false);
             resetFormFields();
             fetchUsers();
         } catch (error) {
             console.error("Error adding user:", error);
-            toast.error(getErrorMessage(error, "Terjadi kesalahan saat menambahkan admin"));
+            toast.error(getErrorMessage(error, "Terjadi kesalahan saat menambahkan petugas"));
         }
     };
 
@@ -139,13 +139,13 @@ export default function UsersManagementPage() {
                 username: newUsername || selectedUser.username,
                 ...(newPassword ? { password: newPassword } : {}),
             });
-            toast.success("Admin berhasil diperbarui");
+            toast.success("Pengguna berhasil diperbarui");
             setEditDialogOpen(false);
             resetFormFields();
             fetchUsers();
         } catch (error) {
             console.error("Error updating user:", error);
-            toast.error(getErrorMessage(error, "Terjadi kesalahan saat memperbarui admin"));
+            toast.error(getErrorMessage(error, "Terjadi kesalahan saat memperbarui pengguna"));
         }
     };
 
@@ -154,12 +154,12 @@ export default function UsersManagementPage() {
 
         try {
             await usersApi.remove(selectedUser.id);
-            toast.success("Admin berhasil dihapus");
+            toast.success("Pengguna berhasil dihapus");
             setDeleteDialogOpen(false);
             fetchUsers();
         } catch (error) {
             console.error("Error deleting user:", error);
-            toast.error(getErrorMessage(error, "Terjadi kesalahan saat menghapus admin"));
+            toast.error(getErrorMessage(error, "Terjadi kesalahan saat menghapus pengguna"));
         }
     };
 
@@ -211,9 +211,9 @@ export default function UsersManagementPage() {
         const months = Math.floor(days / 30);
         return `${months} bulan lalu`;
     };
-    if (session?.user?.role !== Role.SUPERADMIN) {
+    if (session?.user?.role !== Role.ADMIN) {
         return (
-            <div className="flex h-screen items-center justify-center">
+            <div className="flex min-h-full items-center justify-center">
                 <p>Loading...</p>
             </div>
         );
@@ -232,10 +232,10 @@ export default function UsersManagementPage() {
                         </div>
                         <div className="space-y-2">
                             <h1 className="text-primary-color text-3xl font-black leading-tight md:text-4xl">
-                                Kelola Admin
+                                Kelola Pengguna
                             </h1>
                             <p className="text-secondary-color max-w-3xl">
-                                Buat, perbarui, dan awasi admin dengan tampilan yang lebih ringkas dan ramah pengguna.
+                                Buat, perbarui, dan awasi akun admin maupun petugas dengan tampilan yang lebih ringkas.
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -257,14 +257,14 @@ export default function UsersManagementPage() {
                                 <DialogTrigger asChild>
                                     <Button className="flex items-center gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90">
                                         <UserPlus className="h-4 w-4" />
-                                        Tambah Admin
+                                        Tambah Petugas
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent className="max-w-lg">
                                     <DialogHeader>
-                                        <DialogTitle>Tambah Admin Baru</DialogTitle>
+                                        <DialogTitle>Tambah Petugas Baru</DialogTitle>
                                         <DialogDescription>
-                                            Lengkapi data admin untuk memberikan akses ke sistem antrean PST.
+                                            Lengkapi data petugas untuk memberikan akses ke sistem antrean PST.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <div className="space-y-4 py-2">
@@ -320,7 +320,7 @@ export default function UsersManagementPage() {
                                         <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
                                             Batal
                                         </Button>
-                                        <Button onClick={handleAddUser}>Simpan Admin</Button>
+                                        <Button onClick={handleAddUser}>Simpan Petugas</Button>
                                     </DialogFooter>
                                 </DialogContent>
                             </Dialog>
@@ -338,8 +338,8 @@ export default function UsersManagementPage() {
                     <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:min-w-[260px] lg:w-[340px]">
                         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
                             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-secondary-color">
-                                <Shield className="h-4 w-4 text-primary" />
-                                Total Admin
+                            <Shield className="h-4 w-4 text-primary" />
+                                Total Pengguna
                             </p>
                             <div className="mt-2 text-3xl font-bold text-primary-color">{stats.total}</div>
                             <p className="text-xs text-secondary-color">Akun aktif di sistem</p>
@@ -347,9 +347,9 @@ export default function UsersManagementPage() {
                         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
                             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-secondary-color">
                                 <ShieldCheck className="h-4 w-4 text-accent" />
-                                Super Admin
+                                Admin
                             </p>
-                            <div className="mt-2 text-3xl font-bold text-primary-color">{stats.superadmins}</div>
+                            <div className="mt-2 text-3xl font-bold text-primary-color">{stats.admins}</div>
                             <p className="text-xs text-secondary-color">Akses penuh &amp; kontrol</p>
                         </div>
                         <div className="col-span-2 rounded-xl border border-border bg-background/70 p-4 shadow-sm dark:bg-card">
@@ -359,7 +359,7 @@ export default function UsersManagementPage() {
                             </p>
                             {stats.latestCreatedAt ? (
                                 <p className="mt-2 text-sm text-primary-color">
-                                    Admin terbaru ditambahkan {formatDate(stats.latestCreatedAt)} - {formatRelativeTime(stats.latestCreatedAt)}
+                                    Pengguna terbaru ditambahkan {formatDate(stats.latestCreatedAt)} - {formatRelativeTime(stats.latestCreatedAt)}
                                 </p>
                             ) : (
                                 <p className="mt-2 text-sm text-secondary-color">Belum ada aktivitas baru</p>
@@ -372,7 +372,7 @@ export default function UsersManagementPage() {
                 <CardHeader className="gap-2">
                     <CardTitle className="text-xl font-semibold text-primary-color">Tim Pengelola</CardTitle>
                     <CardDescription className="text-secondary-color">
-                        Lihat dan kelola akun admin dengan filter modern dan pencarian cepat.
+                        Lihat dan kelola akun admin maupun petugas dengan filter modern dan pencarian cepat.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -391,7 +391,7 @@ export default function UsersManagementPage() {
                                 <TabsList>
                                     <TabsTrigger value="ALL">Semua</TabsTrigger>
                                     <TabsTrigger value={Role.ADMIN}>Admin</TabsTrigger>
-                                    <TabsTrigger value={Role.SUPERADMIN}>Super Admin</TabsTrigger>
+                                    <TabsTrigger value={Role.PETUGAS}>Petugas</TabsTrigger>
                                 </TabsList>
                             </Tabs>
                             <div className="flex items-center gap-2 text-xs text-secondary-color">
@@ -431,15 +431,15 @@ export default function UsersManagementPage() {
                         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/40 p-8 text-center">
                             <Sparkles className="h-8 w-8 text-primary" />
                             <div className="space-y-1">
-                                <p className="text-lg font-semibold text-primary-color">Belum ada admin yang sesuai</p>
+                                <p className="text-lg font-semibold text-primary-color">Belum ada pengguna yang sesuai</p>
                                 <p className="text-sm text-secondary-color">
-                                    Gunakan tombol tambah admin atau reset filter pencarian.
+                                    Gunakan tombol tambah petugas atau reset filter pencarian.
                                 </p>
                             </div>
                             <div className="flex gap-2">
                                 <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
                                     <UserPlus className="h-4 w-4" />
-                                    Tambah Admin
+                                    Tambah Petugas
                                 </Button>
                                 <Button
                                     variant="outline"
@@ -482,10 +482,10 @@ export default function UsersManagementPage() {
                                             </TableCell>
                                             <TableCell>
                                                 <Badge
-                                                    variant={user.role === Role.SUPERADMIN ? "secondary" : "outline"}
+                                                    variant={user.role === Role.ADMIN ? "secondary" : "outline"}
                                                     className="border-border text-primary-color"
                                                 >
-                                                    {user.role === Role.SUPERADMIN ? "Super Admin" : "Admin"}
+                                                    {user.role === Role.ADMIN ? "Admin" : "Petugas"}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
@@ -501,7 +501,7 @@ export default function UsersManagementPage() {
                                                         size="sm"
                                                         className="gap-2"
                                                         onClick={() => openEditDialog(user)}
-                                                        disabled={user.role === Role.SUPERADMIN}
+                                                        disabled={user.role === Role.ADMIN}
                                                     >
                                                         <Pencil className="h-4 w-4" />
                                                         Edit
@@ -511,7 +511,7 @@ export default function UsersManagementPage() {
                                                         size="sm"
                                                         className="gap-2"
                                                         onClick={() => openDeleteDialog(user)}
-                                                        disabled={user.role === Role.SUPERADMIN}
+                                                        disabled={user.role === Role.ADMIN}
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                         Hapus
@@ -529,8 +529,8 @@ export default function UsersManagementPage() {
             <Dialog open={editDialogOpen} onOpenChange={(open) => { setEditDialogOpen(open); if (!open) resetFormFields(); }}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Edit Admin</DialogTitle>
-                        <DialogDescription>Perbarui informasi admin dengan cepat.</DialogDescription>
+                        <DialogTitle>Edit Pengguna</DialogTitle>
+                        <DialogDescription>Perbarui informasi pengguna dengan cepat.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
                         <div className="space-y-2">
@@ -587,14 +587,14 @@ export default function UsersManagementPage() {
             <Dialog open={deleteDialogOpen} onOpenChange={(open) => { setDeleteDialogOpen(open); if (!open) resetFormFields(); }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Hapus Admin</DialogTitle>
+                        <DialogTitle>Hapus Pengguna</DialogTitle>
                         <DialogDescription>
-                            Tindakan ini tidak dapat dibatalkan. Pastikan admin ini memang perlu dihapus.
+                            Tindakan ini tidak dapat dibatalkan. Pastikan pengguna ini memang perlu dihapus.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-2 py-2">
                         <p>
-                            Admin <strong>{selectedUser?.name}</strong> akan dihapus dari sistem. Pastikan tidak ada antrean
+                            Pengguna <strong>{selectedUser?.name}</strong> akan dihapus dari sistem. Pastikan tidak ada antrean
                             aktif yang masih ditangani olehnya.
                         </p>
                     </div>
@@ -603,7 +603,7 @@ export default function UsersManagementPage() {
                             Batal
                         </Button>
                         <Button variant="destructive" onClick={handleDeleteUser}>
-                            Hapus Admin
+                            Hapus Pengguna
                         </Button>
                     </DialogFooter>
                 </DialogContent>

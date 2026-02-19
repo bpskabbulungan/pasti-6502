@@ -11,9 +11,9 @@ export async function GET() {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		if (session.user.role !== Role.SUPERADMIN) {
+		if (session.user.role !== Role.ADMIN) {
 			return NextResponse.json(
-				{ error: "Only superadmins can view users" },
+				{ error: "Only admins can view users" },
 				{ status: 403 }
 			);
 		}
@@ -37,9 +37,9 @@ export async function POST(req: NextRequest) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		if (session.user.role !== Role.SUPERADMIN) {
+		if (session.user.role !== Role.ADMIN) {
 			return NextResponse.json(
-				{ error: "Only superadmins can create users" },
+				{ error: "Only admins can create users" },
 				{ status: 403 }
 			);
 		}

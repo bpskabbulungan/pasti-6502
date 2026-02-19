@@ -175,11 +175,6 @@ export default function UIShowcasePage() {
                         </Card>
                     </section>
 
-                    <footer className="mt-16 pt-8 border-[var(--border)] border-t text-center">
-                        <p className="text-[var(--text-secondary)] text-sm">
-                            Sistem Antrean PST BPS Bulungan &copy; 2025
-                        </p>
-                    </footer>
                 </div>
             )}
         </>

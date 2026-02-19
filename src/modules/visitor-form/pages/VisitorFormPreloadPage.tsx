@@ -8,6 +8,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import PageBackground from "@/components/page-background";
 import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -73,7 +74,8 @@ export default function VisitorFormPreloadPage() {
 	}, [router, searchParams]);
 
 	return (
-		<div className="flex justify-center items-center bg-background min-h-screen">
+		<div className="flex min-h-full items-center justify-center">
+			<PageBackground className="bg-background" />
 			<Card className="w-full max-w-md">
 				<CardHeader className="text-center">
 					<CardTitle className="text-primary">Memuat Data Antrean</CardTitle>

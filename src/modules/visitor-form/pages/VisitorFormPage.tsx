@@ -49,6 +49,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ClientTimestamp } from "@/components/client-timestamp";
 import { ThemeToggle } from "@/components/theme-toggle";
+import PageBackground from "@/components/page-background";
 import VisitorFormSkeleton from "@/modules/visitor-form/components/VisitorFormSkeleton";
 import { visitorFormApi } from "@/services/api/visitor-form";
 import type { ErrorResponse } from "@shared/types/api";
@@ -507,15 +508,23 @@ export default function VisitorFormPage() {
         } finally {
             setIsLoading(false);
         }
-    };    // Render loading state
+    };
+    // Render loading state
     if (isLoading) {
-        return <VisitorFormSkeleton />;
+        return (
+            <>
+                <PageBackground className="bg-gradient-to-br from-slate-100 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" />
+                <VisitorFormSkeleton />
+            </>
+        );
     }
 
     // Render tracking view
     if (isTracking && trackingInfo) {
         return (
-            <div className="relative flex justify-center items-center bg-background p-4 min-h-screen">
+            <>
+                <PageBackground className="bg-background" />
+                <div className="relative flex min-h-full items-center justify-center p-4">
                 {/* Theme toggle button at top right */}
                 <div className="top-4 right-4 z-10 absolute flex space-x-1">
                     <ThemeToggle />
@@ -685,90 +694,100 @@ export default function VisitorFormPage() {
                         </p>
                     </CardFooter>
                 </Card>
-            </div>
+                </div>
+            </>
         );
     }
 
     if (!isValid) {
         return (
-            <div className="flex justify-center items-center bg-background p-4 h-screen">
-                <Card className="w-full max-w-md">
-                    <CardHeader>
-                        <CardTitle className="text-primary text-center">
-                            Link Tidak Valid
-                        </CardTitle>
-                        <CardDescription className="text-center">
-                            Link yang Anda gunakan tidak valid atau sudah kedaluwarsa
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="text-center">
-                        <p>
-                            Silakan scan QR code di lokasi PST untuk mendapatkan link baru.
-                        </p>
-                    </CardContent>
-                </Card>
-            </div>
+            <>
+                <PageBackground className="bg-background" />
+                <div className="flex min-h-full items-center justify-center p-4">
+                    <Card className="w-full max-w-md">
+                        <CardHeader>
+                            <CardTitle className="text-primary text-center">
+                                Link Tidak Valid
+                            </CardTitle>
+                            <CardDescription className="text-center">
+                                Link yang Anda gunakan tidak valid atau sudah kedaluwarsa
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="text-center">
+                            <p>
+                                Silakan scan QR code di lokasi PST untuk mendapatkan link baru.
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </>
         );
     }
 
     if (isSubmitted && queueInfo) {
         return (
-            <div className="flex justify-center items-center bg-background p-4 h-screen">
-                <Card className="w-full max-w-md">
-                    <CardHeader>
-                        <CardTitle className="text-primary text-center">
-                            Antrean Berhasil Dibuat
-                        </CardTitle>
-                        <CardDescription className="text-center">
-                            Terima kasih telah mengisi formulir
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">                        <div className="flex flex-col justify-center items-center space-y-1">
-                        <p className="font-bold text-accent text-3xl">
-                            {queueInfo.queueNumber}-{formatQueueTime(queueInfo.createdAt || new Date().toISOString())}
-                        </p>
-                        <p className="text-xl">Nomor Antrean Anda</p>
-                        {queueInfo.queueType && (
-                            <Badge
-                                variant="outline"
-                                className={`${queueInfo.queueType === "ONLINE"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-green-100 text-green-800"
-                                    }`}
-                            >
-                                {queueInfo.queueType === "ONLINE" ? "Online" : "Offline"}
-                            </Badge>
-                        )}
-                    </div>
-                        <div className="space-y-2">
-                            <p className="text-muted-foreground text-sm">
-                                Nama: {queueInfo.visitorName}
-                            </p>
-                            <p className="text-muted-foreground text-sm">
-                                Layanan: {queueInfo.serviceName}
-                            </p>
-                        </div>
-                        <div className="bg-muted p-4 rounded-md text-sm">
-                            <p>
-                                Silakan tunggu sampai nomor antrean Anda dipanggil oleh petugas.
-                            </p>
-                        </div>
-                        <Alert className="bg-blue-50 border-blue-200">
-                            <AlertCircle className="w-5 h-5 text-blue-600" />
-                            <AlertTitle className="text-blue-800">Simpan Link Ini</AlertTitle>
-                            <AlertDescription className="text-blue-700">
-                                Anda dapat melihat status antrean dengan membuka link ini
-                                kembali. Bookmark link ini untuk kemudahan akses.
-                            </AlertDescription>
-                        </Alert>
-                    </CardContent>
-                </Card>
-            </div>
+            <>
+                <PageBackground className="bg-background" />
+                <div className="flex min-h-full items-center justify-center p-4">
+                    <Card className="w-full max-w-md">
+                        <CardHeader>
+                            <CardTitle className="text-primary text-center">
+                                Antrean Berhasil Dibuat
+                            </CardTitle>
+                            <CardDescription className="text-center">
+                                Terima kasih telah mengisi formulir
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex flex-col justify-center items-center space-y-1">
+                                <p className="font-bold text-accent text-3xl">
+                                    {queueInfo.queueNumber}-{formatQueueTime(queueInfo.createdAt || new Date().toISOString())}
+                                </p>
+                                <p className="text-xl">Nomor Antrean Anda</p>
+                                {queueInfo.queueType && (
+                                    <Badge
+                                        variant="outline"
+                                        className={`${queueInfo.queueType === "ONLINE"
+                                            ? "bg-blue-100 text-blue-800"
+                                            : "bg-green-100 text-green-800"
+                                            }`}
+                                    >
+                                        {queueInfo.queueType === "ONLINE" ? "Online" : "Offline"}
+                                    </Badge>
+                                )}
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-muted-foreground text-sm">
+                                    Nama: {queueInfo.visitorName}
+                                </p>
+                                <p className="text-muted-foreground text-sm">
+                                    Layanan: {queueInfo.serviceName}
+                                </p>
+                            </div>
+                            <div className="bg-muted p-4 rounded-md text-sm">
+                                <p>
+                                    Silakan tunggu sampai nomor antrean Anda dipanggil oleh petugas.
+                                </p>
+                            </div>
+                            <Alert className="bg-blue-50 border-blue-200">
+                                <AlertCircle className="w-5 h-5 text-blue-600" />
+                                <AlertTitle className="text-blue-800">Simpan Link Ini</AlertTitle>
+                                <AlertDescription className="text-blue-700">
+                                    Anda dapat melihat status antrean dengan membuka link ini
+                                    kembali. Bookmark link ini untuk kemudahan akses.
+                                </AlertDescription>
+                            </Alert>
+                        </CardContent>
+                    </Card>
+                </div>
+            </>
         );
     }
     return (
-        <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-            <div className="pointer-events-none absolute inset-0">
+        <>
+            <PageBackground className="bg-gradient-to-br from-slate-100 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" />
+            <div className="relative min-h-full overflow-hidden">
+            <div className="pointer-events-none fixed inset-0 -z-10">
                 <div className="absolute -left-20 top-10 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
                 <div className="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" />
                 <div className="absolute left-1/3 top-1/2 h-48 w-48 rounded-full bg-amber-300/10 blur-3xl" />
@@ -1243,7 +1262,8 @@ export default function VisitorFormPage() {
             </Card>
         )}
             </div>
-        </div>
+            </div>
+        </>
     );
 }
 
