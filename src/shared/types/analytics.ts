@@ -12,8 +12,8 @@ export type AnalyticsQueueTypeDistribution = {
 	percentage: number;
 };
 
-export type AnalyticsAdminPerformance = {
-	adminName: string;
+export type AnalyticsOfficerPerformance = {
+	officerName: string;
 	completedCount: number;
 	averageServiceTime: number;
 };
@@ -40,7 +40,7 @@ export type AnalyticsSummary = {
 	};
 	serviceDistribution: AnalyticsServiceDistribution[];
 	queueTypeDistribution: AnalyticsQueueTypeDistribution[];
-	adminPerformance: AnalyticsAdminPerformance[];
+	officerPerformance: AnalyticsOfficerPerformance[];
 	timeAnalysis: AnalyticsTimeAnalysis[];
 	dailyTrends: AnalyticsDailyTrend[];
 	hash?: string;

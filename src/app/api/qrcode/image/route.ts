@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 		const normalizedBase = baseUrl.endsWith("/")
 			? baseUrl.slice(0, -1)
 			: baseUrl;
-		const targetUrl = `${normalizedBase}/visitor-form/${staticUuid}`;
+		const targetUrl = `${normalizedBase}/guest`;
 
 		const buffer = await QRCode.toBuffer(targetUrl, {
 			color: QR_COLOR,

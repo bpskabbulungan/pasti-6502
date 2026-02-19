@@ -1,13 +1,23 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LoginForm } from "@/components/LoginForm";
 import PageBackground from "@/components/page-background";
+import LoginRedirectGuard from "@/components/auth/login-redirect-guard";
+import { authOptions } from "@/lib/auth";
 import { LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await getServerSession(authOptions);
+  if (session) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="relative isolate min-h-full">
+      <LoginRedirectGuard />
       <PageBackground className="bg-gradient-to-br from-[#FFF4EC] via-white to-[#FFE5D3] dark:from-background dark:via-[#1f1f1f] dark:to-background" />
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(247,144,57,0.16),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(154,5,1,0.12),transparent_30%)]" />

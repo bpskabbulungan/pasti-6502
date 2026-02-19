@@ -65,7 +65,7 @@ type HighlightedQueue = {
 const dummyNextQueue: QueueDisplayItem = {
   id: "dummy-next",
   queueNumber: 12,
-  status: "CALLED",
+  status: "WAITING",
   queueType: "ONLINE",
   service: { name: "Konsultasi Statistik" },
   admin: { name: "Sinta" },
@@ -128,7 +128,7 @@ export default function QueueDisplayPage() {
       return {
         queue: displayNextQueue,
         title: "Antrean Berikutnya",
-        description: "Antrean yang segera dipanggil ke loket.",
+        description: "Antrean berikutnya untuk dilayani di loket.",
         statusLabel: "Urutan berikutnya",
         statusTone: "bg-white/70 text-primary-color shadow-sm",
       };
@@ -421,7 +421,7 @@ export default function QueueDisplayPage() {
                 <CardDescription
                   className={`text-secondary-color ${isFullscreen ? "text-base sm:text-lg" : ""}`}
                 >
-                  {highlightedQueue?.description ?? "Antrean yang segera dipanggil ke loket."}
+                  {highlightedQueue?.description ?? "Antrean berikutnya untuk dilayani di loket."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="relative">

@@ -1,6 +1,7 @@
 import prisma from "@api/infrastructure/database/prisma";
-import { QueueStatus, Role } from "@prisma/client";
+import { QueueStatus as PrismaQueueStatus, Role } from "@prisma/client";
 import { sendWhatsAppBotReminder } from "@api/modules/reminders";
+import { QueueStatus as SharedQueueStatus } from "@shared/constants/enums";
 import type { QueueDetail } from "@shared/types/queue";
 
 const formatQueueDate = (date: Date): string => {
@@ -46,11 +47,16 @@ export async function getQueueDetail(id: string) {
 		queue.visitor?.institution !== undefined
 			? queue.visitor.institution
 			: queue.guest?.institution ?? null;
+	const normalizedStatus =
+		(queue.status as string) === "CALLED"
+			? SharedQueueStatus.WAITING
+			: (queue.status as SharedQueueStatus);
 
 	return {
 		ok: true as const,
 		queue: {
 			...queue,
+			status: normalizedStatus,
 			service: { name: queue.service.name },
 			visitor: {
 				name: visitorName,
@@ -70,11 +76,11 @@ export async function serveQueue(queueId: string, adminId: string) {
 	if (!queue) {
 		return { ok: false as const, status: 404, error: "Queue not found" };
 	}
-	if (queue.status !== QueueStatus.WAITING && queue.status !== QueueStatus.CALLED) {
+	if (queue.status !== PrismaQueueStatus.WAITING) {
 		return {
 			ok: false as const,
 			status: 400,
-			error: "Queue is not in waiting or called status",
+			error: "Queue is not in waiting status",
 		};
 	}
 
@@ -90,7 +96,7 @@ export async function serveQueue(queueId: string, adminId: string) {
 	const updatedQueue = await prisma.queue.update({
 		where: { id: queueId },
 		data: {
-			status: QueueStatus.SERVING,
+			status: PrismaQueueStatus.SERVING,
 			startTime: new Date(),
 			adminId,
 		},
@@ -140,7 +146,7 @@ export async function completeQueue(queueId: string, userId: string, role: Role)
 		return { ok: false as const, status: 404, error: "Queue not found" };
 	}
 
-	if (queue.status !== QueueStatus.SERVING) {
+	if (queue.status !== PrismaQueueStatus.SERVING) {
 		return { ok: false as const, status: 400, error: "Queue is not currently being served" };
 	}
 
@@ -151,7 +157,7 @@ export async function completeQueue(queueId: string, userId: string, role: Role)
 	const updatedQueue = await prisma.queue.update({
 		where: { id: queueId },
 		data: {
-			status: QueueStatus.COMPLETED,
+			status: PrismaQueueStatus.COMPLETED,
 			endTime: new Date(),
 		},
 		include: {
@@ -201,17 +207,16 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 		return { ok: false as const, status: 404, error: "Queue not found" };
 	}
 
-	const allowedStatuses: QueueStatus[] = [
-		QueueStatus.WAITING,
-		QueueStatus.CALLED,
-		QueueStatus.SERVING,
+	const allowedStatuses: PrismaQueueStatus[] = [
+		PrismaQueueStatus.WAITING,
+		PrismaQueueStatus.SERVING,
 	];
 	if (!allowedStatuses.includes(queue.status)) {
 		return { ok: false as const, status: 400, error: "Queue cannot be canceled in its current state" };
 	}
 
 	if (
-		queue.status === QueueStatus.SERVING &&
+		queue.status === PrismaQueueStatus.SERVING &&
 		role !== Role.ADMIN &&
 		queue.adminId !== userId
 	) {
@@ -221,7 +226,7 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 	const updatedQueue = await prisma.queue.update({
 		where: { id: queueId },
 		data: {
-			status: QueueStatus.CANCELED,
+			status: PrismaQueueStatus.CANCELED,
 			endTime: new Date(),
 		},
 		include: {
@@ -310,70 +315,6 @@ export async function prepareSkdReminder(queueId: string, message?: string) {
 			phone: queue.visitor.phone,
 		},
 	};
-}
-
-export async function callQueue(queueId: string, adminId: string) {
-	const queue = await prisma.queue.findUnique({
-		where: { id: queueId },
-	});
-
-	if (!queue) {
-		return { ok: false as const, status: 404, error: "Queue not found" };
-	}
-	if (queue.status !== QueueStatus.WAITING) {
-		return { ok: false as const, status: 400, error: "Queue is not in waiting status" };
-	}
-
-	const adminUser = await prisma.user.findUnique({
-		where: { id: adminId },
-		select: { id: true, name: true },
-	});
-
-	if (!adminUser) {
-		return { ok: false as const, status: 404, error: "Admin user not found in database" };
-	}
-
-	const updatedQueue = await prisma.queue.update({
-		where: { id: queueId },
-		data: {
-			status: QueueStatus.CALLED,
-			adminId,
-		},
-		include: {
-			visitor: {
-				select: {
-					name: true,
-					phone: true,
-					institution: true,
-				},
-			},
-			service: {
-				select: {
-					name: true,
-				},
-			},
-			admin: {
-				select: {
-					name: true,
-				},
-			},
-		},
-	});
-
-	await prisma.notification.create({
-		data: {
-			type: "QUEUE_CALLED",
-			title: "Antrean Dipanggil",
-			message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
-				new Date(updatedQueue.createdAt)
-			)} (${
-				updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
-			}) telah dipanggil oleh ${adminUser.name}`,
-			isRead: false,
-		},
-	});
-
-	return { ok: true as const, queue: updatedQueue };
 }
 
 export async function updateSkdStatusByQueueId(queueId: string, filled: boolean) {

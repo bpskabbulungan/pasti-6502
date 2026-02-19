@@ -20,7 +20,7 @@ export async function getQueueDisplay(params: {
 	today.setHours(0, 0, 0, 0);
 
 	const servingWhereClause: Prisma.QueueWhereInput = {
-		status: { in: [QueueStatus.CALLED, QueueStatus.SERVING] },
+		status: QueueStatus.SERVING,
 	};
 
 	const nextQueueWhereClause: Prisma.QueueWhereInput = {

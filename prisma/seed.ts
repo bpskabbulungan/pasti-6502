@@ -62,7 +62,7 @@ async function ensureQrCode() {
 		? resolvedBaseUrl.slice(0, -1)
 		: resolvedBaseUrl;
 	const qrCodePath = path.join(qrCodeDir, "pst-qrcode.png");
-	const qrCodeUrl = `${normalizedBaseUrl}/visitor-form/${resolvedStaticUuid}`;
+	const qrCodeUrl = `${normalizedBaseUrl}/guest`;
 
 	await QRCode.toFile(qrCodePath, qrCodeUrl, {
 		color: {

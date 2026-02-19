@@ -9,8 +9,6 @@ import type { ReminderResponse } from "@shared/types/reminder";
 export const queuesApi = {
 	serve: (id: string) =>
 		apiFetch(`/api/queue/${id}/serve`, { method: "POST" }),
-	call: (id: string) =>
-		apiFetch(`/api/queue/${id}/call`, { method: "POST" }),
 	complete: (id: string) =>
 		apiFetch(`/api/queue/${id}/complete`, { method: "POST" }),
 	cancel: (id: string) =>
@@ -42,6 +40,4 @@ export const queuesApi = {
 			searchParams.size > 0 ? `/api/queue?${searchParams}` : "/api/queue";
 		return apiFetch<QueueListResponse>(url);
 	},
-	listAll: (hash?: string) =>
-		apiFetch<QueueListResponse>(`/api/queue/all${hash ? `?hash=${hash}` : ""}`),
 };

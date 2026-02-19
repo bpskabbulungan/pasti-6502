@@ -251,8 +251,9 @@ export default function GuestForm() {
 						</Badge>
 					</div>
 					<CardDescription className="text-sm md:text-base">
-						Data yang Anda isi otomatis membuat nomor antrean layanan PST BPS
-						Bulungan. Tunjukkan kode antrean ke petugas setelah mengirim.
+						Data yang Anda isi otomatis tersimpan sebagai buku tamu dan membuat
+						nomor antrean layanan PST BPS Bulungan. Tunjukkan kode antrean ke
+						petugas setelah mengirim. Setelah pelayanan selesai, mohon isi SKD.
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -504,6 +505,7 @@ export default function GuestForm() {
 										<li>Isi data diri dengan benar</li>
 										<li>Dapatkan nomor antrean otomatis</li>
 										<li>Tunjukkan ke petugas PST</li>
+										<li>Isi SKD setelah pelayanan selesai</li>
 									</ul>
 								</div>
 							</div>

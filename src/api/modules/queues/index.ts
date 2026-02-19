@@ -1,4 +1,4 @@
-export { getQueues, getAllQueues } from "./queue.service";
+export { getQueues } from "./queue.service";
 export { generateQueueHash } from "./queue.utils";
 export {
 	getQueueDetail,
@@ -6,7 +6,6 @@ export {
 	completeQueue,
 	cancelQueue,
 	prepareSkdReminder,
-	callQueue,
 	updateSkdStatusByQueueId,
 	triggerSkdReminderBot,
 } from "./queue.actions";

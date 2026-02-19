@@ -1,14 +1,40 @@
 "use client";
 
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { QueueStatus, Role } from "@/shared/constants/enums";
 import { formatDistance } from "date-fns";
 import { id } from "date-fns/locale";
@@ -22,791 +48,735 @@ import type { QueueDetail } from "@shared/types/queue";
 
 // Format queue time to DDMM format (eg. 1405 for May 14)
 const formatQueueTime = (isoDateString: string | Date): string => {
-    const date = new Date(isoDateString);
-    const day = date.getDate().toString().padStart(2, "0");
-    const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Month is 0-indexed, so add 1
-    return `${day}${month}`;
+  const date = new Date(isoDateString);
+  const day = date.getDate().toString().padStart(2, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Month is 0-indexed, so add 1
+  return `${day}${month}`;
+};
+
+const queueStatusParamValues = new Set(["WAITING", "SERVING", "COMPLETED", "CANCELED"]);
+
+const parseStatusParam = (value: string | null): QueueStatus | null => {
+  if (!value) return null;
+  const normalized = value.toUpperCase();
+  if (queueStatusParamValues.has(normalized)) {
+    return normalized as QueueStatus;
+  }
+  return null;
+};
+
+const parseDateFilterParam = (value: string | null): "today" | "all" | null => {
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  if (normalized === "today" || normalized === "all") {
+    return normalized as "today" | "all";
+  }
+  return null;
 };
 
 type Queue = QueueDetail;
 
 export default function QueueManagementPage() {
-    const { data: session } = useSession();
-    const [queues, setQueues] = useState<Queue[]>([]);
-    const [activeTab, setActiveTab] = useState<QueueStatus>("WAITING");
-    const [loading, setLoading] = useState(true);
-    const [showContinueDialog, setShowContinueDialog] = useState(false);
-    const [nextInQueue, setNextInQueue] = useState<Queue | null>(null);
-    const [showRemindSkdDialog, setShowRemindSkdDialog] = useState(false);
-    const [selectedQueue, setSelectedQueue] = useState<Queue | null>(null);
-    const [reminderMessage, setReminderMessage] = useState("");
-    const [isSendingReminder, setIsSendingReminder] = useState(false);
-    const [reminderError, setReminderError] = useState<string | null>(null);
-    const [dataHash, setDataHash] = useState<string>("");
-    const [needsRefresh, setNeedsRefresh] = useState<boolean>(false);
-    const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-    const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
-    const [pageLoading, setPageLoading] = useState(true); // Added for initial page load skeleton
-    const [limit, setLimit] = useState<number>(50);
-    const [totalQueues, setTotalQueues] = useState<number | null>(null);
+  const { data: session } = useSession();
+  const searchParams = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const dateFilterParam = searchParams.get("dateFilter");
+  const initialStatus = parseStatusParam(statusParam) ?? "WAITING";
+  const initialDateFilter = parseDateFilterParam(dateFilterParam) ?? "today";
+  const [queues, setQueues] = useState<Queue[]>([]);
+  const [statusFilter, setStatusFilter] = useState<QueueStatus>(initialStatus);
+  const [loading, setLoading] = useState(true);
+  const [showContinueDialog, setShowContinueDialog] = useState(false);
+  const [nextInQueue, setNextInQueue] = useState<Queue | null>(null);
+  const [showRemindSkdDialog, setShowRemindSkdDialog] = useState(false);
+  const [selectedQueue, setSelectedQueue] = useState<Queue | null>(null);
+  const [reminderMessage, setReminderMessage] = useState("");
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
+  const [reminderError, setReminderError] = useState<string | null>(null);
+  const [dataHash, setDataHash] = useState<string>("");
+  const [needsRefresh, setNeedsRefresh] = useState<boolean>(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [dateFilter, setDateFilter] = useState<"today" | "all">(initialDateFilter);
+  const [pageLoading, setPageLoading] = useState(true); // Added for initial page load skeleton
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalQueues, setTotalQueues] = useState<number | null>(null);
 
-    // Efficient polling with change detection
-    const pollForChanges = useCallback(async () => {
-        try {
-            const data = await queuesApi.list({
-                status: activeTab,
-                hash: dataHash,
-                dateFilter,
-                limit,
-            });
+  useEffect(() => {
+    const nextStatus = parseStatusParam(statusParam) ?? "WAITING";
+    const nextDateFilter = parseDateFilterParam(dateFilterParam) ?? "today";
+    setStatusFilter(nextStatus);
+    setDateFilter(nextDateFilter);
+    setCurrentPage(1);
+  }, [statusParam, dateFilterParam]);
 
-            if (data.hasChanges) {
-                setQueues(data.queues);
-                setDataHash(data.hash);
-                setLastUpdatedAt(new Date());
-                if (data.pagination?.total !== undefined) {
-                    setTotalQueues(data.pagination.total);
-                }
-            }
-        } catch (error) {
-            console.error("Error polling for changes:", error);
+  // Efficient polling with change detection
+  const pollForChanges = useCallback(async () => {
+    try {
+      const offset = (currentPage - 1) * pageSize;
+      const data = await queuesApi.list({
+        status: statusFilter,
+        hash: dataHash,
+        dateFilter,
+        limit: pageSize,
+        offset,
+      });
+
+      if (data.pagination?.total !== undefined) {
+        setTotalQueues(data.pagination.total);
+        const nextTotalPages = Math.max(1, Math.ceil(data.pagination.total / pageSize));
+        if (currentPage > nextTotalPages) {
+          setCurrentPage(nextTotalPages);
         }
-    }, [activeTab, dataHash, dateFilter, limit]);
+      }
 
-    // Initial data loading when tab changes
-    const fetchQueues = useCallback(async (status: QueueStatus, filter: 'today' | 'all', currentLimit: number) => {
-        try {
-            setLoading(true);
-            const data = await queuesApi.list({
-                status,
-                dateFilter: filter,
-                limit: currentLimit,
-            });
-            setQueues(data.queues);
-            setDataHash(data.hash || "");
-            setLastUpdatedAt(new Date());
-            if (data.pagination?.total !== undefined) {
-                setTotalQueues(data.pagination.total);
-            } else {
-                setTotalQueues(data.queues?.length ?? null);
-            }
-        } catch (error) {
-            console.error("Error fetching queues:", error);
-            toast.error("Terjadi kesalahan saat memuat antrean");
-        } finally {
-            setLoading(false);
+      if (data.hasChanges) {
+        setQueues(data.queues);
+        setDataHash(data.hash);
+        setLastUpdatedAt(new Date());
+      }
+    } catch (error) {
+      console.error("Error polling for changes:", error);
+    }
+  }, [statusFilter, dataHash, dateFilter, pageSize, currentPage]);
+
+  // Initial data loading when filter changes
+  const fetchQueues = useCallback(
+    async (status: QueueStatus, filter: "today" | "all", page: number, size: number) => {
+      try {
+        setLoading(true);
+        const offset = (page - 1) * size;
+        const data = await queuesApi.list({
+          status,
+          dateFilter: filter,
+          limit: size,
+          offset,
+        });
+        setQueues(data.queues);
+        setDataHash(data.hash || "");
+        setLastUpdatedAt(new Date());
+        if (data.pagination?.total !== undefined) {
+          setTotalQueues(data.pagination.total);
+          const totalPages = Math.max(1, Math.ceil(data.pagination.total / size));
+          if (page > totalPages) {
+            setCurrentPage(totalPages);
+          }
+        } else {
+          setTotalQueues(data.queues?.length ?? null);
         }
-    }, []);
+      } catch (error) {
+        console.error("Error fetching queues:", error);
+        toast.error("Terjadi kesalahan saat memuat antrean");
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
-    // Initial data loading when tab changes and polling setup
-    useEffect(() => {
-        fetchQueues(activeTab, dateFilter, limit);
+  // Initial data loading when filter/page changes and polling setup
+  useEffect(() => {
+    fetchQueues(statusFilter, dateFilter, currentPage, pageSize);
 
-        const interval = setInterval(pollForChanges, 30000);
-        return () => clearInterval(interval);
-    }, [activeTab, dateFilter, limit, fetchQueues, pollForChanges]);
+    const interval = setInterval(pollForChanges, 30000);
+    return () => clearInterval(interval);
+  }, [statusFilter, dateFilter, currentPage, pageSize, fetchQueues, pollForChanges]);
 
-    // Simulate initial page loading
-    useEffect(() => {
-        // Add a slight delay to simulate initial loading
-        const timer = setTimeout(() => {
-            setPageLoading(false);
-        }, 1000);
+  // Simulate initial page loading
+  useEffect(() => {
+    // Add a slight delay to simulate initial loading
+    const timer = setTimeout(() => {
+      setPageLoading(false);
+    }, 1000);
 
-        return () => clearTimeout(timer);
-    }, []);
+    return () => clearTimeout(timer);
+  }, []);
 
-    // Reset pagination when tab or filter changes
-    useEffect(() => {
-        setLimit(50);
-        setTotalQueues(null);
-    }, [activeTab, dateFilter]);
+  const handleServeQueue = async (queueId: string) => {
+    try {
+      await queuesApi.serve(queueId);
+      toast.success("Antrean sedang dilayani");
+      setNeedsRefresh(true);
+    } catch (error) {
+      console.error("Error serving queue:", error);
+      toast.error("Terjadi kesalahan saat melayani antrean");
+    }
+  };
 
-    const handleLoadMore = () => {
-        setLimit((prev) => prev + 50);
-    };
+  const handleCompleteQueue = async (queueId: string) => {
+    try {
+      await queuesApi.complete(queueId);
+      toast.success("Antrean telah selesai dilayani");
 
-    const handleServeQueue = async (queueId: string) => {
-        try {
-            await queuesApi.serve(queueId);
-            toast.success("Antrean sedang dilayani");
-            setNeedsRefresh(true);
-        } catch (error) {
-            console.error("Error serving queue:", error);
-            toast.error("Terjadi kesalahan saat melayani antrean");
-        }
-    };
+      const waitingResponse = await queuesApi.list({ status: "WAITING" });
+      if (waitingResponse?.queues?.length > 0) {
+        const nextCustomer = waitingResponse.queues[0];
+        setNextInQueue(nextCustomer);
+        setShowContinueDialog(true);
+      }
 
-    const handleCallQueue = async (queueId: string) => {
-        try {
-            await queuesApi.call(queueId);
-            toast.success("Antrean dipanggil");
-            setNeedsRefresh(true);
-        } catch (error) {
-            console.error("Error calling queue:", error);
-            toast.error("Terjadi kesalahan saat memanggil antrean");
-        }
-    };
+      setNeedsRefresh(true);
+    } catch (error) {
+      console.error("Error completing queue:", error);
+      toast.error("Terjadi kesalahan");
+    }
+  };
 
-    const handleCompleteQueue = async (queueId: string) => {
-        try {
-            await queuesApi.complete(queueId);
-            toast.success("Antrean telah selesai dilayani");
+  const handleCancelQueue = async (queueId: string) => {
+    try {
+      await queuesApi.cancel(queueId);
+      toast.success("Antrean telah dibatalkan");
+      setNeedsRefresh(true);
+    } catch (error) {
+      console.error("Error canceling queue:", error);
+      toast.error("Terjadi kesalahan");
+    }
+  };
 
-            const waitingResponse = await queuesApi.list({ status: "WAITING" });
-            if (waitingResponse?.queues?.length > 0) {
-                const nextCustomer = waitingResponse.queues[0];
-                setNextInQueue(nextCustomer);
-                setShowContinueDialog(true);
-            }
+  const getWaitingTime = (createdAt: string | Date) => {
+    try {
+      return formatDistance(new Date(createdAt), new Date(), {
+        addSuffix: false,
+        locale: id,
+      });
+    } catch (error) {
+      console.log("Error formatting date:", error);
 
-            setNeedsRefresh(true);
-        } catch (error) {
-            console.error("Error completing queue:", error);
-            toast.error("Terjadi kesalahan");
-        }
-    };
+      return "-";
+    }
+  };
 
-    const handleCancelQueue = async (queueId: string) => {
-        try {
-            await queuesApi.cancel(queueId);
-            toast.success("Antrean telah dibatalkan");
-            setNeedsRefresh(true);
-        } catch (error) {
-            console.error("Error canceling queue:", error);
-            toast.error("Terjadi kesalahan");
-        }
-    };
-
-    const getWaitingTime = (createdAt: string | Date) => {
-        try {
-            return formatDistance(new Date(createdAt), new Date(), {
-                addSuffix: false,
-                locale: id,
-            });
-        } catch (error) {
-            console.log("Error formatting date:", error);
-
-            return "-";
-        }
-    };
-
-    // Function to handle opening the SKD reminder dialog
-    const handleRemindSKD = (queue: Queue) => {
-        setSelectedQueue(queue);
-        setReminderMessage(
-            `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
-        );
-        setShowRemindSkdDialog(true);
-    };
-
-    // Function to prepare WhatsApp message
-    const prepareWhatsAppReminder = async () => {
-        if (!selectedQueue) return;
-
-        try {
-            setIsSendingReminder(true);
-            setReminderError(null);
-
-            const data = await queuesApi.remindSkd(selectedQueue.id, reminderMessage);
-            if (data?.data?.whatsappUrl) {
-                window.open(data.data.whatsappUrl, "_blank");
-                toast.success("Link WhatsApp berhasil dibuka");
-                setShowRemindSkdDialog(false);
-                setNeedsRefresh(true);
-            } else {
-                toast.error("Gagal menyiapkan pengingat");
-            }
-        } catch (error) {
-            console.error("Error preparing WhatsApp reminder:", error);
-            setReminderError("Terjadi kesalahan saat menyiapkan pengingat WhatsApp");
-            toast.error("Terjadi kesalahan saat menyiapkan pengingat WhatsApp");
-        } finally {
-            setIsSendingReminder(false);
-        }
-    };
-
-    // Function to send reminder via WhatsApp Bot
-    const sendWhatsAppBotReminderHandler = async () => {
-        if (!selectedQueue) return;
-
-        try {
-            setIsSendingReminder(true);
-            setReminderError(null);
-
-            const result = await queuesApi.remindSkdBot(
-                selectedQueue.id,
-                reminderMessage
-            );
-
-            if (result.success) {
-                toast.success("Pengingat berhasil dikirim via WhatsApp Bot");
-                setShowRemindSkdDialog(false);
-                setNeedsRefresh(true);
-            } else {
-                setReminderError(result.message);
-                toast.error(result.message);
-            }
-        } catch (error) {
-            console.error("Error sending WhatsApp Bot reminder:", error);
-            setReminderError(
-                "Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot"
-            );
-            toast.error("Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot");
-        } finally {
-            setIsSendingReminder(false);
-        }
-    };
-
-    // Function to handle SKD check
-    const handleMarkSkdFilled = async (queue: Queue, filled: boolean) => {
-        try {
-            const status = filled ? "SUDAH_MENGISI" : "BELUM_MENGISI";
-            await queuesApi.updateSkdStatus(queue.id, status);
-            toast.success(
-                filled ? "SKD ditandai telah diisi" : "SKD ditandai belum diisi"
-            );
-            setNeedsRefresh(true);
-        } catch (error) {
-            console.error("Error updating SKD status:", error);
-            toast.error("Terjadi kesalahan saat mengubah status SKD");
-        }
-    };
-
-    const getActionButtons = (queue: Queue) => {
-        const isAdmin = session?.user?.role === Role.ADMIN;
-        const actions = [];
-
-        // Add "Remind SKD" button for queues that haven't filled SKD
-        if (!queue.filledSKD && queue.tempUuid) {
-            actions.push(
-                <Button
-                    key="remind-skd"
-                    size="sm"
-                    variant="outline"
-                    className="flex items-center gap-1"
-                    onClick={() => handleRemindSKD(queue)}
-                >
-                    <Smartphone className="w-3 h-3" />
-                    <span>Kirim Pengingat</span>
-                </Button>
-            );
-        }
-
-        // Add standard action buttons based on queue status
-        switch (queue.status) {
-            case "WAITING":
-                actions.push(
-                    <Button
-                        key="call"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleCallQueue(queue.id)}
-                    >
-                        Panggil
-                    </Button>,
-                    <Button
-                        key="serve"
-                        size="sm"
-                        onClick={() => handleServeQueue(queue.id)}
-                    >
-                        Layani
-                    </Button>,
-                    <Button
-                        key="cancel"
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleCancelQueue(queue.id)}
-                    >
-                        Batalkan
-                    </Button>
-                );
-                break;
-            case "CALLED":
-                actions.push(
-                    <Button
-                        key="serve"
-                        size="sm"
-                        onClick={() => handleServeQueue(queue.id)}
-                    >
-                        Layani
-                    </Button>,
-                    <Button
-                        key="cancel"
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleCancelQueue(queue.id)}
-                    >
-                        Batalkan
-                    </Button>
-                );
-                break;
-            case "SERVING":
-                // Only show complete button if the current admin is serving this queue or is admin
-                if (
-                    isAdmin ||
-                    (queue.admin && queue.admin.name === session?.user?.name)
-                ) {
-                    actions.push(
-                        <Button
-                            key="complete"
-                            size="sm"
-                            onClick={() => handleCompleteQueue(queue.id)}
-                        >
-                            Selesai
-                        </Button>
-                    );
-                } else {
-                    actions.push(
-                        <span key="serving-info">
-                            Sedang dilayani oleh {queue.admin?.name}
-                        </span>
-                    );
-                }
-                break;
-            default:
-                break;
-        }
-
-        return <div className="flex flex-wrap justify-end gap-2">{actions}</div>;
-    }; const getTableColumns = () => (
-        <>
-            <TableHead className="w-16">No</TableHead>
-            <TableHead>Nama</TableHead>
-            <TableHead>Layanan</TableHead>
-            <TableHead>Tipe</TableHead>
-            <TableHead>Waktu</TableHead>
-            <TableHead>Status SKD</TableHead>
-            <TableHead>Link Tracking</TableHead>
-            <TableHead className="text-right">Aksi</TableHead>
-        </>
-    );    // Function to render queue rows
-    const renderQueueRow = (queue: Queue) => (
-        <TableRow key={queue.id}>
-            <TableCell className="font-medium">{queue.queueNumber}-{formatQueueTime(queue.createdAt)}</TableCell>
-            <TableCell>
-                <div>
-                    <p>{queue.visitor.name}</p>
-                    <p className="text-muted-foreground text-xs">
-                        {queue.visitor.institution || "-"}
-                    </p>
-                    <p className="text-muted-foreground text-xs">{queue.visitor.phone}</p>
-                </div>
-            </TableCell>
-            <TableCell>{queue.service.name}</TableCell>
-            <TableCell>
-                {queue.queueType === "ONLINE" ? (
-                    <span className="inline-flex items-center bg-blue-50 px-2 py-1 rounded-full ring-1 ring-blue-600/20 ring-inset font-medium text-blue-700 text-xs">
-                        Online
-                    </span>
-                ) : (
-                    <span className="inline-flex items-center bg-green-50 px-2 py-1 rounded-full ring-1 ring-green-600/20 ring-inset font-medium text-green-700 text-xs">
-                        Offline
-                    </span>
-                )}
-            </TableCell>
-            <TableCell>
-                <div>
-                    <p className="text-muted-foreground text-xs">
-                        {getWaitingTime(queue.createdAt)}
-                    </p>
-                </div>
-            </TableCell>
-            <TableCell>
-                {queue.filledSKD ? (
-                    <div className="flex items-center space-x-2">
-                        <span className="inline-flex items-center bg-green-50 px-2 py-1 rounded-full ring-1 ring-green-600/20 ring-inset font-medium text-green-700 text-xs">
-                            Sudah Diisi
-                        </span>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-xs"
-                            onClick={() => handleMarkSkdFilled(queue, false)}
-                        >
-                            Tandai Belum
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="flex items-center space-x-2">
-                        <span className="inline-flex items-center bg-red-50 px-2 py-1 rounded-full ring-1 ring-red-600/20 ring-inset font-medium text-red-700 text-xs">
-                            Belum Diisi
-                        </span>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-xs"
-                            onClick={() => handleMarkSkdFilled(queue, true)}
-                        >
-                            Tandai Sudah
-                        </Button>
-                    </div>
-                )}
-            </TableCell>
-            <TableCell>
-                {queue.trackingLink ? (
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs"
-                        onClick={() => {
-                            // Copy to clipboard
-                            navigator.clipboard.writeText(
-                                `${window.location.origin}/visitor-form/${queue.tempUuid}`
-                            );
-                            toast.success("Link tracking disalin ke clipboard");
-                        }}
-                    >
-                        Salin Link
-                    </Button>
-                ) : (
-                    <span className="text-muted-foreground text-xs">-</span>
-                )}
-            </TableCell>
-            <TableCell className="text-right">{getActionButtons(queue)}</TableCell>
-        </TableRow>
+  // Function to handle opening the SKD reminder dialog
+  const handleRemindSKD = (queue: Queue) => {
+    setSelectedQueue(queue);
+    setReminderMessage(
+      `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
     );
+    setShowRemindSkdDialog(true);
+  };
 
-    // Additional effect for manual refresh when needed (triggered by actions like serve, complete, cancel)
-    useEffect(() => {
-        if (needsRefresh) {
-            fetchQueues(activeTab, dateFilter, limit);
-            setNeedsRefresh(false);
-        }
-    }, [needsRefresh, activeTab, dateFilter, limit, fetchQueues]);
+  // Function to prepare WhatsApp message
+  const prepareWhatsAppReminder = async () => {
+    if (!selectedQueue) return;
 
-    const handleManualRefresh = () => {
-        if (loading) return; // Prevent multiple refreshes if already loading
-        const tabName = activeTab
-            .charAt(0)
-            .toUpperCase()
-            + activeTab.slice(1).toLowerCase().replace("_", " ");
-        toast.info(`Memperbarui data untuk tab "${tabName}"...`);
-        fetchQueues(activeTab, dateFilter, limit);
-    };
+    try {
+      setIsSendingReminder(true);
+      setReminderError(null);
 
-    if (pageLoading) {
-        return <QueueManagementSkeleton />;
+      const data = await queuesApi.remindSkd(selectedQueue.id, reminderMessage);
+      if (data?.data?.whatsappUrl) {
+        window.open(data.data.whatsappUrl, "_blank");
+        toast.success("Link WhatsApp berhasil dibuka");
+        setShowRemindSkdDialog(false);
+        setNeedsRefresh(true);
+      } else {
+        toast.error("Gagal menyiapkan pengingat");
+      }
+    } catch (error) {
+      console.error("Error preparing WhatsApp reminder:", error);
+      setReminderError("Terjadi kesalahan saat menyiapkan pengingat WhatsApp");
+      toast.error("Terjadi kesalahan saat menyiapkan pengingat WhatsApp");
+    } finally {
+      setIsSendingReminder(false);
+    }
+  };
+
+  // Function to send reminder via WhatsApp Bot
+  const sendWhatsAppBotReminderHandler = async () => {
+    if (!selectedQueue) return;
+
+    try {
+      setIsSendingReminder(true);
+      setReminderError(null);
+
+      const result = await queuesApi.remindSkdBot(selectedQueue.id, reminderMessage);
+
+      if (result.success) {
+        toast.success("Pengingat berhasil dikirim via WhatsApp Bot");
+        setShowRemindSkdDialog(false);
+        setNeedsRefresh(true);
+      } else {
+        setReminderError(result.message);
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error("Error sending WhatsApp Bot reminder:", error);
+      setReminderError("Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot");
+      toast.error("Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot");
+    } finally {
+      setIsSendingReminder(false);
+    }
+  };
+
+  // Function to handle SKD check
+  const handleMarkSkdFilled = async (queue: Queue, filled: boolean) => {
+    try {
+      const status = filled ? "SUDAH_MENGISI" : "BELUM_MENGISI";
+      await queuesApi.updateSkdStatus(queue.id, status);
+      toast.success(filled ? "SKD ditandai telah diisi" : "SKD ditandai belum diisi");
+      setNeedsRefresh(true);
+    } catch (error) {
+      console.error("Error updating SKD status:", error);
+      toast.error("Terjadi kesalahan saat mengubah status SKD");
+    }
+  };
+
+  const getActionButtons = (queue: Queue) => {
+    const isAdmin = session?.user?.role === Role.ADMIN;
+    const actions = [];
+
+    // Add "Remind SKD" button for queues that haven't filled SKD
+    if (!queue.filledSKD && queue.tempUuid) {
+      actions.push(
+        <Button
+          key="remind-skd"
+          size="sm"
+          variant="outline"
+          className="flex items-center gap-1"
+          onClick={() => handleRemindSKD(queue)}
+        >
+          <Smartphone className="w-3 h-3" />
+          <span>Kirim Pengingat</span>
+        </Button>
+      );
     }
 
-    return (
-        <div className="space-y-4 p-4">
-            <div className="flex flex-wrap justify-between items-center gap-4">
-                <div>
-                    <h1 className="font-bold text-2xl">Manajemen Antrean</h1>
-                    <p className="text-muted-foreground">
-                        Kelola antrean pengunjung PST secara langsung
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as 'today' | 'all')}>
-                        <SelectTrigger className="w-auto md:w-[180px]">
-                            <SelectValue placeholder="Filter tanggal..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="today">Dibuat Hari Ini</SelectItem>
-                            <SelectItem value="all">Semua</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <div className="hidden md:block text-sm text-muted-foreground">
-                        Menampilkan {queues.length} dari {totalQueues ?? "…"} antrean
-                    </div>
-                    <Button
-                        variant="secondary"
-                        onClick={handleLoadMore}
-                        disabled={loading || (totalQueues !== null && queues.length >= totalQueues)}
-                    >
-                        Muat 50 lagi
-                    </Button>
-                    <Button onClick={handleManualRefresh} disabled={loading}>
-                        {loading ? (
-                            <>
-                                <RefreshCw className="mr-2 w-4 h-4 animate-spin" />
-                                Memperbarui...
-                            </>
-                        ) : (
-                            <>
-                                <RefreshCw className="mr-2 w-4 h-4" />
-                                Perbarui Data
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </div>
-            <div className="text-muted-foreground text-xs md:text-sm">
-                Data per: {lastUpdatedAt
-                    ? new Intl.DateTimeFormat('id-ID', {
-                        year: 'numeric', month: 'short', day: 'numeric',
-                        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-                    }).format(lastUpdatedAt)
-                    : (loading && !queues.length ? "Memuat data awal..." : "Belum ada data")}
-            </div>
-            <Tabs
-                defaultValue="WAITING"
-                value={activeTab}
-                onValueChange={(value) => setActiveTab(value as QueueStatus)}
-            >
-                <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full">
-                    <TabsTrigger value="WAITING">Menunggu</TabsTrigger>
-                    <TabsTrigger value="CALLED">Dipanggil</TabsTrigger>
-                    <TabsTrigger value="SERVING">Sedang Dilayani</TabsTrigger>
-                    <TabsTrigger value="COMPLETED">Selesai</TabsTrigger>
-                    <TabsTrigger value="CANCELED">Dibatalkan</TabsTrigger>
-                </TabsList>
+    // Add standard action buttons based on queue status
+    switch (queue.status) {
+      case "WAITING":
+        actions.push(
+          <Button key="serve" size="sm" onClick={() => handleServeQueue(queue.id)}>
+            Layani
+          </Button>,
+          <Button
+            key="cancel"
+            size="sm"
+            variant="destructive"
+            onClick={() => handleCancelQueue(queue.id)}
+          >
+            Batalkan
+          </Button>
+        );
+        break;
+      case "SERVING":
+        // Only show complete button if the current admin is serving this queue or is admin
+        if (isAdmin || (queue.admin && queue.admin.name === session?.user?.name)) {
+          actions.push(
+            <Button key="complete" size="sm" onClick={() => handleCompleteQueue(queue.id)}>
+              Selesai
+            </Button>
+          );
+        } else {
+          actions.push(<span key="serving-info">Sedang dilayani oleh {queue.admin?.name}</span>);
+        }
+        break;
+      default:
+        break;
+    }
 
-                {/* WAITING Tab */}
-                <TabsContent value="WAITING">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Antrean Menunggu</CardTitle>
-                            <CardDescription>
-                                Daftar pengunjung yang sedang menunggu untuk dilayani.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {loading && activeTab === "WAITING" ? (
-                                <TableSkeleton columns={7} rows={5} />
-                            ) : queues.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>{getTableColumns()}</TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {queues.map((queue) => renderQueueRow(queue))}
-                                    </TableBody>
-                                </Table>
-                            ) : (
-                                <p>Tidak ada antrean menunggu.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                {/* CALLED Tab */}
-                <TabsContent value="CALLED">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Antrean Dipanggil</CardTitle>
-                            <CardDescription>
-                                Daftar pengunjung yang sudah dipanggil oleh petugas.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {loading && activeTab === "CALLED" ? (
-                                <TableSkeleton columns={7} rows={5} />
-                            ) : queues.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>{getTableColumns()}</TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {queues.map((queue) => renderQueueRow(queue))}
-                                    </TableBody>
-                                </Table>
-                            ) : (
-                                <p>Tidak ada antrean dipanggil.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                {/* SERVING Tab */}
-                <TabsContent value="SERVING">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Antrean Sedang Dilayani</CardTitle>
-                            <CardDescription>
-                                Daftar pengunjung yang sedang dalam proses pelayanan.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {loading && activeTab === "SERVING" ? (
-                                <TableSkeleton columns={7} rows={5} />
-                            ) : queues.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>{getTableColumns()}</TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {queues.map((queue) => renderQueueRow(queue))}
-                                    </TableBody>
-                                </Table>
-                            ) : (
-                                <p>Tidak ada antrean yang sedang dilayani.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                {/* COMPLETED Tab */}
-                <TabsContent value="COMPLETED">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Antrean Selesai</CardTitle>
-                            <CardDescription>
-                                Daftar pengunjung yang telah selesai dilayani.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {loading && activeTab === "COMPLETED" ? (
-                                <TableSkeleton columns={7} rows={5} />
-                            ) : queues.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>{getTableColumns()}</TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {queues.map((queue) => renderQueueRow(queue))}
-                                    </TableBody>
-                                </Table>
-                            ) : (
-                                <p>Tidak ada antrean yang telah selesai.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                {/* CANCELED Tab */}
-                <TabsContent value="CANCELED">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Antrean Dibatalkan</CardTitle>
-                            <CardDescription>
-                                Daftar pengunjung yang antreannya dibatalkan.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {loading && activeTab === "CANCELED" ? (
-                                <TableSkeleton columns={7} rows={5} />
-                            ) : queues.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>{getTableColumns()}</TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {queues.map((queue) => renderQueueRow(queue))}
-                                    </TableBody>
-                                </Table>
-                            ) : (
-                                <p>Tidak ada antrean yang dibatalkan.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
-            <Dialog open={showContinueDialog} onOpenChange={setShowContinueDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Lanjut ke Pengunjung Berikutnya?</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4">
-                        {nextInQueue && (
-                            <div className="space-y-2">
-                                <p>
-                                    Pengunjung berikutnya:{" "}
-                                    <strong>{nextInQueue.visitor.name}</strong>
-                                </p>
-                                <p>
-                                    Nomor Antrean: <strong>{nextInQueue.queueNumber}</strong>
-                                </p>
-                                <p>
-                                    Layanan: <strong>{nextInQueue.service.name}</strong>
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                    <DialogFooter className="flex justify-end space-x-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowContinueDialog(false)}
-                        >
-                            Nanti Saja
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                if (nextInQueue) {
-                                    handleServeQueue(nextInQueue.id);
-                                    setShowContinueDialog(false);
-                                }
-                            }}
-                        >
-                            Ya, Layani Sekarang
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Add SKD Reminder Dialog */}
-            <Dialog open={showRemindSkdDialog} onOpenChange={setShowRemindSkdDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Kirim Pengingat SKD</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        {selectedQueue && (
-                            <>
-                                <div className="space-y-2">
-                                    <p>
-                                        Pengunjung: <strong>{selectedQueue.visitor.name}</strong>
-                                    </p>
-                                    <p>
-                                        No. HP: <strong>{selectedQueue.visitor.phone}</strong>
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="reminder-message">Pesan Pengingat:</Label>
-                                    <Textarea
-                                        id="reminder-message"
-                                        value={reminderMessage}
-                                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                                            setReminderMessage(e.target.value)
-                                        }
-                                        rows={4}
-                                        className="resize-none"
-                                        placeholder="Ketik pesan di sini..."
-                                    />
-                                </div>
-
-                                {reminderError && (
-                                    <div className="flex items-start gap-2 bg-destructive/15 p-3 rounded-md text-destructive text-sm">
-                                        <AlertCircle className="flex-shrink-0 mt-0.5 w-4 h-4" />
-                                        <div>{reminderError}</div>
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
-                    <DialogFooter className="sm:flex-row flex-col gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowRemindSkdDialog(false)}
-                        >
-                            Batal
-                        </Button>
-                        <div className="flex flex-1 justify-end gap-2">
-                            <Button
-                                onClick={prepareWhatsAppReminder}
-                                disabled={isSendingReminder}
-                                className="gap-2"
-                                variant="default"
-                            >
-                                <MessageSquareText className="w-4 h-4" />
-                                Kirim via WA Direct
-                            </Button>
-                            <Button
-                                onClick={sendWhatsAppBotReminderHandler}
-                                disabled={isSendingReminder}
-                                className="gap-2"
-                                variant="secondary"
-                            >
-                                <Smartphone className="w-4 h-4" />
-                                Kirim via WA Bot
-                            </Button>
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+    return <div className="flex flex-wrap justify-end gap-2">{actions}</div>;
+  };
+  const getTableColumns = () => (
+    <>
+      <TableHead className="w-16">No</TableHead>
+      <TableHead>Nama</TableHead>
+      <TableHead>Layanan</TableHead>
+      <TableHead>Tipe</TableHead>
+      <TableHead>Waktu</TableHead>
+      <TableHead>Status SKD</TableHead>
+      <TableHead>Link Tracking</TableHead>
+      <TableHead className="text-right">Aksi</TableHead>
+    </>
+  ); // Function to render queue rows
+  const renderQueueRow = (queue: Queue) => (
+    <TableRow key={queue.id}>
+      <TableCell className="font-medium">
+        {queue.queueNumber}-{formatQueueTime(queue.createdAt)}
+      </TableCell>
+      <TableCell>
+        <div>
+          <p>{queue.visitor.name}</p>
+          <p className="text-muted-foreground text-xs">{queue.visitor.institution || "-"}</p>
+          <p className="text-muted-foreground text-xs">{queue.visitor.phone}</p>
         </div>
-    );
+      </TableCell>
+      <TableCell>{queue.service.name}</TableCell>
+      <TableCell>
+        {queue.queueType === "ONLINE" ? (
+          <span className="inline-flex items-center bg-blue-50 px-2 py-1 rounded-full ring-1 ring-blue-600/20 ring-inset font-medium text-blue-700 text-xs">
+            Online
+          </span>
+        ) : (
+          <span className="inline-flex items-center bg-green-50 px-2 py-1 rounded-full ring-1 ring-green-600/20 ring-inset font-medium text-green-700 text-xs">
+            Offline
+          </span>
+        )}
+      </TableCell>
+      <TableCell>
+        <div>
+          <p className="text-muted-foreground text-xs">{getWaitingTime(queue.createdAt)}</p>
+        </div>
+      </TableCell>
+      <TableCell>
+        {queue.filledSKD ? (
+          <div className="flex items-center space-x-2">
+            <span className="inline-flex items-center bg-green-50 px-2 py-1 rounded-full ring-1 ring-green-600/20 ring-inset font-medium text-green-700 text-xs">
+              Sudah Diisi
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-xs"
+              onClick={() => handleMarkSkdFilled(queue, false)}
+            >
+              Tandai Belum
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <span className="inline-flex items-center bg-red-50 px-2 py-1 rounded-full ring-1 ring-red-600/20 ring-inset font-medium text-red-700 text-xs">
+              Belum Diisi
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-xs"
+              onClick={() => handleMarkSkdFilled(queue, true)}
+            >
+              Tandai Sudah
+            </Button>
+          </div>
+        )}
+      </TableCell>
+      <TableCell>
+        {queue.trackingLink ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => {
+              // Copy to clipboard
+              navigator.clipboard.writeText(
+                `${window.location.origin}/visitor-form/${queue.tempUuid}`
+              );
+              toast.success("Link tracking disalin ke clipboard");
+            }}
+          >
+            Salin Link
+          </Button>
+        ) : (
+          <span className="text-muted-foreground text-xs">-</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right">{getActionButtons(queue)}</TableCell>
+    </TableRow>
+  );
+
+  // Additional effect for manual refresh when needed (triggered by actions like serve, complete, cancel)
+  useEffect(() => {
+    if (needsRefresh) {
+      fetchQueues(statusFilter, dateFilter, currentPage, pageSize);
+      setNeedsRefresh(false);
+    }
+  }, [needsRefresh, statusFilter, dateFilter, currentPage, pageSize, fetchQueues]);
+
+  const statusOptions: Array<{ value: QueueStatus; label: string }> = [
+    { value: "WAITING", label: "Menunggu" },
+    { value: "SERVING", label: "Sedang Dilayani" },
+    { value: "COMPLETED", label: "Selesai" },
+    { value: "CANCELED", label: "Dibatalkan" },
+  ];
+  const statusLabel =
+    statusOptions.find((option) => option.value === statusFilter)?.label ?? statusFilter;
+
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value as QueueStatus);
+    setCurrentPage(1);
+    setTotalQueues(null);
+  };
+
+  const handleDateFilterChange = (value: string) => {
+    setDateFilter(value as "today" | "all");
+    setCurrentPage(1);
+    setTotalQueues(null);
+  };
+
+  const handlePageSizeChange = (value: string) => {
+    const nextSize = Number(value);
+    if (Number.isNaN(nextSize)) return;
+    setPageSize(nextSize);
+    setCurrentPage(1);
+  };
+
+  const handleManualRefresh = () => {
+    if (loading) return; // Prevent multiple refreshes if already loading
+    toast.info(`Memperbarui data untuk status "${statusLabel}"...`);
+    fetchQueues(statusFilter, dateFilter, currentPage, pageSize);
+  };
+
+  const updatedLabel = lastUpdatedAt
+    ? new Intl.DateTimeFormat("id-ID", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(lastUpdatedAt)
+    : loading && !queues.length
+      ? "Memuat data awal..."
+      : "Belum ada data";
+  const isRefreshing = loading && queues.length > 0;
+  const totalLabel = totalQueues ?? "...";
+  const totalPages = totalQueues ? Math.max(1, Math.ceil(totalQueues / pageSize)) : 1;
+  const canPrevPage = currentPage > 1;
+  const canNextPage = totalQueues ? currentPage < totalPages : false;
+  const rangeStart = totalQueues && totalQueues > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+  const rangeEnd =
+    totalQueues && totalQueues > 0 ? Math.min(currentPage * pageSize, totalQueues) : queues.length;
+  const showingLabel =
+    totalQueues !== null
+      ? `Menampilkan ${rangeStart}-${rangeEnd} dari ${totalLabel} antrean`
+      : `Menampilkan ${queues.length} antrean`;
+
+  const handlePrevPage = () => {
+    setCurrentPage((prev) => Math.max(1, prev - 1));
+  };
+
+  const handleNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages, prev + 1));
+  };
+
+  if (pageLoading) {
+    return <QueueManagementSkeleton />;
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-7xl space-y-6">
+      <section className="rounded-2xl border border-border/80 bg-card/80 p-5 shadow-sm">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-primary-color md:text-3xl">Manajemen Antrean</h1>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
+              <span>Data per: {updatedLabel}</span>
+              <span className="flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-2 py-1 text-[11px] font-medium">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${isRefreshing ? "bg-primary animate-pulse" : "bg-emerald-500"}`}
+                />
+                {isRefreshing ? "Memperbarui data..." : "Auto refresh setiap 30 detik"}
+              </span>
+            </div>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
+            <Select value={statusFilter} onValueChange={handleStatusChange}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Status antrean" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={dateFilter} onValueChange={handleDateFilterChange}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filter tanggal..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Dibuat Hari Ini</SelectItem>
+                <SelectItem value="all">Semua</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="Tampil per halaman" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10 / Halaman</SelectItem>
+                <SelectItem value="25">25 / Halaman</SelectItem>
+                <SelectItem value="50">50 / Halaman</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="w-full rounded-lg border border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground sm:w-auto">
+              {showingLabel}
+            </div>
+            <Button onClick={handleManualRefresh} disabled={loading} className="w-full sm:w-auto">
+              {loading ? (
+                <>
+                  <RefreshCw className="mr-2 w-4 h-4 animate-spin" />
+                  Memperbarui...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 w-4 h-4" />
+                  Perbarui Data
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </section>
+      <Card className="border-border/80 bg-card/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Daftar Antrean</CardTitle>
+          <CardDescription>
+            Menampilkan antrean dengan status {statusLabel}{" "}
+            {dateFilter === "today" ? "hari ini." : "untuk semua tanggal."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading && queues.length === 0 ? (
+            <div className="overflow-x-auto">
+              <TableSkeleton columns={8} rows={5} />
+            </div>
+          ) : queues.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table className="min-w-[980px]">
+                <TableHeader>
+                  <TableRow>{getTableColumns()}</TableRow>
+                </TableHeader>
+                <TableBody>{queues.map((queue) => renderQueueRow(queue))}</TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Tidak ada antrean untuk status {statusLabel.toLowerCase()}.
+            </p>
+          )}
+        </CardContent>
+        <CardFooter className="border-t border-border/70 pt-4 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs text-muted-foreground">
+            Halaman {currentPage} dari {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrevPage}
+              disabled={!canPrevPage || loading}
+            >
+              Sebelumnya
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNextPage}
+              disabled={!canNextPage || loading}
+            >
+              Berikutnya
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
+      <Dialog open={showContinueDialog} onOpenChange={setShowContinueDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Lanjut ke Pengunjung Berikutnya?</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {nextInQueue && (
+              <div className="space-y-2">
+                <p>
+                  Pengunjung berikutnya: <strong>{nextInQueue.visitor.name}</strong>
+                </p>
+                <p>
+                  Nomor Antrean: <strong>{nextInQueue.queueNumber}</strong>
+                </p>
+                <p>
+                  Layanan: <strong>{nextInQueue.service.name}</strong>
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowContinueDialog(false)}>
+              Nanti Saja
+            </Button>
+            <Button
+              onClick={() => {
+                if (nextInQueue) {
+                  handleServeQueue(nextInQueue.id);
+                  setShowContinueDialog(false);
+                }
+              }}
+            >
+              Ya, Layani Sekarang
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add SKD Reminder Dialog */}
+      <Dialog open={showRemindSkdDialog} onOpenChange={setShowRemindSkdDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Kirim Pengingat SKD</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {selectedQueue && (
+              <>
+                <div className="space-y-2">
+                  <p>
+                    Pengunjung: <strong>{selectedQueue.visitor.name}</strong>
+                  </p>
+                  <p>
+                    No. HP: <strong>{selectedQueue.visitor.phone}</strong>
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reminder-message">Pesan Pengingat:</Label>
+                  <Textarea
+                    id="reminder-message"
+                    value={reminderMessage}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      setReminderMessage(e.target.value)
+                    }
+                    rows={4}
+                    className="resize-none"
+                    placeholder="Ketik pesan di sini..."
+                  />
+                </div>
+
+                {reminderError && (
+                  <div className="flex items-start gap-2 bg-destructive/15 p-3 rounded-md text-destructive text-sm">
+                    <AlertCircle className="flex-shrink-0 mt-0.5 w-4 h-4" />
+                    <div>{reminderError}</div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <DialogFooter className="sm:flex-row flex-col gap-2">
+            <Button variant="outline" onClick={() => setShowRemindSkdDialog(false)}>
+              Batal
+            </Button>
+            <div className="flex flex-1 justify-end gap-2">
+              <Button
+                onClick={prepareWhatsAppReminder}
+                disabled={isSendingReminder}
+                className="gap-2"
+                variant="default"
+              >
+                <MessageSquareText className="w-4 h-4" />
+                Kirim via WA Direct
+              </Button>
+              <Button
+                onClick={sendWhatsAppBotReminderHandler}
+                disabled={isSendingReminder}
+                className="gap-2"
+                variant="secondary"
+              >
+                <Smartphone className="w-4 h-4" />
+                Kirim via WA Bot
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }

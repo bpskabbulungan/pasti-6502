@@ -1,6 +1,9 @@
 import { format } from "date-fns";
+import PDFDocument from "pdfkit";
+import * as XLSX from "xlsx";
 import prisma from "@api/infrastructure/database/prisma";
 import { QueueStatus, Prisma } from "@prisma/client";
+import type { AnalyticsExportRow } from "@shared/types/analytics";
 
 type DateRange = {
 	startDate: Date;
@@ -159,7 +162,7 @@ export async function getAnalyticsSummary(startDate: Date, endDate: Date) {
 		? await prisma.user.findMany({ where: { id: { in: adminIds } } })
 		: [];
 
-	const adminPerformance = admins
+	const officerPerformance = admins
 		.map((admin) => {
 			const adminQueues = queues.filter((q) => q.adminId === admin.id);
 			const completedCount = adminQueues.filter(
@@ -191,7 +194,7 @@ export async function getAnalyticsSummary(startDate: Date, endDate: Date) {
 					: 0;
 
 			return {
-				adminName: admin.name,
+				officerName: admin.name,
 				completedCount,
 				averageServiceTime,
 			};
@@ -229,7 +232,6 @@ export async function getAnalyticsSummary(startDate: Date, endDate: Date) {
 
 		switch (queue.status) {
 			case QueueStatus.WAITING:
-			case QueueStatus.CALLED:
 			case QueueStatus.SERVING:
 				dayData!.waiting += 1;
 				break;
@@ -256,15 +258,140 @@ export async function getAnalyticsSummary(startDate: Date, endDate: Date) {
 		},
 		serviceDistribution,
 		queueTypeDistribution,
-		adminPerformance,
+		officerPerformance,
 		timeAnalysis: filteredTimeAnalysis,
 		dailyTrends,
 	};
 }
 
+type ExportFormat = "xlsx" | "pdf";
+
+const EXPORT_COLUMNS: Array<{ key: keyof AnalyticsExportRow; label: string }> = [
+	{ key: "queueNumber", label: "Nomor Antrean" },
+	{ key: "serviceType", label: "Layanan" },
+	{ key: "visitorName", label: "Nama Pengunjung" },
+	{ key: "phoneNumber", label: "Telepon" },
+	{ key: "createdAt", label: "Waktu Dibuat" },
+	{ key: "startTime", label: "Mulai Layanan" },
+	{ key: "endTime", label: "Selesai Layanan" },
+	{ key: "status", label: "Status" },
+	{ key: "servedBy", label: "Petugas" },
+	{ key: "waitTimeMinutes", label: "Waktu Tunggu (m)" },
+	{ key: "serviceTimeMinutes", label: "Durasi Layanan (m)" },
+];
+
+const PDF_COLUMNS: Array<{
+	key: keyof AnalyticsExportRow;
+	label: string;
+	width: number;
+	align?: "left" | "right";
+}> = [
+	{ key: "queueNumber", label: "No", width: 30, align: "right" },
+	{ key: "serviceType", label: "Layanan", width: 80 },
+	{ key: "visitorName", label: "Pengunjung", width: 90 },
+	{ key: "phoneNumber", label: "Telepon", width: 70 },
+	{ key: "createdAt", label: "Dibuat", width: 70 },
+	{ key: "startTime", label: "Mulai", width: 70 },
+	{ key: "endTime", label: "Selesai", width: 70 },
+	{ key: "status", label: "Status", width: 55 },
+	{ key: "servedBy", label: "Petugas", width: 70 },
+	{ key: "waitTimeMinutes", label: "Tunggu", width: 55, align: "right" },
+	{ key: "serviceTimeMinutes", label: "Layanan", width: 55, align: "right" },
+];
+
+const buildPdfBuffer = async (rows: AnalyticsExportRow[], range: DateRange) => {
+	const doc = new PDFDocument({
+		size: "A4",
+		layout: "landscape",
+		margin: 36,
+	});
+	const chunks: Buffer[] = [];
+	const done = new Promise<Buffer>((resolve, reject) => {
+		doc.on("data", (chunk) => chunks.push(chunk as Buffer));
+		doc.on("end", () => resolve(Buffer.concat(chunks)));
+		doc.on("error", reject);
+	});
+
+	const startLabel = format(range.startDate, "yyyy-MM-dd");
+	const endLabel = format(
+		new Date(range.endDate.getTime() - 24 * 60 * 60 * 1000),
+		"yyyy-MM-dd"
+	);
+
+	doc.fontSize(16).fillColor("#111827").text("Laporan Analitik Antrean");
+	doc
+		.fontSize(9)
+		.fillColor("#6B7280")
+		.text(`Periode: ${startLabel} - ${endLabel}`)
+		.text(`Diekspor: ${format(new Date(), "yyyy-MM-dd HH:mm:ss")}`);
+	doc.moveDown(0.8);
+
+	const pageWidth =
+		doc.page.width - doc.page.margins.left - doc.page.margins.right;
+	const baseWidth = PDF_COLUMNS.reduce((sum, col) => sum + col.width, 0);
+	const scale = baseWidth > pageWidth ? pageWidth / baseWidth : 1;
+	const columns = PDF_COLUMNS.map((col) => ({
+		...col,
+		width: Math.floor(col.width * scale),
+	}));
+
+	const rowHeight = 18;
+	const startX = doc.page.margins.left;
+	let y = doc.y;
+
+	const drawHeader = () => {
+		doc.font("Helvetica-Bold").fontSize(8).fillColor("#111827");
+		let x = startX;
+		columns.forEach((col) => {
+			doc.text(col.label, x, y + 3, {
+				width: col.width - 4,
+				align: col.align ?? "left",
+				ellipsis: true,
+			});
+			x += col.width;
+		});
+		y += rowHeight;
+		doc
+			.moveTo(startX, y - 2)
+			.lineTo(startX + pageWidth, y - 2)
+			.strokeColor("#E5E7EB")
+			.stroke();
+		doc.font("Helvetica").fontSize(8).fillColor("#111827");
+	};
+
+	const ensureSpace = () => {
+		if (y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+			doc.addPage({ size: "A4", layout: "landscape", margin: 36 });
+			y = doc.page.margins.top;
+			drawHeader();
+		}
+	};
+
+	drawHeader();
+
+	rows.forEach((row) => {
+		ensureSpace();
+		let x = startX;
+		columns.forEach((col) => {
+			const value = row[col.key];
+			const text = value === null || value === undefined ? "" : String(value);
+			doc.text(text, x, y + 3, {
+				width: col.width - 4,
+				align: col.align ?? "left",
+				ellipsis: true,
+			});
+			x += col.width;
+		});
+		y += rowHeight;
+	});
+
+	doc.end();
+	return done;
+};
+
 export async function exportAnalytics(
 	range: DateRange,
-	exportFormat: "json" | "csv"
+	exportFormat: ExportFormat
 ) {
 	const queueWithRelations = {
 		include: {
@@ -289,7 +416,7 @@ export async function exportAnalytics(
 		return { ok: false as const, status: 404, error: "No data to export for the selected date range" };
 	}
 
-	const makeRow = (queue: QueueWithRelations) => ({
+	const makeRow = (queue: QueueWithRelations): AnalyticsExportRow => ({
 		queueNumber: queue.queueNumber,
 		serviceType: queue.service.name,
 		visitorName: queue.visitor.name,
@@ -321,7 +448,6 @@ export async function exportAnalytics(
 	});
 
 	const pageSize = 500;
-	const encoder = new TextEncoder();
 
 	async function* fetchQueueBatches() {
 		let cursor: { id: string } | undefined = undefined;
@@ -359,66 +485,47 @@ export async function exportAnalytics(
 		}
 	}
 
-	if (exportFormat === "json") {
-		const stream = new ReadableStream({
-			async start(controller) {
-				controller.enqueue(encoder.encode("["));
-				let isFirst = true;
-				for await (const rows of fetchQueueBatches()) {
-					for (const row of rows) {
-						const prefix = isFirst ? "" : ",";
-						isFirst = false;
-						controller.enqueue(encoder.encode(`${prefix}${JSON.stringify(row)}`));
-					}
-				}
-				controller.enqueue(encoder.encode("]"));
-				controller.close();
-			},
-		});
+	const collectRows = async () => {
+		const rows: AnalyticsExportRow[] = [];
+		for await (const batch of fetchQueueBatches()) {
+			rows.push(...batch);
+		}
+		return rows;
+	};
+
+	if (exportFormat === "xlsx") {
+		const rows = await collectRows();
+		const headerRow = EXPORT_COLUMNS.map((column) => column.label);
+		const dataRows = rows.map((row) =>
+			EXPORT_COLUMNS.map((column) => {
+				const value = row[column.key];
+				return value === null || value === undefined ? "" : value;
+			})
+		);
+		const worksheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+		const workbook = XLSX.utils.book_new();
+		XLSX.utils.book_append_sheet(workbook, worksheet, "Analytics");
+		const body = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
 
 		return {
 			ok: true as const,
-			format: "json" as const,
-			stream,
+			format: "xlsx" as const,
+			body,
 			headers: {
-				"Content-Type": "application/json",
+				"Content-Type":
+					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 			},
 		};
 	}
 
-	// csv
-	let headersWritten = false;
-	const stream = new ReadableStream({
-		async start(controller) {
-			for await (const rows of fetchQueueBatches()) {
-				if (rows.length === 0) continue;
-				if (!headersWritten) {
-					const headers = Object.keys(rows[0]).join(",") + "\n";
-					controller.enqueue(encoder.encode(headers));
-					headersWritten = true;
-				}
-
-				for (const row of rows) {
-					const headers = Object.keys(row);
-					const values = headers.map((header) => {
-						const value = row[header as keyof typeof row];
-						return typeof value === "string"
-							? `"${value.replace(/"/g, '""')}"`
-							: value;
-					});
-					controller.enqueue(encoder.encode(values.join(",") + "\n"));
-				}
-			}
-			controller.close();
-		},
-	});
-
+	const rows = await collectRows();
+	const body = await buildPdfBuffer(rows, range);
 	return {
 		ok: true as const,
-		format: "csv" as const,
-		stream,
+		format: "pdf" as const,
+		body,
 		headers: {
-			"Content-Type": "text/csv",
+			"Content-Type": "application/pdf",
 		},
 	};
 }

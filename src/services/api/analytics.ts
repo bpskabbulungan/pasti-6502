@@ -11,7 +11,7 @@ export const analyticsApi = {
 			search.size > 0 ? `/api/analytics?${search.toString()}` : "/api/analytics";
 		return apiFetch<AnalyticsSummary>(url);
 	},
-	export: async (params: { startDate?: string; endDate?: string; format?: "json" | "csv" }) => {
+	export: async (params: { startDate?: string; endDate?: string; format?: "xlsx" | "pdf" }) => {
 		const search = new URLSearchParams();
 		if (params.startDate) search.set("startDate", params.startDate);
 		if (params.endDate) search.set("endDate", params.endDate);

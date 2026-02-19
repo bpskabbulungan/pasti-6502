@@ -67,7 +67,7 @@ WA_ADMIN_KEY="server_only_admin_key"                 # opsional, jangan diawali 
 # SEED_OPERATOR_PASSWORD="password_dev"
 ```
 
-`NEXT_PUBLIC_STATIC_UUID` dipakai untuk QR statis; perintah seed membuat `public/qrcodes/pst-qrcode.png` yang mengarah ke `/visitor-form/<UUID>`.
+`NEXT_PUBLIC_STATIC_UUID` dipakai untuk QR statis; perintah seed membuat `public/qrcodes/pst-qrcode.png` yang mengarah ke `/guest`.
 
 ### Catatan Migrasi (MySQL)
 

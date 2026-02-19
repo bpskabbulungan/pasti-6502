@@ -10,7 +10,6 @@ import {
   Wrench,
   LogOut,
   BarChart4,
-  History,
   BookOpenText,
   BookOpenCheck,
   Menu,
@@ -59,12 +58,6 @@ export default function DashboardLayout({
       title: "Antrean",
       href: "/dashboard/queue",
       icon: <ListChecks size={20} />,
-      allowedRoles: [Role.ADMIN, Role.PETUGAS],
-    },
-    {
-      title: "Riwayat Antrean",
-      href: "/dashboard/all-queues",
-      icon: <History size={20} />,
       allowedRoles: [Role.ADMIN, Role.PETUGAS],
     },
     {

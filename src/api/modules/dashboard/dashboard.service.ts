@@ -15,7 +15,7 @@ export async function getDashboardStats(clientHash?: string | null) {
 		await Promise.all([
 			prisma.queue.count({
 				where: {
-					status: { in: [QueueStatus.WAITING, QueueStatus.CALLED] },
+					status: QueueStatus.WAITING,
 					queueDate: { gte: startOfToday, lt: endOfToday },
 				},
 			}),

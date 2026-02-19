@@ -7,7 +7,6 @@ export type Role = (typeof Role)[keyof typeof Role];
 
 export const QueueStatus = {
 	WAITING: "WAITING",
-	CALLED: "CALLED",
 	SERVING: "SERVING",
 	COMPLETED: "COMPLETED",
 	CANCELED: "CANCELED",

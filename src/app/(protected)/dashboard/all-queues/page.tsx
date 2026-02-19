@@ -1,13 +1,20 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import dynamic from "next/dynamic";
-import AllQueuesSkeleton from "@/modules/dashboard/components/skeletons/AllQueuesSkeleton";
+type PageProps = {
+  searchParams?: {
+    status?: string;
+    dateFilter?: string;
+  };
+};
 
-const AllQueuesPage = dynamic(
-	() => import("@/modules/dashboard/pages/AllQueuesPage"),
-	{ ssr: false, loading: () => <AllQueuesSkeleton /> }
-);
-
-export default function Page() {
-	return <AllQueuesPage />;
+export default function Page({ searchParams }: PageProps) {
+  const params = new URLSearchParams();
+  if (searchParams?.status) {
+    params.set("status", searchParams.status);
+  }
+  if (searchParams?.dateFilter) {
+    params.set("dateFilter", searchParams.dateFilter);
+  }
+  const queryString = params.toString();
+  redirect(`/dashboard/queue${queryString ? `?${queryString}` : ""}`);
 }

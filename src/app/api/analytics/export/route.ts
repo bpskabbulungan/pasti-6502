@@ -15,8 +15,14 @@ export async function GET(req: NextRequest) {
 		const todayString = format(new Date(), "yyyy-MM-dd");
 		const startDateParam = searchParams.get("startDate") || todayString;
 		const endDateParam = searchParams.get("endDate") || startDateParam;
-		const exportFormat =
-			(searchParams.get("format") as "json" | "csv" | null) || "json";
+		const formatParam = searchParams.get("format");
+		if (formatParam && formatParam !== "xlsx" && formatParam !== "pdf") {
+			return NextResponse.json(
+				{ error: "Format export tidak didukung" },
+				{ status: 400 }
+			);
+		}
+		const exportFormat = (formatParam as "xlsx" | "pdf" | null) || "xlsx";
 		const maxRangeDays = 90;
 
 		const parsedRange = parseDateRange(startDateParam, endDateParam, maxRangeDays);
@@ -33,19 +39,12 @@ export async function GET(req: NextRequest) {
 			return NextResponse.json({ error: result.error }, { status: result.status });
 		}
 
-		if (result.format === "json") {
-			return new NextResponse(result.stream, {
-				headers: result.headers,
-			});
-		}
+		const filename = `pst-queue-report-${format(new Date(), "yyyy-MM-dd")}.${result.format}`;
 
-		return new NextResponse(result.stream, {
+		return new NextResponse(result.body, {
 			headers: {
 				...result.headers,
-				"Content-Disposition": `attachment; filename="pst-queue-report-${format(
-					new Date(),
-					"yyyy-MM-dd"
-				)}.csv"`,
+				"Content-Disposition": `attachment; filename="${filename}"`,
 			},
 		});
 	} catch (error) {

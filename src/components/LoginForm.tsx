@@ -55,7 +55,7 @@ export function LoginForm() {
       }
 
       toast.success("Login berhasil");
-      router.push("/dashboard");
+      router.replace("/dashboard");
       router.refresh();
     } catch (error) {
       toast.error("Terjadi kesalahan saat login");

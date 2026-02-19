@@ -42,8 +42,10 @@ export async function middleware(request: NextRequest) {
 		return NextResponse.redirect(new URL("/", request.url));
 	}
 
-	if (token && path === "/") {
-		// If logged in and trying to access login page, redirect to dashboard
+	const isLoginPath = path === "/login" || path.startsWith("/login/");
+
+	if (token && (path === "/" || isLoginPath)) {
+		// If logged in and trying to access public entry pages, redirect to dashboard
 		return NextResponse.redirect(new URL("/dashboard", request.url));
 	}
 
