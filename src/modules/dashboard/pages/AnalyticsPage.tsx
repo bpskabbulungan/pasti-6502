@@ -422,9 +422,6 @@ export default function AnalyticsPage() {
               <h1 className="text-3xl font-bold text-primary-color md:text-4xl">
                 Analitik Antrean
               </h1>
-              <p className="max-w-xl text-secondary-color">
-                Ringkasan performa layanan, distribusi antrean, dan kinerja petugas.
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
               <div className="flex items-center gap-2">

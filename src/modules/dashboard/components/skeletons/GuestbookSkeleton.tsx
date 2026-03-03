@@ -22,11 +22,11 @@ export default function GuestbookSkeleton() {
 				</div>
 			</div>
 
-			<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-				{[...Array(6)].map((_, idx) => (
-					<Skeleton key={`summary-${idx}`} className="h-24 w-full" />
-				))}
-			</div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, idx) => (
+          <Skeleton key={`summary-${idx}`} className="h-24 w-full" />
+        ))}
+      </div>
 
 			<Card className="border-border/80 shadow-md">
 				<CardHeader className="gap-2">

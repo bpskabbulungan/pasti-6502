@@ -36,7 +36,11 @@ const formatQueueDate = (date: Date): string => {
 const parseStatus = (value?: string | null) => {
 	if (!value || value === "ALL") return null;
 	const normalized = value.toUpperCase();
-	return Object.values(QueueStatus).includes(normalized as QueueStatus)
+	const allowedStatuses: QueueStatus[] = [
+		QueueStatus.SERVING,
+		QueueStatus.COMPLETED,
+	];
+	return allowedStatuses.includes(normalized as QueueStatus)
 		? (normalized as QueueStatus)
 		: null;
 };
@@ -62,9 +66,14 @@ export async function getGuestbookEntries({
 	const normalizedStatus = parseStatus(status);
 	const normalizedPurpose = parsePurpose(purpose);
 	const searchTerm = search?.trim() ?? "";
+	const allowedStatuses: QueueStatus[] = [
+		QueueStatus.SERVING,
+		QueueStatus.COMPLETED,
+	];
 
 	const baseWhere: Prisma.QueueWhereInput = {
 		guestId: { not: null },
+		status: { in: allowedStatuses },
 	};
 
 	if (dateFilter === "today") {

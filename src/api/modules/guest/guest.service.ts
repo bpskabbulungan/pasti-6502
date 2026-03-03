@@ -32,6 +32,40 @@ export type GuestSubmissionResult = {
 	trackingLink: string | null;
 };
 
+export async function getGuestQueueDetail(queueId: string) {
+	const queue = await prisma.queue.findUnique({
+		where: { id: queueId },
+		include: {
+			service: { select: { name: true } },
+			guest: { select: { fullName: true, purpose: true } },
+			visitor: { select: { name: true } },
+		},
+	});
+
+	if (!queue) {
+		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+	if (!queue.guest) {
+		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+
+	const guestName = queue.guest?.fullName ?? queue.visitor?.name ?? "Pengunjung";
+
+	return {
+		ok: true as const,
+		data: {
+			queueId: queue.id,
+			queueNumber: queue.queueNumber,
+			queueCode: `${queue.queueNumber}-${formatQueueDate(new Date(queue.createdAt))}`,
+			status: queue.status,
+			purpose: queue.guest?.purpose ?? null,
+			serviceName: queue.service.name,
+			guestName,
+			trackingLink: queue.trackingLink,
+		} satisfies GuestSubmissionResult,
+	};
+}
+
 export async function processGuestSubmission(body: unknown) {
 	const parsed = guestSchema.safeParse(body);
 

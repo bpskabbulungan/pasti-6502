@@ -1,1 +1,1 @@
-export { processGuestSubmission } from "./guest.service";
+export { getGuestQueueDetail, processGuestSubmission } from "./guest.service";

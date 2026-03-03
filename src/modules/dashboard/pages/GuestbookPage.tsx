@@ -11,7 +11,6 @@ import {
   Search,
   Users,
   X,
-  XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -310,18 +309,10 @@ export default function GuestbookPage() {
     {
       title: "Total Buku Tamu",
       value: summaryData.total,
-      description: "Seluruh kunjungan sesuai filter saat ini",
+      description: "Seluruh kunjungan yang sudah dilayani/selesai",
       icon: Users,
       iconBg: "bg-primary/10",
       iconClassName: "text-primary",
-    },
-    {
-      title: "Menunggu",
-      value: summaryData.waiting,
-      description: "Pengunjung yang belum dilayani",
-      icon: Clock3,
-      iconBg: "bg-amber-500/10",
-      iconClassName: "text-amber-600",
     },
     {
       title: "Sedang Dilayani",
@@ -338,14 +329,6 @@ export default function GuestbookPage() {
       icon: CheckCircle2,
       iconBg: "bg-emerald-500/10",
       iconClassName: "text-emerald-600",
-    },
-    {
-      title: "Dibatalkan",
-      value: summaryData.canceled,
-      description: "Kunjungan yang dibatalkan",
-      icon: XCircle,
-      iconBg: "bg-red-500/10",
-      iconClassName: "text-red-600",
     },
     {
       title: "Belum Isi SKD",
@@ -374,7 +357,7 @@ export default function GuestbookPage() {
                 Buku Tamu PST
               </h1>
               <p className="max-w-xl text-secondary-color">
-                Rekapitulasi kunjungan pengunjung yang mengisi buku tamu digital.
+                Rekapitulasi kunjungan pengunjung yang sudah dilayani atau selesai.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
@@ -410,7 +393,7 @@ export default function GuestbookPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
@@ -444,7 +427,7 @@ export default function GuestbookPage() {
             Daftar Buku Tamu
           </CardTitle>
           <CardDescription className="text-secondary-color">
-            Pantau data pengunjung, keperluan, serta status layanan.
+            Pantau data pengunjung yang sudah dilayani/selesai beserta detail layanan.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -537,14 +520,8 @@ export default function GuestbookPage() {
                       {summaryData.total}
                     </span>
                   </TabsTrigger>
-                  <TabsTrigger value={QueueStatus.WAITING}>
-                    Menunggu
-                    <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                      {summaryData.waiting}
-                    </span>
-                  </TabsTrigger>
                   <TabsTrigger value={QueueStatus.SERVING}>
-                    Dilayani
+                    Sedang Dilayani
                     <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
                       {summaryData.serving}
                     </span>
@@ -553,12 +530,6 @@ export default function GuestbookPage() {
                     Selesai
                     <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
                       {summaryData.completed}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value={QueueStatus.CANCELED}>
-                    Batal
-                    <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                      {summaryData.canceled}
                     </span>
                   </TabsTrigger>
                 </TabsList>

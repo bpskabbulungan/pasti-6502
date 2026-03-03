@@ -1,4 +1,4 @@
-import type { QueueStatus } from "@/shared/constants/enums";
+import type { Purpose, QueueStatus } from "@/shared/constants/enums";
 
 export type GuestSubmissionResponse = {
 	success: true;
@@ -8,9 +8,11 @@ export type GuestSubmissionResponse = {
 		queueNumber: number;
 		queueCode: string;
 		status: QueueStatus;
-		purpose: string | null;
+		purpose: Purpose | null;
 		serviceName: string;
 		guestName: string;
 		trackingLink: string | null;
 	};
 };
+
+export type GuestQueueDetail = GuestSubmissionResponse["data"];

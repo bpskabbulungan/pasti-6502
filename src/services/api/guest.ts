@@ -1,5 +1,5 @@
 import { apiFetch } from "./base-client";
-import type { GuestSubmissionResponse } from "@shared/types/guest";
+import type { GuestQueueDetail, GuestSubmissionResponse } from "@shared/types/guest";
 
 export const guestApi = {
 	submit: (payload: unknown) =>
@@ -7,4 +7,6 @@ export const guestApi = {
 			method: "POST",
 			body: payload,
 		}),
+	detail: (queueId: string) =>
+		apiFetch<GuestQueueDetail>(`/api/guest/queue/${queueId}`),
 };
