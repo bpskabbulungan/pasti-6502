@@ -6,6 +6,7 @@ Pasti adalah sistem antrean digital untuk Pelayanan Statistik Terpadu BPS Kabupa
 
 - Antrean online via QR dan antrean walk-in/buku tamu, nomor ulang setiap hari.
 - Dashboard petugas: pantau antrean, mulai/selesai/batalkan, atur layanan dan pengguna.
+- Jadwal petugas PST mengambil sumber dari akun pengguna role `PETUGAS` (admin tidak ikut rotasi).
 - Layar antrean publik untuk TV/monitor; QR bisa diunduh dari dashboard.
 - Notifikasi antrean baru dan pengingat SKD via WA Bot (opsional).
 - Statistik antrean harian, sebaran layanan, kinerja petugas, ekspor CSV/JSON.
@@ -31,6 +32,8 @@ Pasti adalah sistem antrean digital untuk Pelayanan Statistik Terpadu BPS Kabupa
 - Perintah seed (`bun run db:seed` atau via docker compose) hanya untuk development; tidak aktif di `NODE_ENV=production`.
 - Wajib gunakan nilai unik untuk `NEXTAUTH_SECRET` dan `NEXT_PUBLIC_STATIC_UUID`.
 - WA Bot opsional; jika `NEXT_PUBLIC_WA_API_URL` atau `WA_ADMIN_KEY` kosong, pengingat SKD tidak dijalankan.
+- Pengingat jadwal petugas PST via Fonnte opsional; set `FONNTE_TOKEN` bila ingin kirim otomatis.
+- Endpoint automasi reminder jadwal bisa diamankan dengan `SCHEDULE_CRON_SECRET`.
 - Jika memakai docker compose, port default 3001 (host) -> 3000 (container); ubah `NEXTAUTH_URL` jika mapping berbeda.
 - Jika beralih dari PostgreSQL ke MySQL, regenerasi migration Prisma (lihat langkah di bagian Instalasi).
 
@@ -60,6 +63,8 @@ NEXTAUTH_URL="http://localhost:3000"        # jika docker compose (3001:3000), g
 NEXT_PUBLIC_STATIC_UUID="uuid_statis_qr"
 NEXT_PUBLIC_WA_API_URL="https://example.com/wa-api"  # opsional
 WA_ADMIN_KEY="server_only_admin_key"                 # opsional, jangan diawali NEXT_PUBLIC
+FONNTE_TOKEN="token_fonnte_anda"                     # opsional, untuk reminder jadwal petugas PST
+SCHEDULE_CRON_SECRET="secret_khusus_cron"            # opsional, header x-cron-secret
 # Opsi seed dev
 # SEED_ADMIN_USERNAME="admin"
 # SEED_ADMIN_PASSWORD="password_dev"

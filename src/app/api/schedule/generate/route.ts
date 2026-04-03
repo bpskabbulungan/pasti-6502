@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { Role } from "@prisma/client";
 import { generateDailySchedule } from "@api/modules/schedule";
 
 export async function POST(req: NextRequest) {
@@ -8,6 +9,9 @@ export async function POST(req: NextRequest) {
 		const session = await getServerSession(authOptions);
 		if (!session) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		}
+		if (session.user.role !== Role.ADMIN) {
+			return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 		}
 
 		const body = await req.json().catch(() => ({}));

@@ -1,8 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useSession } from "next-auth/react";
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { format, startOfToday, startOfWeek, startOfMonth, subMonths } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -29,16 +27,22 @@ import {
 } from "lucide-react";
 import AnalyticsSkeleton from "@/modules/dashboard/components/skeletons/AnalyticsSkeleton";
 import { analyticsApi } from "@/services/api/analytics";
-import type { AnalyticsSummary } from "@shared/types/analytics";
+import { useLiveQuery } from "@/hooks/use-live-query";
+import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
+import type { AnalyticsExportFormat, AnalyticsSummary } from "@shared/types/analytics";
 import type { ErrorResponse } from "@shared/types/api";
-import type {
-  XAxisProps,
-  YAxisProps,
-  TooltipProps,
-  LegendProps,
-  BarProps,
-  PieProps,
-  CartesianGridProps,
+import {
+  ResponsiveContainer,
+  BarChart as RechartsBarChart,
+  PieChart as RechartsPieChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  Bar,
+  Pie,
+  Cell,
 } from "recharts";
 import type {
   ValueType,
@@ -46,63 +50,10 @@ import type {
   Payload as TooltipPayload,
 } from "recharts/types/component/DefaultTooltipContent";
 
-const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
-  ssr: false,
-});
-const RechartsBarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
-const RechartsPieChart = dynamic(() => import("recharts").then((m) => m.PieChart), { ssr: false });
-const XAxis = dynamic(
-  () =>
-    import("recharts").then((m) => ({
-      default: m.XAxis as unknown as React.ComponentType<XAxisProps>,
-    })),
-  { ssr: false }
-) as unknown as React.ComponentType<XAxisProps>;
-const YAxis = dynamic(
-  () =>
-    import("recharts").then((m) => ({
-      default: m.YAxis as unknown as React.ComponentType<YAxisProps>,
-    })),
-  { ssr: false }
-) as unknown as React.ComponentType<YAxisProps>;
-const CartesianGrid = dynamic(
-  () =>
-    import("recharts").then((m) => ({
-      default: m.CartesianGrid as unknown as React.ComponentType<CartesianGridProps>,
-    })),
-  { ssr: false }
-) as unknown as React.ComponentType<CartesianGridProps>;
-const Tooltip = dynamic(
-  () =>
-    import("recharts").then((m) => ({
-      default: m.Tooltip as unknown as React.ComponentType<TooltipProps<ValueType, NameType>>,
-    })),
-  { ssr: false }
-) as unknown as React.ComponentType<TooltipProps<ValueType, NameType>>;
-const Legend = dynamic(
-  () =>
-    import("recharts").then((m) => ({
-      default: m.Legend as unknown as React.ComponentType<LegendProps>,
-    })),
-  { ssr: false }
-) as unknown as React.ComponentType<LegendProps>;
-const Bar = dynamic(
-  () =>
-    import("recharts").then((m) => ({
-      default: m.Bar as unknown as React.ComponentType<BarProps>,
-    })),
-  { ssr: false }
-) as unknown as React.ComponentType<BarProps>;
-const Pie = dynamic(
-  () =>
-    import("recharts").then((m) => ({
-      default: m.Pie as unknown as React.ComponentType<PieProps>,
-    })),
-  { ssr: false }
-) as unknown as React.ComponentType<PieProps>;
-const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
-
 type AnalyticsData = AnalyticsSummary;
+type AnalyticsPageProps = {
+  initialAnalytics: AnalyticsData;
+};
 
 const COLORS = ["#2563EB", "#22C55E", "#F59E0B", "#F97316", "#6366F1", "#06B6D4", "#EC4899"];
 const QUEUE_TYPE_COLORS = ["#3B82F6", "#10B981"];
@@ -112,15 +63,6 @@ const RANGE_LABELS: Record<string, string> = {
   month: "Bulan Ini",
   "3months": "3 Bulan Terakhir",
 };
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("id-ID", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error !== "object" || !error) {
@@ -136,185 +78,95 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return message || fallback;
 };
 
-const formatDateTime = (value: Date) => DATE_TIME_FORMATTER.format(value);
+const formatDateTime = (value: Date) => formatDisplayDateTimeWithSeconds(value);
 
-export default function AnalyticsPage() {
-  const { data: session } = useSession({
-    required: false,
-    onUnauthenticated() {
-      // Handle unauthenticated users
-    },
-  });
-  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function AnalyticsPage({ initialAnalytics }: AnalyticsPageProps) {
   const [timeRange, setTimeRange] = useState<string>("today");
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [dataHash, setDataHash] = useState<string>("");
-  const [visibilityState, setVisibilityState] = useState<string>("visible");
+  const [exportingFormat, setExportingFormat] = useState<AnalyticsExportFormat | null>(null);
+  const getDateRangeParams = useCallback((range: string) => {
+    const today = new Date();
+    let startDate;
 
-  const fetchAnalyticsData = useCallback(
-    async (currentRange: string) => {
-      if (!session) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      try {
-        let startDate;
-        const today = new Date();
-
-        switch (currentRange) {
-          case "today":
-            startDate = startOfToday();
-            break;
-          case "week":
-            startDate = startOfWeek(today, { weekStartsOn: 1 });
-            break;
-          case "month":
-            startDate = startOfMonth(today);
-            break;
-          case "3months":
-            startDate = subMonths(today, 3);
-            break;
-          default:
-            startDate = startOfToday();
-        }
-
-        const formattedStartDate = format(startDate, "yyyy-MM-dd");
-        const data = await analyticsApi.summary({
-          startDate: formattedStartDate,
-          hash: dataHash || undefined,
-        });
-
-        if (!data.hasOwnProperty("hasChanges") || data.hasChanges) {
-          setAnalyticsData(data);
-          if (data.hash) setDataHash(data.hash);
-
-          if (data.dataLastUpdatedAt) {
-            setLastUpdated(new Date(data.dataLastUpdatedAt));
-          } else {
-            setLastUpdated(new Date());
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching analytics data:", error);
-        toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat data analitik"));
-        setAnalyticsData(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [session, dataHash]
-  );
-
-  useEffect(() => {
-    if (session) {
-      fetchAnalyticsData(timeRange);
-    } else {
-      setAnalyticsData(null);
-      setLastUpdated(null);
-      setLoading(false);
+    switch (range) {
+      case "today":
+        startDate = startOfToday();
+        break;
+      case "week":
+        startDate = startOfWeek(today, { weekStartsOn: 1 });
+        break;
+      case "month":
+        startDate = startOfMonth(today);
+        break;
+      case "3months":
+        startDate = subMonths(today, 3);
+        break;
+      default:
+        startDate = startOfToday();
     }
-  }, [session, timeRange, fetchAnalyticsData]);
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      setVisibilityState(document.visibilityState);
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    setVisibilityState(document.visibilityState);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    return {
+      startDate: format(startDate, "yyyy-MM-dd"),
+      endDate: format(today, "yyyy-MM-dd"),
     };
   }, []);
 
-  useEffect(() => {
-    if (!session) return;
+  const { startDate, endDate } = getDateRangeParams(timeRange);
+  const currentUrl = analyticsApi.summaryUrl({ startDate, endDate });
+  const initialUrl = analyticsApi.summaryUrl(getDateRangeParams("today"));
+  const {
+    data: analyticsData,
+    isLoading,
+    isRefreshing,
+    lastFetchedAt,
+    refresh,
+  } = useLiveQuery<AnalyticsData>(currentUrl, {
+    fallbackData: currentUrl === initialUrl ? initialAnalytics : undefined,
+    fallbackEtag:
+      currentUrl === initialUrl && initialAnalytics.hash ? `"${initialAnalytics.hash}"` : null,
+    refreshInterval: 60_000,
+    onError: (error) => {
+      console.error("Error fetching analytics data:", error);
+      toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat data analitik"));
+    },
+  });
 
-    let isMounted = true;
-    const pollInterval = 60000;
-    let pollTimer: NodeJS.Timeout | null = null;
+  const handleExportData = async (exportFormat: AnalyticsExportFormat) => {
+    try {
+      setExportingFormat(exportFormat);
+      const { startDate, endDate } = getDateRangeParams(timeRange);
+      const { job } = await analyticsApi.createExportJob({
+        startDate,
+        endDate,
+        format: exportFormat,
+      });
 
-    const pollForChanges = async () => {
-      if (!isMounted || visibilityState !== "visible") return;
+      let completedJob = job;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        if (completedJob.status === "COMPLETED" && completedJob.downloadUrl) {
+          break;
+        }
 
-      try {
-        const startDate = format(
-          timeRange === "today"
-            ? startOfToday()
-            : timeRange === "week"
-              ? startOfWeek(new Date(), { weekStartsOn: 1 })
-              : timeRange === "month"
-                ? startOfMonth(new Date())
-                : timeRange === "3months"
-                  ? subMonths(new Date(), 3)
-                  : startOfToday(),
-          "yyyy-MM-dd"
-        );
+        if (completedJob.status === "FAILED") {
+          throw new Error(completedJob.errorMessage || "Gagal menyiapkan export analitik");
+        }
 
-        const data = await analyticsApi.summary({
-          startDate,
-          hash: dataHash || undefined,
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 1500);
         });
 
-        if (isMounted) {
-          if (!data.hasOwnProperty("hasChanges") || data.hasChanges) {
-            setAnalyticsData(data);
-            if (data.hash) setDataHash(data.hash);
-
-            if (data.dataLastUpdatedAt) {
-              setLastUpdated(new Date(data.dataLastUpdatedAt));
-            } else {
-              setLastUpdated(new Date());
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error polling for analytics data:", error);
+        const response = await analyticsApi.getExportJob(job.id);
+        completedJob = response.job;
       }
 
-      if (isMounted) {
-        pollTimer = setTimeout(pollForChanges, pollInterval);
+      if (completedJob.status !== "COMPLETED" || !completedJob.downloadUrl) {
+        throw new Error("Export analitik belum selesai, silakan coba lagi.");
       }
-    };
-
-    pollForChanges();
-
-    return () => {
-      isMounted = false;
-      if (pollTimer) clearTimeout(pollTimer);
-    };
-  }, [session, timeRange, dataHash, visibilityState]);
-
-  const handleExportData = async (exportFormat: "xlsx" | "pdf") => {
-    try {
-      let startDate;
-      const today = new Date();
-
-      switch (timeRange) {
-        case "today":
-          startDate = startOfToday();
-          break;
-        case "week":
-          startDate = startOfWeek(today, { weekStartsOn: 1 });
-          break;
-        case "month":
-          startDate = startOfMonth(today);
-          break;
-        case "3months":
-          startDate = subMonths(today, 3);
-          break;
-        default:
-          startDate = startOfToday();
-      }
-
-      const formattedStartDate = format(startDate, "yyyy-MM-dd");
 
       const a = document.createElement("a");
-      a.href = `/api/analytics/export?startDate=${formattedStartDate}&format=${exportFormat}`;
-      a.download = `pst-queue-report-${format(new Date(), "yyyy-MM-dd")}.${exportFormat}`;
+      a.href = analyticsApi.downloadUrl(completedJob.id);
+      if (completedJob.fileName) {
+        a.download = completedJob.fileName;
+      }
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -322,21 +174,20 @@ export default function AnalyticsPage() {
       toast.success(`Data berhasil diekspor dalam format ${exportFormat.toUpperCase()}`);
     } catch (error) {
       console.error("Error exporting data:", error);
-      toast.error("Terjadi kesalahan saat mengekspor data");
+      toast.error(getErrorMessage(error, "Terjadi kesalahan saat mengekspor data"));
+    } finally {
+      setExportingFormat(null);
     }
   };
 
-  if (!session) {
-    return <AnalyticsSkeleton />;
-  }
-
-  const isInitialLoading = loading && !analyticsData;
-  const isRefreshing = loading && Boolean(analyticsData);
-  const updatedLabel = lastUpdated
-    ? formatDateTime(lastUpdated)
-    : isInitialLoading
-      ? "Memuat data awal..."
-      : "Belum ada data";
+  const isInitialLoading = isLoading && !analyticsData;
+  const updatedLabel = analyticsData?.dataLastUpdatedAt
+    ? formatDateTime(new Date(analyticsData.dataLastUpdatedAt))
+    : lastFetchedAt
+      ? formatDateTime(new Date(lastFetchedAt))
+      : isInitialLoading
+        ? "Memuat data awal..."
+        : "Belum ada data";
   const trackUpdatedLabel = analyticsData?.trackLastUpdated
     ? formatDateTime(new Date(analyticsData.trackLastUpdated))
     : null;
@@ -356,7 +207,7 @@ export default function AnalyticsPage() {
             Coba muat ulang atau periksa koneksi Anda.
           </CardDescription>
           <div className="mt-4 flex justify-center">
-            <Button onClick={() => fetchAnalyticsData(timeRange)} className="gap-2">
+            <Button onClick={() => void refresh()} className="gap-2">
               <RefreshCcw className="h-4 w-4" />
               Muat Ulang
             </Button>
@@ -464,24 +315,24 @@ export default function AnalyticsPage() {
               <Button
                 variant="outline"
                 onClick={() => handleExportData("xlsx")}
-                disabled={loading || !analyticsData}
+                disabled={isRefreshing || exportingFormat !== null || !analyticsData}
                 className="border-border/80"
               >
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
-                XLSX
+                {exportingFormat === "xlsx" ? "Menyusun..." : "XLSX"}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => handleExportData("pdf")}
-                disabled={loading || !analyticsData}
+                disabled={isRefreshing || exportingFormat !== null || !analyticsData}
                 className="border-border/80"
               >
                 <FileText className="mr-2 h-4 w-4" />
-                PDF
+                {exportingFormat === "pdf" ? "Menyusun..." : "PDF"}
               </Button>
               <Button
-                onClick={() => fetchAnalyticsData(timeRange)}
-                disabled={loading}
+                onClick={() => void refresh()}
+                disabled={isRefreshing}
                 className="gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
                 aria-label="Perbarui data statistik"
               >

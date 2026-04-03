@@ -106,7 +106,7 @@ export default function Home() {
                 <CalendarClock className="h-4 w-4" />
               </div>
               <div className="space-y-2">
-                <p className="font-semibold text-primary-color">Jadwal Petugas PST</p>
+                <p className="font-semibold text-primary-color">Jadwal Petugas</p>
                 <p className="text-sm text-secondary-color [text-align:justify] [text-justify:inter-word]">
                   Penugasan otomatis disertai notifikasi pengingat lewat WhatsApp untuk memastikan
                   layanan selalu siap.

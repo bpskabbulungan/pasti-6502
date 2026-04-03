@@ -41,6 +41,7 @@ import type { QueueTracking } from "@shared/types/queue";
 import type { VisitorFormService } from "@shared/types/visitor-form";
 
 type Service = VisitorFormService;
+const TRACKING_POLL_INTERVAL_MS = 60000;
 
 const genderOptions = [
   { value: Gender.MALE, label: "Laki-Laki" },
@@ -306,42 +307,63 @@ export default function VisitorFormPage() {
     validateUuid();
   }, [uuid, checkTrackingStatus]);
   useEffect(() => {
+    let isActive = true;
     let pollingInterval: NodeJS.Timeout | null = null;
 
     if (isTracking && trackingStatus === "SUCCESS" && trackingInfo?.status !== "COMPLETED") {
-      // Function to poll for changes
-      const pollForChanges = () => {
-        if (document.visibilityState === "visible") {
-          checkTrackingStatus(false); // Don't force refresh on polling
+      const clearPoll = () => {
+        if (pollingInterval) {
+          clearTimeout(pollingInterval);
+          pollingInterval = null;
         }
-
-        // Schedule next poll
-        pollingInterval = setTimeout(pollForChanges, 30000); // Refresh every 30 seconds
       };
 
-      // Start polling
-      pollingInterval = setTimeout(pollForChanges, 30000);
+      const scheduleNextPoll = () => {
+        if (!isActive || document.visibilityState !== "visible") {
+          return;
+        }
 
-      // Track document visibility to pause polling when tab is not visible
+        pollingInterval = setTimeout(runPoll, TRACKING_POLL_INTERVAL_MS);
+      };
+
+      const runPoll = async () => {
+        if (!isActive || document.visibilityState !== "visible") {
+          clearPoll();
+          return;
+        }
+
+        await checkTrackingStatus(false);
+        scheduleNextPoll();
+      };
+
       const handleVisibilityChange = () => {
-        if (document.visibilityState === "visible" && pollingInterval === null) {
-          // Resume polling when tab becomes visible again
-          checkTrackingStatus(false);
-          pollingInterval = setTimeout(pollForChanges, 30000);
+        if (!isActive) {
+          return;
+        }
+
+        if (document.visibilityState === "visible") {
+          clearPoll();
+          void checkTrackingStatus(false);
+          scheduleNextPoll();
+        } else {
+          clearPoll();
         }
       };
 
-      // Add visibility change listener
+      if (document.visibilityState === "visible") {
+        scheduleNextPoll();
+      }
       document.addEventListener("visibilitychange", handleVisibilityChange);
 
       return () => {
+        isActive = false;
         document.removeEventListener("visibilitychange", handleVisibilityChange);
-        if (pollingInterval) clearTimeout(pollingInterval);
+        clearPoll();
       };
     }
 
-    // Cleanup
     return () => {
+      isActive = false;
       if (pollingInterval) clearTimeout(pollingInterval);
     };
   }, [isTracking, trackingStatus, trackingInfo, checkTrackingStatus]);

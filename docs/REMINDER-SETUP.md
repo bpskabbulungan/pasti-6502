@@ -33,6 +33,22 @@ WA_ADMIN_KEY=buselkab-bps-admin
 - `NEXT_PUBLIC_WA_API_URL`: URL API WhatsApp Bot
 - `WA_ADMIN_KEY`: Kunci administrator untuk mengakses API (hanya disimpan di server)
 
+### Jadwal Petugas PST (Fonnte)
+
+```
+FONNTE_TOKEN=isi_token_fonnte
+FONNTE_API_URL=https://api.fonnte.com/send
+SCHEDULE_CRON_SECRET=secret_khusus_cron
+```
+
+- `FONNTE_TOKEN`: token API Fonnte untuk pengiriman pesan otomatis jadwal petugas.
+- `FONNTE_API_URL`: endpoint API Fonnte (opsional, default `https://api.fonnte.com/send`).
+- `SCHEDULE_CRON_SECRET`: secret untuk memanggil endpoint cron `POST /api/schedule/reminders/run` menggunakan header `x-cron-secret`.
+
+Catatan:
+- Petugas jadwal PST diambil dari daftar pengguna dengan role `PETUGAS` (bukan dari data terpisah).
+- Pastikan nomor WhatsApp setiap akun petugas diisi di menu `Kelola Pengguna`, agar reminder Fonnte dapat terkirim.
+
 ## Penggunaan Tiap Metode
 
 ### 1. WhatsApp Direct

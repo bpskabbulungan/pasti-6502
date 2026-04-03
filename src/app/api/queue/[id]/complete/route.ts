@@ -25,9 +25,11 @@ export async function POST(
 		return NextResponse.json<{
 			message: string;
 			queue: QueueDetail;
+			nextQueue: QueueDetail | null;
 		}>({
 			message: "Queue has been completed",
 			queue: result.queue,
+			nextQueue: result.nextQueue ?? null,
 		});
 	} catch (error) {
 		console.error("Error completing queue:", error);

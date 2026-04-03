@@ -1,5 +1,5 @@
 import prisma from "@api/infrastructure/database/prisma";
-import { QueueStatus as PrismaQueueStatus, Role } from "@prisma/client";
+import { QueueStatus as PrismaQueueStatus, Role, Prisma } from "@prisma/client";
 import { sendWhatsAppBotReminder } from "@api/modules/reminders";
 import { QueueStatus as SharedQueueStatus } from "@shared/constants/enums";
 import type { QueueDetail } from "@shared/types/queue";
@@ -8,6 +8,12 @@ const formatQueueDate = (date: Date): string => {
 	const day = date.getDate().toString().padStart(2, "0");
 	const month = (date.getMonth() + 1).toString().padStart(2, "0");
 	return `${day}${month}`;
+};
+
+const createNotificationAsync = (data: Prisma.NotificationUncheckedCreateInput) => {
+	void prisma.notification.create({ data }).catch((error) => {
+		console.error("Failed to persist notification", error);
+	});
 };
 
 export async function getQueueDetail(id: string) {
@@ -30,6 +36,11 @@ export async function getQueueDetail(id: string) {
 				},
 			},
 			admin: {
+				select: {
+					name: true,
+				},
+			},
+			dutyStaff: {
 				select: {
 					name: true,
 				},
@@ -64,6 +75,7 @@ export async function getQueueDetail(id: string) {
 				institution: visitorInstitution,
 			},
 			admin: queue.admin ? { name: queue.admin.name } : null,
+			dutyStaff: queue.dutyStaff ? { name: queue.dutyStaff.name } : null,
 		} satisfies QueueDetail,
 	};
 }
@@ -93,12 +105,18 @@ export async function serveQueue(queueId: string, adminId: string) {
 		return { ok: false as const, status: 404, error: "Admin user not found in database" };
 	}
 
+	const dutySchedule = await prisma.dutySchedule.findUnique({
+		where: { scheduleDate: queue.queueDate },
+		select: { staffId: true },
+	});
+
 	const updatedQueue = await prisma.queue.update({
 		where: { id: queueId },
 		data: {
 			status: PrismaQueueStatus.SERVING,
 			startTime: new Date(),
 			adminId,
+			dutyStaffId: dutySchedule?.staffId ?? null,
 		},
 		include: {
 			visitor: {
@@ -118,20 +136,23 @@ export async function serveQueue(queueId: string, adminId: string) {
 					name: true,
 				},
 			},
+			dutyStaff: {
+				select: {
+					name: true,
+				},
+			},
 		},
 	});
 
-	await prisma.notification.create({
-		data: {
-			type: "QUEUE_SERVING",
-			title: "Antrean Sedang Dilayani",
-			message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
-				new Date(updatedQueue.createdAt)
-			)} (${
-				updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
-			}) sedang dilayani oleh ${adminUser.name}`,
-			isRead: false,
-		},
+	createNotificationAsync({
+		type: "QUEUE_SERVING",
+		title: "Antrean Sedang Dilayani",
+		message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
+			new Date(updatedQueue.createdAt)
+		)} (${
+			updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
+		}) sedang dilayani oleh ${adminUser.name}`,
+		isRead: false,
 	});
 
 	return { ok: true as const, queue: updatedQueue };
@@ -178,24 +199,69 @@ export async function completeQueue(queueId: string, userId: string, role: Role)
 					name: true,
 				},
 			},
+			dutyStaff: {
+				select: {
+					name: true,
+				},
+			},
 		},
 	});
 
-	await prisma.notification.create({
-		data: {
-			type: "QUEUE_COMPLETED",
-			title: "Antrean Selesai",
-			message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
-				new Date(updatedQueue.createdAt)
-			)} (${
-				updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
-			}) telah selesai dilayani untuk ${updatedQueue.service.name}`,
-			isRead: false,
-			userId,
+	createNotificationAsync({
+		type: "QUEUE_COMPLETED",
+		title: "Antrean Selesai",
+		message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
+			new Date(updatedQueue.createdAt)
+		)} (${
+			updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
+		}) telah selesai dilayani untuk ${updatedQueue.service.name}`,
+		isRead: false,
+		userId,
+	});
+
+	const dayStart = new Date(queue.queueDate);
+	dayStart.setHours(0, 0, 0, 0);
+	const dayEnd = new Date(dayStart);
+	dayEnd.setDate(dayEnd.getDate() + 1);
+
+	const nextQueue = await prisma.queue.findFirst({
+		where: {
+			status: PrismaQueueStatus.WAITING,
+			queueDate: {
+				gte: dayStart,
+				lt: dayEnd,
+			},
+		},
+		include: {
+			visitor: {
+				select: {
+					name: true,
+					phone: true,
+					institution: true,
+				},
+			},
+			service: {
+				select: {
+					name: true,
+				},
+			},
+			admin: {
+				select: {
+					name: true,
+				},
+			},
+			dutyStaff: {
+				select: {
+					name: true,
+				},
+			},
+		},
+		orderBy: {
+			queueNumber: "asc",
 		},
 	});
 
-	return { ok: true as const, queue: updatedQueue };
+	return { ok: true as const, queue: updatedQueue, nextQueue: nextQueue ?? null };
 }
 
 export async function cancelQueue(queueId: string, userId: string, role: Role) {
@@ -247,21 +313,24 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 					name: true,
 				},
 			},
+			dutyStaff: {
+				select: {
+					name: true,
+				},
+			},
 		},
 	});
 
-	await prisma.notification.create({
-		data: {
-			type: "QUEUE_CANCELED",
-			title: "Antrean Dibatalkan",
-			message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
-				new Date(updatedQueue.createdAt)
-			)} (${
-				updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
-			}) untuk layanan ${updatedQueue.service.name} telah dibatalkan`,
-			isRead: false,
-			userId,
-		},
+	createNotificationAsync({
+		type: "QUEUE_CANCELED",
+		title: "Antrean Dibatalkan",
+		message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
+			new Date(updatedQueue.createdAt)
+		)} (${
+			updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
+		}) untuk layanan ${updatedQueue.service.name} telah dibatalkan`,
+		isRead: false,
+		userId,
 	});
 
 	return { ok: true as const, queue: updatedQueue };
@@ -335,15 +404,13 @@ export async function updateSkdStatusByQueueId(queueId: string, filled: boolean)
 	});
 
 	if (filled) {
-		await prisma.notification.create({
-			data: {
-				type: "SKD_FILLED",
-				title: "SKD Diisi",
-				message: `Pengunjung ${queue.visitor.name} telah mengisi form SKD untuk antrean #${
-					queue.queueNumber
-				}-${formatQueueDate(new Date(queue.createdAt))} `,
-				isRead: false,
-			},
+		createNotificationAsync({
+			type: "SKD_FILLED",
+			title: "SKD Diisi",
+			message: `Pengunjung ${queue.visitor.name} telah mengisi form SKD untuk antrean #${
+				queue.queueNumber
+			}-${formatQueueDate(new Date(queue.createdAt))} `,
+			isRead: false,
 		});
 	}
 
@@ -387,13 +454,11 @@ export async function triggerSkdReminderBot(queueId: string, message?: string) {
 	const result = await sendWhatsAppBotReminder(queue.visitor.phone, reminderMessage);
 
 	if (result.success) {
-		await prisma.notification.create({
-			data: {
-				type: "REMINDER_SKD",
-				title: "Pengingat SKD",
-				message: `Pengingat SKD telah dikirim ke ${queue.visitor.name}`,
-				isRead: false,
-			},
+		createNotificationAsync({
+			type: "REMINDER_SKD",
+			title: "Pengingat SKD",
+			message: `Pengingat SKD telah dikirim ke ${queue.visitor.name}`,
+			isRead: false,
 		});
 	}
 

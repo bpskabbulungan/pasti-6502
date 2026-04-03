@@ -1,13 +1,7 @@
-"use client";
+import UIShowcasePage from "@/modules/dashboard/pages/UIShowcasePage";
+import { requireDashboardUser } from "@/lib/dashboard-session";
 
-import dynamic from "next/dynamic";
-import UIShowcaseSkeleton from "@/modules/dashboard/components/skeletons/UIShowcaseSkeleton";
-
-const UIShowcasePage = dynamic(
-	() => import("@/modules/dashboard/pages/UIShowcasePage"),
-	{ ssr: false, loading: () => <UIShowcaseSkeleton /> }
-);
-
-export default function Page() {
+export default async function Page() {
+	await requireDashboardUser();
 	return <UIShowcasePage />;
 }

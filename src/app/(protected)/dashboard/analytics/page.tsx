@@ -1,13 +1,16 @@
-"use client";
+import AnalyticsPage from "@/modules/dashboard/pages/AnalyticsPage";
+import { requireAdminDashboardUser } from "@/lib/dashboard-session";
+import { getAnalyticsSummary } from "@api/modules/analytics";
 
-import dynamic from "next/dynamic";
-import AnalyticsSkeleton from "@/modules/dashboard/components/skeletons/AnalyticsSkeleton";
+export default async function Page() {
+  await requireAdminDashboardUser();
 
-const AnalyticsPage = dynamic(
-	() => import("@/modules/dashboard/pages/AnalyticsPage"),
-	{ ssr: false, loading: () => <AnalyticsSkeleton /> }
-);
+  const startDate = new Date();
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 1);
 
-export default function Page() {
-	return <AnalyticsPage />;
+  const initialAnalytics = await getAnalyticsSummary(startDate, endDate);
+
+  return <AnalyticsPage initialAnalytics={initialAnalytics} />;
 }

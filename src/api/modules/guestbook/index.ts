@@ -1,1 +1,1 @@
-export { getGuestbookEntries } from "./guestbook.service";
+export { exportGuestbookEntries, getGuestbookEntries } from "./guestbook.service";

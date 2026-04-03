@@ -1,29 +1,24 @@
 ﻿"use client";
 
-import { useSession } from "next-auth/react";
-import { useEffect, useState, useCallback } from "react";
+import type { Session } from "next-auth";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Role } from "@/shared/constants/enums";
 import Link from "next/link";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  CheckCircle,
-  Clock3,
-  Hourglass,
-  RefreshCcw,
-  Settings,
-  Sparkles,
-  Users,
-  XCircle,
-} from "lucide-react";
-import AuthLoadingSkeleton from "@/modules/dashboard/components/skeletons/AuthLoadingSkeleton";
+import { CheckCircle, Clock3, Hourglass, RefreshCcw, Settings, Users, XCircle } from "lucide-react";
 import DashboardSkeleton from "@/modules/dashboard/components/skeletons/DashboardSkeleton";
+import { useLiveQuery } from "@/hooks/use-live-query";
 import { dashboardApi } from "@/services/api/dashboard";
+import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import type { DashboardStatsResponse } from "@shared/types/dashboard";
 import type { ErrorResponse } from "@shared/types/api";
 
 type DashboardStats = DashboardStatsResponse;
+type DashboardPageProps = {
+  currentUser: Session["user"];
+  initialStats: DashboardStats;
+};
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error !== "object" || !error) {
@@ -39,112 +34,30 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return message || fallback;
 };
 
-export default function DashboardPage() {
-  const { data: session } = useSession();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null); // State untuk menyimpan waktu update terakhir
-  const [dataHash, setDataHash] = useState<string>(""); // Track data hash for change detection
-
-  const fetchStats = useCallback(
-    async (forceRefresh: boolean = false) => {
-      if (!session) {
-        setLoading(false);
-        return;
-      }
-
-      // Only show loading indicator on forced refresh or initial load
-      if (forceRefresh || !stats) {
-        setLoading(true);
-      }
-
-      try {
-        const data = await dashboardApi.stats(!forceRefresh ? dataHash : undefined);
-
-        // Only update if there are changes or initial load or force refresh
-        if (forceRefresh || !data.hasOwnProperty("hasChanges") || data.hasChanges) {
-          setStats(data);
-          setLastUpdatedAt(new Date()); // Set waktu saat ini sebagai waktu update terakhir
-
-          // Store the hash for future comparisons
-          if (data.hash) setDataHash(data.hash);
-        }
-      } catch (error) {
-        console.error("Error fetching stats:", error);
-        toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat statistik"));
-      } finally {
-        if (forceRefresh || !stats) {
-          setLoading(false);
-        }
-      }
+export default function DashboardPage({ currentUser, initialStats }: DashboardPageProps) {
+  const {
+    data: stats,
+    isLoading,
+    isRefreshing,
+    lastFetchedAt,
+    refresh,
+  } = useLiveQuery<DashboardStats>(dashboardApi.statsUrl(), {
+    fallbackData: initialStats,
+    fallbackEtag: initialStats.hash ? `"${initialStats.hash}"` : null,
+    refreshInterval: 30_000,
+    onError: (error) => {
+      console.error("Error fetching stats:", error);
+      toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat statistik"));
     },
-    [session, dataHash, stats]
-  );
+  });
 
-  // Setup polling for data changes with change detection
-  useEffect(() => {
-    if (!session) return;
-
-    // Initial fetch
-    fetchStats();
-
-    // Set up polling for changes
-    const pollInterval = 30000; // Poll every 30 seconds
-    let pollTimer: NodeJS.Timeout | null = null;
-
-    // Function to poll for changes
-    const pollForChanges = () => {
-      if (document.visibilityState === "visible") {
-        fetchStats(false); // Don't force refresh on polling
-      }
-
-      // Schedule next poll
-      pollTimer = setTimeout(pollForChanges, pollInterval);
-    };
-
-    // Start polling
-    pollTimer = setTimeout(pollForChanges, pollInterval);
-
-    // Track document visibility to pause polling when tab is not visible
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && pollTimer === null) {
-        // Resume polling when tab becomes visible again
-        fetchStats();
-        pollTimer = setTimeout(pollForChanges, pollInterval);
-      }
-    };
-
-    // Add visibility change listener
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // Cleanup
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (pollTimer) clearTimeout(pollTimer);
-    };
-  }, [fetchStats, session]);
-
-  if (!session) {
-    // Use Auth Loading Skeleton component for better UX
-    return <AuthLoadingSkeleton />;
-  }
-
-  const updatedLabel = lastUpdatedAt
-    ? new Intl.DateTimeFormat("id-ID", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).format(lastUpdatedAt)
-    : loading && !stats
+  const updatedLabel = lastFetchedAt
+    ? formatDisplayDateTimeWithSeconds(lastFetchedAt)
+    : isLoading && !stats
       ? "Memuat data awal..."
       : "Belum ada data";
-  const isRefreshing = loading && Boolean(stats);
 
-  if (loading && !stats) {
+  if (isLoading && !stats) {
     return <DashboardSkeleton />;
   }
 
@@ -154,7 +67,7 @@ export default function DashboardPage() {
         <div className="rounded-2xl border border-border/80 bg-card/80 p-6 text-center shadow-md">
           <p className="text-secondary-color">Tidak ada data statistik untuk ditampilkan.</p>
           <Button
-            onClick={() => fetchStats(true)}
+            onClick={() => void refresh()}
             className="mt-4 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
           >
             Muat Ulang
@@ -289,7 +202,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {session.user.role === Role.PETUGAS && (
+            {currentUser.role === Role.PETUGAS && (
               <Button
                 asChild
                 variant="outline"
@@ -299,13 +212,13 @@ export default function DashboardPage() {
               </Button>
             )}
             <Button
-              onClick={() => fetchStats(true)}
-              disabled={loading}
+              onClick={() => void refresh()}
+              disabled={isRefreshing}
               className="flex items-center gap-2 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
               aria-label="Perbarui data statistik"
             >
-              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              <span>{loading ? "Memperbarui..." : "Perbarui Data"}</span>
+              <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              <span>{isRefreshing ? "Memperbarui..." : "Perbarui Data"}</span>
             </Button>
           </div>
         </div>
@@ -381,7 +294,7 @@ export default function DashboardPage() {
         })}
       </section>
 
-      {session.user.role === Role.ADMIN && (
+      {currentUser.role === Role.ADMIN && (
         <section className="grid gap-6 md:grid-cols-2">
           <Card className="border-border/80 bg-card/80 shadow-sm">
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
@@ -424,6 +337,9 @@ export default function DashboardPage() {
                 </Button>
                 <Button asChild variant="outline" size="sm" className="border-border/80 text-xs">
                   <Link href="/dashboard/qrcode">QR Code</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm" className="border-border/80 text-xs">
+                  <Link href="/dashboard/duty-schedule">Jadwal Petugas</Link>
                 </Button>
                 <Button asChild variant="outline" size="sm" className="border-border/80 text-xs">
                   <Link href="/dashboard/analytics">Analisis</Link>

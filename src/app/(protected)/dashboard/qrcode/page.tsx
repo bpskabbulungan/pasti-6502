@@ -1,13 +1,7 @@
-"use client";
+import QRCodePage from "@/modules/dashboard/pages/QRCodePage";
+import { requireAdminDashboardUser } from "@/lib/dashboard-session";
 
-import dynamic from "next/dynamic";
-import QRCodeSkeleton from "@/modules/dashboard/components/skeletons/QRCodeSkeleton";
-
-const QRCodePage = dynamic(
-	() => import("@/modules/dashboard/pages/QRCodePage"),
-	{ ssr: false, loading: () => <QRCodeSkeleton /> }
-);
-
-export default function Page() {
+export default async function Page() {
+	await requireAdminDashboardUser();
 	return <QRCodePage />;
 }

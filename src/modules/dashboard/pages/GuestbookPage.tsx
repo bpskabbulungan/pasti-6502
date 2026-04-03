@@ -6,7 +6,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
-  Eye,
+  FileSpreadsheet,
+  FileText,
   RefreshCcw,
   Search,
   Users,
@@ -22,12 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -36,20 +32,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import GuestbookTableRow from "@/modules/dashboard/components/table-rows/GuestbookTableRow";
 import TableSkeleton from "@/modules/dashboard/components/skeletons/TableSkeleton";
 import { guestbookApi } from "@/services/api/guestbook";
+import { useLiveQuery } from "@/hooks/use-live-query";
 import { Gender, LastEducation, Purpose, QueueStatus } from "@/shared/constants/enums";
+import { formatDisplayDateTime } from "@/lib/date-format";
 import type { ErrorResponse } from "@shared/types/api";
-import type { GuestbookEntry, GuestbookSummary } from "@shared/types/guestbook";
+import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
 
 type StatusFilter = "ALL" | QueueStatus;
 type PurposeFilter = "ALL" | Purpose;
@@ -123,35 +115,19 @@ const statusBadgeClass: Record<QueueStatus, string> = {
   CANCELED: "border-red-500/30 bg-red-500/10 text-red-700",
 };
 
-const formatDate = (value: string | Date) =>
-  new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+const formatDateTime = (value: string | Date) => formatDisplayDateTime(value);
 
-const formatDateTime = (value: string | Date) =>
-  new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(value));
-
-const formatQueueCode = (queueNumber: number, value: string | Date) => {
-  const date = new Date(value);
-  const day = date.getDate().toString().padStart(2, "0");
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  return `${queueNumber}-${day}${month}`;
+const getFilenameFromContentDisposition = (value: string | null) => {
+  if (!value) return null;
+  const match = value.match(/filename="?([^"]+)"?/i);
+  return match?.[1] ?? null;
 };
 
-export default function GuestbookPage() {
-  const [entries, setEntries] = useState<GuestbookEntry[]>([]);
-  const [summary, setSummary] = useState<GuestbookSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
+type GuestbookPageProps = {
+  initialData: GuestbookListResponse;
+};
+
+export default function GuestbookPage({ initialData }: GuestbookPageProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -159,9 +135,9 @@ export default function GuestbookPage() {
   const [dateFilter, setDateFilter] = useState<"today" | "all">("today");
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalEntries, setTotalEntries] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<GuestbookEntry | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<"xlsx" | "pdf" | null>(null);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -174,41 +150,51 @@ export default function GuestbookPage() {
     setCurrentPage(1);
   }, [statusFilter, purposeFilter, dateFilter, pageSize, debouncedSearch]);
 
-  const fetchGuestbook = useCallback(async () => {
-    try {
-      setLoading(true);
-      const offset = (currentPage - 1) * pageSize;
-      const data = await guestbookApi.list({
-        status: statusFilter,
-        purpose: purposeFilter,
-        dateFilter,
-        search: debouncedSearch || undefined,
-        limit: pageSize,
-        offset,
-      });
-
-      setEntries(data.entries ?? []);
-      setSummary(data.summary);
-      setTotalEntries(data.pagination.total);
-      setLastFetchedAt(new Date());
-    } catch (error) {
+  const offset = (currentPage - 1) * pageSize;
+  const guestbookUrl = guestbookApi.listUrl({
+    status: statusFilter,
+    purpose: purposeFilter,
+    dateFilter,
+    search: debouncedSearch || undefined,
+    limit: pageSize,
+    offset,
+  });
+  const {
+    data: guestbookData,
+    isLoading,
+    isRefreshing,
+    lastFetchedAt,
+    refresh,
+  } = useLiveQuery<GuestbookListResponse>(guestbookUrl, {
+    fallbackData:
+      currentPage === 1 &&
+      pageSize === 10 &&
+      statusFilter === "ALL" &&
+      purposeFilter === "ALL" &&
+      dateFilter === "today" &&
+      !debouncedSearch
+        ? initialData
+        : undefined,
+    fallbackEtag:
+      currentPage === 1 &&
+      pageSize === 10 &&
+      statusFilter === "ALL" &&
+      purposeFilter === "ALL" &&
+      dateFilter === "today" &&
+      !debouncedSearch &&
+      initialData.hash
+        ? `"${initialData.hash}"`
+        : null,
+    refreshInterval: 60_000,
+    onError: (error) => {
       console.error("Error fetching guestbook:", error);
       toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat buku tamu"));
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    currentPage,
-    dateFilter,
-    debouncedSearch,
-    pageSize,
-    purposeFilter,
-    statusFilter,
-  ]);
+    },
+  });
 
-  useEffect(() => {
-    fetchGuestbook();
-  }, [fetchGuestbook]);
+  const entries = guestbookData?.entries ?? [];
+  const summary = guestbookData?.summary ?? null;
+  const totalEntries = guestbookData?.pagination.total ?? null;
 
   const fallbackSummary = useMemo(() => {
     const statusCount = entries.reduce(
@@ -251,12 +237,10 @@ export default function GuestbookPage() {
 
   const summaryData = summary ?? fallbackSummary;
 
-  const isInitialLoading = loading && entries.length === 0;
-  const isRefreshing = loading && entries.length > 0;
   const hasFetched = Boolean(lastFetchedAt);
   const lastFetchedLabel = lastFetchedAt
     ? formatDateTime(lastFetchedAt)
-    : loading
+    : isLoading
       ? "Memuat data..."
       : "Belum ada data";
   const statusLabel = isRefreshing
@@ -264,15 +248,14 @@ export default function GuestbookPage() {
     : hasFetched
       ? "Data terbaru"
       : "Belum ada data";
+  const isInitialLoading = isLoading && entries.length === 0;
 
   const purposeFilterLabel =
     purposeFilter === "ALL"
       ? "Semua keperluan"
-      : purposeOptions.find((option) => option.value === purposeFilter)?.label ??
-        "Keperluan";
+      : (purposeOptions.find((option) => option.value === purposeFilter)?.label ?? "Keperluan");
 
-  const statusFilterLabel =
-    statusFilter === "ALL" ? "Semua status" : statusLabels[statusFilter];
+  const statusFilterLabel = statusFilter === "ALL" ? "Semua status" : statusLabels[statusFilter];
 
   const totalItems = totalEntries ?? entries.length;
   const totalPages = totalEntries ? Math.max(1, Math.ceil(totalEntries / pageSize)) : 1;
@@ -293,10 +276,57 @@ export default function GuestbookPage() {
     setDateFilter("today");
   };
 
-  const openDetail = (entry: GuestbookEntry) => {
+  const handleExport = async (format: "xlsx" | "pdf") => {
+    try {
+      setExportingFormat(format);
+
+      const params = new URLSearchParams();
+      if (statusFilter !== "ALL") {
+        params.set("status", statusFilter);
+      }
+      if (purposeFilter !== "ALL") {
+        params.set("purpose", purposeFilter);
+      }
+      if (debouncedSearch) {
+        params.set("search", debouncedSearch);
+      }
+      params.set("dateFilter", dateFilter);
+      params.set("format", format);
+
+      const response = await fetch(`/api/guestbook/export?${params.toString()}`);
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || "Gagal mengunduh data buku tamu");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const serverFileName = getFilenameFromContentDisposition(
+        response.headers.get("content-disposition")
+      );
+      link.href = objectUrl;
+      link.download = serverFileName ?? `buku-tamu-pst.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      toast.success(
+        format === "xlsx" ? "Export Excel berhasil diunduh" : "Export PDF berhasil diunduh"
+      );
+    } catch (error) {
+      console.error("Error exporting guestbook:", error);
+      toast.error(getErrorMessage(error, "Gagal mengekspor data buku tamu"));
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
+  const openDetail = useCallback((entry: GuestbookEntry) => {
     setSelectedEntry(entry);
     setDetailOpen(true);
-  };
+  }, []);
 
   const handleDetailOpenChange = (open: boolean) => {
     setDetailOpen(open);
@@ -353,9 +383,7 @@ export default function GuestbookPage() {
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
             <div className="space-y-2">
-              <h1 className="text-3xl font-black text-primary-color md:text-4xl">
-                Buku Tamu PST
-              </h1>
+              <h1 className="text-3xl font-black text-primary-color md:text-4xl">Buku Tamu PST</h1>
               <p className="max-w-xl text-secondary-color">
                 Rekapitulasi kunjungan pengunjung yang sudah dilayani atau selesai.
               </p>
@@ -379,11 +407,11 @@ export default function GuestbookPage() {
               <Button
                 variant="outline"
                 className="gap-2 border-border"
-                onClick={() => fetchGuestbook()}
-                disabled={loading}
+                onClick={() => void refresh()}
+                disabled={isRefreshing}
               >
-                <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                {loading ? "Memperbarui..." : "Muat ulang data"}
+                <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                {isRefreshing ? "Memperbarui..." : "Muat ulang data"}
               </Button>
               <Badge variant="outline" className="border-border/70 bg-background/80">
                 Filter: {dateFilter === "today" ? "Hari ini" : "Semua tanggal"}
@@ -503,7 +531,33 @@ export default function GuestbookPage() {
                   onClick={resetFilters}
                   disabled={!hasActiveFilters}
                 >
-                  Reset filter
+                  Reset
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="border-border"
+                  onClick={() => handleExport("xlsx")}
+                  disabled={isRefreshing || exportingFormat !== null}
+                  title="Export Excel"
+                  aria-label="Export Excel"
+                >
+                  <FileSpreadsheet
+                    className={`h-4 w-4 ${exportingFormat === "xlsx" ? "animate-pulse" : ""}`}
+                  />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="border-border"
+                  onClick={() => handleExport("pdf")}
+                  disabled={isRefreshing || exportingFormat !== null}
+                  title="Export PDF"
+                  aria-label="Export PDF"
+                >
+                  <FileText
+                    className={`h-4 w-4 ${exportingFormat === "pdf" ? "animate-pulse" : ""}`}
+                  />
                 </Button>
               </div>
             </div>
@@ -540,19 +594,30 @@ export default function GuestbookPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-              <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                Status: {statusFilterLabel}
-              </Badge>
-              <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                Keperluan: {purposeFilterLabel}
-              </Badge>
-              {debouncedSearch && (
-                <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                  Pencarian: "{debouncedSearch}"
-                </Badge>
-              )}
-            </div>
+            {hasActiveFilters && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
+                {statusFilter !== "ALL" && (
+                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                    Status: {statusFilterLabel}
+                  </Badge>
+                )}
+                {purposeFilter !== "ALL" && (
+                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                    Keperluan: {purposeFilterLabel}
+                  </Badge>
+                )}
+                {dateFilter !== "today" && (
+                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                    Tanggal: Semua tanggal
+                  </Badge>
+                )}
+                {debouncedSearch && (
+                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                    Pencarian: &quot;{debouncedSearch}&quot;
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
 
           {isInitialLoading ? (
@@ -573,7 +638,7 @@ export default function GuestbookPage() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button onClick={() => fetchGuestbook()} className="gap-2">
+                <Button onClick={() => void refresh()} className="gap-2">
                   <RefreshCcw className="h-4 w-4" />
                   Muat ulang data
                 </Button>
@@ -586,175 +651,31 @@ export default function GuestbookPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="hidden overflow-hidden rounded-xl border border-border/80 md:block">
-                <Table className="min-w-[1100px]">
-                  <TableHeader className="bg-muted/50">
+              <div className="overflow-hidden rounded-xl border border-border/80">
+                <Table className="w-full md:min-w-[1120px]">
+                  <TableHeader className="hidden bg-muted/50 md:table-header-group">
                     <TableRow>
-                      <TableHead>Pengunjung</TableHead>
-                      <TableHead>Keperluan</TableHead>
-                      <TableHead>Layanan</TableHead>
-                      <TableHead>Antrean</TableHead>
-                      <TableHead>SKD</TableHead>
-                      <TableHead>Waktu</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
+                      <TableHead className="text-center">Pengunjung</TableHead>
+                      <TableHead className="text-center">Layanan</TableHead>
+                      <TableHead className="text-center">Antrean</TableHead>
+                      <TableHead className="text-center">Waktu</TableHead>
+                      <TableHead className="text-center">SKD</TableHead>
+                      <TableHead className="text-center">Petugas</TableHead>
+                      <TableHead className="text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {entries.map((entry) => {
-                      const purposeLabel = purposeOptions.find(
-                        (option) => option.value === entry.purpose
-                      );
-
-                      return (
-                        <TableRow key={entry.id} className="hover:bg-muted/50">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary-color">
-                                <Users className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <p className="font-semibold text-primary-color">
-                                  {entry.fullName}
-                                </p>
-                                <p className="text-xs text-secondary-color">
-                                  {entry.institution || "-"}
-                                </p>
-                                <p className="text-xs text-secondary-color">{entry.phone}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-2">
-                              {purposeLabel ? (
-                                <Badge variant="outline" className={purposeLabel.accent}>
-                                  {purposeLabel.label}
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline">-</Badge>
-                              )}
-                              <p className="text-xs text-secondary-color">
-                                {entry.occupation || "-"}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium text-primary-color">
-                                {entry.serviceName}
-                              </p>
-                              <p className="text-xs text-secondary-color">
-                                {entry.queueType === "ONLINE" ? "Online" : "Offline"}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <p className="font-semibold text-primary-color">
-                                {formatQueueCode(entry.queueNumber, entry.createdAt)}
-                              </p>
-                              <Badge variant="outline" className={statusBadgeClass[entry.status]}>
-                                {statusLabels[entry.status]}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={
-                                entry.filledSKD
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-                                  : "border-red-500/30 bg-red-500/10 text-red-700"
-                              }
-                            >
-                              {entry.filledSKD ? "Sudah" : "Belum"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1 text-sm">
-                              <p className="font-medium text-primary-color">
-                                {formatDate(entry.createdAt)}
-                              </p>
-                              <p className="text-xs text-secondary-color">
-                                {formatDateTime(entry.createdAt)}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                              onClick={() => openDetail(entry)}
-                            >
-                              <Eye className="h-4 w-4" />
-                              Detail
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {entries.map((entry) => (
+                      <GuestbookTableRow
+                        key={entry.id}
+                        entry={entry}
+                        statusLabels={statusLabels}
+                        statusBadgeClass={statusBadgeClass}
+                        onViewDetail={openDetail}
+                      />
+                    ))}
                   </TableBody>
                 </Table>
-              </div>
-              <div className="space-y-3 md:hidden">
-                {entries.map((entry) => {
-                  const purposeLabel = purposeOptions.find(
-                    (option) => option.value === entry.purpose
-                  );
-                  return (
-                    <div
-                      key={entry.id}
-                      className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-primary-color">{entry.fullName}</p>
-                          <p className="text-xs text-secondary-color">{entry.phone}</p>
-                          <p className="text-xs text-secondary-color">
-                            {entry.institution || "-"}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className={statusBadgeClass[entry.status]}>
-                          {statusLabels[entry.status]}
-                        </Badge>
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {purposeLabel ? (
-                          <Badge variant="outline" className={purposeLabel.accent}>
-                            {purposeLabel.label}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">-</Badge>
-                        )}
-                        <Badge variant="outline">{entry.serviceName}</Badge>
-                        <Badge
-                          variant="outline"
-                          className={
-                            entry.filledSKD
-                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-                              : "border-red-500/30 bg-red-500/10 text-red-700"
-                          }
-                        >
-                          SKD {entry.filledSKD ? "Sudah" : "Belum"}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 text-xs text-secondary-color">
-                        {formatDateTime(entry.createdAt)}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => openDetail(entry)}
-                        >
-                          <Eye className="h-4 w-4" />
-                          Detail
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
           )}
@@ -768,7 +689,7 @@ export default function GuestbookPage() {
               variant="outline"
               size="sm"
               onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={!canPrevPage || loading}
+              disabled={!canPrevPage || isRefreshing}
             >
               Sebelumnya
             </Button>
@@ -776,7 +697,7 @@ export default function GuestbookPage() {
               variant="outline"
               size="sm"
               onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={!canNextPage || loading}
+              disabled={!canNextPage || isRefreshing}
             >
               Berikutnya
             </Button>
@@ -796,7 +717,7 @@ export default function GuestbookPage() {
                   <div>
                     <p className="text-sm text-secondary-color">Kode antrean</p>
                     <p className="text-2xl font-bold text-primary-color">
-                      {formatQueueCode(selectedEntry.queueNumber, selectedEntry.createdAt)}
+                      {selectedEntry.queueCode}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -815,7 +736,9 @@ export default function GuestbookPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-border/70 bg-background/80 p-4">
-                  <p className="text-xs font-semibold uppercase text-secondary-color">Data Pengunjung</p>
+                  <p className="text-xs font-semibold uppercase text-secondary-color">
+                    Data Pengunjung
+                  </p>
                   <div className="mt-3 space-y-2 text-sm">
                     <div>
                       <p className="text-xs text-secondary-color">Nama lengkap</p>
@@ -837,11 +760,7 @@ export default function GuestbookPage() {
                       </div>
                       <div>
                         <p className="text-xs text-secondary-color">Jenis kelamin</p>
-                        <p>
-                          {selectedEntry.gender
-                            ? genderLabels[selectedEntry.gender]
-                            : "-"}
-                        </p>
+                        <p>{selectedEntry.gender ? genderLabels[selectedEntry.gender] : "-"}</p>
                       </div>
                     </div>
                     <div>
@@ -873,15 +792,13 @@ export default function GuestbookPage() {
                         <Badge
                           variant="outline"
                           className={
-                            purposeOptions.find(
-                              (option) => option.value === selectedEntry.purpose
-                            )?.accent
+                            purposeOptions.find((option) => option.value === selectedEntry.purpose)
+                              ?.accent
                           }
                         >
                           {
-                            purposeOptions.find(
-                              (option) => option.value === selectedEntry.purpose
-                            )?.label
+                            purposeOptions.find((option) => option.value === selectedEntry.purpose)
+                              ?.label
                           }
                         </Badge>
                       ) : (
@@ -893,6 +810,10 @@ export default function GuestbookPage() {
                       <p className="font-semibold text-primary-color">
                         {selectedEntry.serviceName}
                       </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-secondary-color">Petugas</p>
+                      <p>{selectedEntry.officerName || "-"}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge
@@ -906,7 +827,10 @@ export default function GuestbookPage() {
                         SKD {selectedEntry.filledSKD ? "Sudah" : "Belum"}
                       </Badge>
                       {selectedEntry.trackingLink && (
-                        <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                        <Badge
+                          variant="secondary"
+                          className="bg-background/80 text-secondary-color"
+                        >
                           Tracking aktif
                         </Badge>
                       )}

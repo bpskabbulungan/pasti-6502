@@ -1,22 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  CheckCircle2,
-  Clock3,
-  Pencil,
-  Power,
-  PowerOff,
-  RefreshCcw,
-  Search,
-  Trash2,
-  Wrench,
-  X,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle2, Clock3, RefreshCcw, Search, Wrench, X, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,17 +25,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ServicesTableRow from "@/modules/dashboard/components/table-rows/ServicesTableRow";
 import { servicesApi } from "@/services/api/services";
 import { Role, ServiceStatus } from "@/shared/constants/enums";
+import { formatDisplayDateTime } from "@/lib/date-format";
 import type { ErrorResponse } from "@shared/types/api";
 import type { ServiceSummary } from "@shared/types/service";
 
@@ -69,37 +50,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return message || fallback;
 };
 
-const formatDate = (value: string | Date) =>
-  new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-
-const formatRelativeTime = (value: string | Date) => {
-  const diff = Date.now() - new Date(value).getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-  if (days <= 0) return "Hari ini";
-  if (days === 1) return "Kemarin";
-  if (days < 7) return `${days} hari lalu`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 4) return `${weeks} minggu lalu`;
-  const months = Math.floor(days / 30);
-  return `${months} bulan lalu`;
-};
-
-const getStatusLabel = (status: ServiceStatus) =>
-  status === ServiceStatus.ACTIVE ? "Aktif" : "Nonaktif";
-
-const getStatusBadgeClass = (status: ServiceStatus) =>
-  status === ServiceStatus.ACTIVE
-    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-    : "border-red-500/30 bg-red-500/10 text-red-700";
-
 export default function ServicesPage() {
-  const { data: session } = useSession();
-  const router = useRouter();
   const [services, setServices] = useState<ServiceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
@@ -112,18 +63,7 @@ export default function ServicesPage() {
   const [serviceName, setServiceName] = useState("");
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>(ServiceStatus.ACTIVE);
 
-  useEffect(() => {
-    if (session && session.user.role !== Role.ADMIN) {
-      toast.error("Anda tidak memiliki akses ke halaman ini");
-      router.push("/dashboard");
-    }
-  }, [session, router]);
-
-  useEffect(() => {
-    fetchServices();
-  }, []);
-
-  const fetchServices = async () => {
+  const fetchServices = useCallback(async () => {
     try {
       setLoading(true);
       const data = await servicesApi.list();
@@ -135,7 +75,11 @@ export default function ServicesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void fetchServices();
+  }, [fetchServices]);
 
   const stats = useMemo(() => {
     const activeCount = services.filter(
@@ -175,14 +119,7 @@ export default function ServicesPage() {
   const isRefreshing = loading && services.length > 0;
   const hasFetched = Boolean(lastFetchedAt);
   const lastFetchedLabel = lastFetchedAt
-    ? new Intl.DateTimeFormat("id-ID", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(lastFetchedAt)
+    ? formatDisplayDateTime(lastFetchedAt)
     : loading
       ? "Memuat data..."
       : "Belum ada data";
@@ -208,17 +145,17 @@ export default function ServicesPage() {
     setSelectedService(null);
   };
 
-  const openEditDialog = (service: ServiceSummary) => {
+  const openEditDialog = useCallback((service: ServiceSummary) => {
     setSelectedService(service);
     setServiceName(service.name);
     setServiceStatus(service.status);
     setEditDialogOpen(true);
-  };
+  }, []);
 
-  const openDeleteDialog = (service: ServiceSummary) => {
+  const openDeleteDialog = useCallback((service: ServiceSummary) => {
     setSelectedService(service);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
   const handleAddService = async () => {
     if (!serviceName.trim()) return;
@@ -267,28 +204,23 @@ export default function ServicesPage() {
     }
   };
 
-  const handleToggleServiceStatus = async (service: ServiceSummary) => {
-    try {
-      const nextStatus =
-        service.status === ServiceStatus.ACTIVE ? ServiceStatus.INACTIVE : ServiceStatus.ACTIVE;
-      await servicesApi.update(service.id, { status: nextStatus });
-      toast.success(
-        `Layanan ${nextStatus === ServiceStatus.ACTIVE ? "diaktifkan" : "dinonaktifkan"}`
-      );
-      fetchServices();
-    } catch (error) {
-      console.error("Error toggling service status:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat mengubah status layanan"));
-    }
-  };
-
-  if (session?.user?.role !== Role.ADMIN) {
-    return (
-      <div className="flex min-h-full items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
+  const handleToggleServiceStatus = useCallback(
+    async (service: ServiceSummary) => {
+      try {
+        const nextStatus =
+          service.status === ServiceStatus.ACTIVE ? ServiceStatus.INACTIVE : ServiceStatus.ACTIVE;
+        await servicesApi.update(service.id, { status: nextStatus });
+        toast.success(
+          `Layanan ${nextStatus === ServiceStatus.ACTIVE ? "diaktifkan" : "dinonaktifkan"}`
+        );
+        fetchServices();
+      } catch (error) {
+        console.error("Error toggling service status:", error);
+        toast.error(getErrorMessage(error, "Terjadi kesalahan saat mengubah status layanan"));
+      }
+    },
+    [fetchServices]
+  );
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
@@ -343,7 +275,9 @@ export default function ServicesPage() {
                 <DialogContent className="max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Tambah Layanan Baru</DialogTitle>
-                    <DialogDescription>Lengkapi nama layanan yang ingin ditambahkan.</DialogDescription>
+                    <DialogDescription>
+                      Lengkapi nama layanan yang ingin ditambahkan.
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
                     <div className="space-y-2">
@@ -454,7 +388,7 @@ export default function ServicesPage() {
               </Badge>
               {trimmedSearch && (
                 <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                  Pencarian: "{trimmedSearch}"
+                  Pencarian: &quot;{trimmedSearch}&quot;
                 </Badge>
               )}
               <span className="text-secondary-color">
@@ -522,159 +456,28 @@ export default function ServicesPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="hidden overflow-hidden rounded-xl border border-border/80 md:block">
-                <Table className="min-w-[760px]">
-                  <TableHeader className="bg-muted/50">
+              <div className="overflow-hidden rounded-xl border border-border/80">
+                <Table className="w-full md:min-w-[780px]">
+                  <TableHeader className="hidden bg-muted/50 md:table-header-group">
                     <TableRow>
-                      <TableHead>Nama Layanan</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Diperbarui</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
+                      <TableHead className="w-[38%] text-center">Layanan</TableHead>
+                      <TableHead className="w-[16%] text-center">Status</TableHead>
+                      <TableHead className="w-[20%] text-center">Diperbarui</TableHead>
+                      <TableHead className="w-[26%] text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredServices.map((service) => {
-                      const updatedAt = service.updatedAt ?? service.createdAt;
-                      return (
-                        <TableRow key={service.id} className="hover:bg-muted/50">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary-color">
-                                <Wrench className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <p className="font-semibold text-primary-color">{service.name}</p>
-                                <p className="text-xs text-secondary-color">
-                                  {service.status === ServiceStatus.ACTIVE
-                                    ? "Aktif untuk antrean"
-                                    : "Nonaktif sementara"}
-                                </p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={getStatusBadgeClass(service.status)}>
-                              {getStatusLabel(service.status)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1 text-sm">
-                              <p className="font-medium text-primary-color">
-                                {formatDate(updatedAt)}
-                              </p>
-                              <p className="text-xs text-secondary-color">
-                                {formatRelativeTime(updatedAt)}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-2"
-                                onClick={() => handleToggleServiceStatus(service)}
-                                title={`${
-                                  service.status === ServiceStatus.ACTIVE
-                                    ? "Nonaktifkan"
-                                    : "Aktifkan"
-                                } layanan`}
-                              >
-                                {service.status === ServiceStatus.ACTIVE ? (
-                                  <PowerOff className="h-4 w-4 text-red-500" />
-                                ) : (
-                                  <Power className="h-4 w-4 text-emerald-600" />
-                                )}
-                                <span>
-                                  {service.status === ServiceStatus.ACTIVE
-                                    ? "Nonaktifkan"
-                                    : "Aktifkan"}
-                                </span>
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-2"
-                                onClick={() => openEditDialog(service)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                                Edit
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="gap-2"
-                                onClick={() => openDeleteDialog(service)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Hapus
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {filteredServices.map((service) => (
+                      <ServicesTableRow
+                        key={service.id}
+                        service={service}
+                        onToggleStatus={handleToggleServiceStatus}
+                        onEdit={openEditDialog}
+                        onDelete={openDeleteDialog}
+                      />
+                    ))}
                   </TableBody>
                 </Table>
-              </div>
-              <div className="space-y-3 md:hidden">
-                {filteredServices.map((service) => {
-                  const updatedAt = service.updatedAt ?? service.createdAt;
-                  return (
-                    <div
-                      key={service.id}
-                      className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-primary-color">{service.name}</p>
-                          <div className="mt-1 text-xs text-secondary-color">
-                            {formatDate(updatedAt)}
-                          </div>
-                        </div>
-                        <Badge variant="outline" className={getStatusBadgeClass(service.status)}>
-                          {getStatusLabel(service.status)}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 text-xs text-secondary-color">
-                        {formatRelativeTime(updatedAt)}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => handleToggleServiceStatus(service)}
-                        >
-                          {service.status === ServiceStatus.ACTIVE ? (
-                            <PowerOff className="h-4 w-4 text-red-500" />
-                          ) : (
-                            <Power className="h-4 w-4 text-emerald-600" />
-                          )}
-                          {service.status === ServiceStatus.ACTIVE ? "Nonaktifkan" : "Aktifkan"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => openEditDialog(service)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => openDeleteDialog(service)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Hapus
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
           )}

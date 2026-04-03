@@ -10,6 +10,7 @@ type UserCreatePayload = {
 	name: string;
 	username: string;
 	password: string;
+	phone?: string | null;
 	role?: Role;
 };
 
@@ -17,6 +18,7 @@ type UserUpdatePayload = {
 	name?: string;
 	username?: string;
 	password?: string;
+	phone?: string | null;
 };
 
 export const usersApi = {

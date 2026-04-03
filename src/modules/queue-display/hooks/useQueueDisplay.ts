@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { queueDisplayApi } from "@/services/api/queue-display";
 import type { QueueDisplayResponse } from "@shared/types/queue";
 
@@ -12,13 +12,35 @@ export function useQueueDisplay(params: {
 }) {
 	const { adminId, dateFilter, refreshInterval = 10_000 } = params;
 	const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+	const hashRef = useRef<string>("");
+	const snapshotRef = useRef<QueueDisplayResponse | null>(null);
 
 	const swrKey = useMemo(
 		() => ["queue-display", adminId, dateFilter] as const,
 		[adminId, dateFilter]
 	);
-	const fetcher = async (key: typeof swrKey) =>
-		queueDisplayApi.get({ adminId: key[1], dateFilter: key[2] });
+	const fetcher = async (key: typeof swrKey) => {
+		const response = await queueDisplayApi.get({
+			adminId: key[1],
+			dateFilter: key[2],
+			hash: hashRef.current || undefined,
+		});
+
+		if (response.hash) {
+			hashRef.current = response.hash;
+		}
+
+		if (response.hasChanges === false && snapshotRef.current) {
+			return {
+				...snapshotRef.current,
+				hash: response.hash ?? snapshotRef.current.hash,
+				hasChanges: false,
+			};
+		}
+
+		snapshotRef.current = response;
+		return response;
+	};
 
 	const {
 		data,
@@ -30,7 +52,12 @@ export function useQueueDisplay(params: {
 		refreshInterval,
 		revalidateOnFocus: true,
 		dedupingInterval: 5_000,
-		onSuccess: () => setLastUpdatedAt(new Date()),
+		onSuccess: (response) => {
+			if (!response || response.hasChanges === false) {
+				return;
+			}
+			setLastUpdatedAt(new Date());
+		},
 	});
 
 	return {

@@ -1,1 +1,7 @@
-export { listUsers, createUser } from "./user.service";
+export {
+  listUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  listQueueDisplayAdmins,
+} from "./user.service";

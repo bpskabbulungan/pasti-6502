@@ -1,13 +1,9 @@
-"use client";
+import DashboardPage from "@/modules/dashboard/pages/DashboardPage";
+import { requireDashboardUser } from "@/lib/dashboard-session";
+import { getDashboardStats } from "@api/modules/dashboard";
 
-import dynamic from "next/dynamic";
-import DashboardSkeleton from "@/modules/dashboard/components/skeletons/DashboardSkeleton";
-
-const DashboardPage = dynamic(
-	() => import("@/modules/dashboard/pages/DashboardPage"),
-	{ ssr: false, loading: () => <DashboardSkeleton /> }
-);
-
-export default function Page() {
-	return <DashboardPage />;
+export default async function Page() {
+  const user = await requireDashboardUser();
+  const initialStats = await getDashboardStats();
+  return <DashboardPage currentUser={user} initialStats={initialStats} />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,8 @@ import { RefreshCcw, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { queuesApi } from "@/services/api/queues";
 import type { ErrorResponse } from "@shared/types/api";
 import type { QueueDetail } from "@shared/types/queue";
+
+const STATUS_POLL_INTERVAL_MS = 15000;
 
 type QueueStatus = "WAITING" | "SERVING" | "COMPLETED" | "CANCELED";
 
@@ -112,31 +114,84 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
     return `${data.queueNumber}-${formatQueueDate(data.createdAt)}`;
   }, [data]);
 
-  const fetchStatus = async () => {
-    if (!queueId) return;
-    setIsLoading(true);
-    try {
-      const result = await queuesApi.detail(queueId);
-      setData(mapQueueDetail(result));
-      setError(null);
-      setLastUpdated(new Date());
-    } catch (err) {
-      console.error("Error fetching queue status", err);
-      setError(getErrorMessage(err, "Terjadi kesalahan saat memuat status"));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const fetchStatus = useCallback(
+    async (showLoading = true) => {
+      if (!queueId) return;
+      if (showLoading) {
+        setIsLoading(true);
+      }
+      try {
+        const result = await queuesApi.detail(queueId);
+        setData(mapQueueDetail(result));
+        setError(null);
+        setLastUpdated(new Date());
+      } catch (err) {
+        console.error("Error fetching queue status", err);
+        setError(getErrorMessage(err, "Terjadi kesalahan saat memuat status"));
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [queueId]
+  );
 
   useEffect(() => {
-    void fetchStatus();
-    const interval = setInterval(() => {
-      void fetchStatus();
-    }, 7000);
+    let isActive = true;
+    let pollTimer: NodeJS.Timeout | null = null;
 
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueId]);
+    const clearPoll = () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const scheduleNextPoll = () => {
+      if (!isActive || document.visibilityState !== "visible") {
+        return;
+      }
+
+      pollTimer = setTimeout(runPoll, STATUS_POLL_INTERVAL_MS);
+    };
+
+    const runPoll = async () => {
+      if (!isActive || document.visibilityState !== "visible") {
+        clearPoll();
+        return;
+      }
+
+      await fetchStatus(false);
+      scheduleNextPoll();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!isActive) {
+        return;
+      }
+
+      if (document.visibilityState === "visible") {
+        clearPoll();
+        void fetchStatus(false);
+        scheduleNextPoll();
+      } else {
+        clearPoll();
+      }
+    };
+
+    void fetchStatus(true);
+    if (document.visibilityState === "visible") {
+      scheduleNextPoll();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      isActive = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearPoll();
+    };
+  }, [fetchStatus]);
 
   return (
     <main className="relative isolate min-h-full px-4 py-8">
@@ -200,8 +255,8 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
                     <div>
                       <p className="font-semibold text-foreground">Pembaruan otomatis</p>
                       <p className="text-sm text-muted-foreground">
-                        Status diperbarui tiap 7 detik. Klik tombol di bawah untuk memuat ulang
-                        manual.
+                        Status diperbarui tiap 15 detik saat halaman aktif. Klik tombol di bawah
+                        untuk memuat ulang manual.
                       </p>
                     </div>
                   </div>

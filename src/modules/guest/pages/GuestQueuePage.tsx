@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, RefreshCcw } from "lucide-react";
 import PageBackground from "@/components/page-background";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLiveQuery } from "@/hooks/use-live-query";
 import { guestApi } from "@/services/api/guest";
 import { Purpose, QueueStatus } from "@/shared/constants/enums";
 import type { ErrorResponse } from "@shared/types/api";
@@ -31,8 +31,7 @@ const purposeLabels: Record<Purpose, string> = {
 const purposeBadgeClass: Record<Purpose, string> = {
   [Purpose.KONSULTASI_STATISTIK]:
     "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-100",
-  [Purpose.PERPUSTAKAAN]:
-    "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100",
+  [Purpose.PERPUSTAKAAN]: "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100",
   [Purpose.REKOMENDASI_STATISTIK]:
     "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100",
   [Purpose.LAINNYA]: "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100",
@@ -58,56 +57,58 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   }
 
   const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
+  if (errorDetails && typeof errorDetails === "object" && "error" in errorDetails) {
+    const message = (errorDetails as { error?: string }).error;
+    if (message) {
+      return message;
+    }
   }
 
   const message = (error as { message?: string }).message;
   return message || fallback;
 };
 
-export default function GuestQueuePage() {
+type GuestQueuePageProps = {
+  queueId?: string;
+  initialQueue?: GuestQueueDetail | null;
+  initialError?: string | null;
+};
+
+export default function GuestQueuePage({
+  queueId,
+  initialQueue,
+  initialError,
+}: GuestQueuePageProps) {
   const router = useRouter();
-  const params = useParams<{ id?: string | string[] }>();
-  const queueId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const detailUrl = queueId ? guestApi.detailUrl(queueId) : null;
 
-  const [queue, setQueue] = useState<GuestQueueDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const {
+    data: queue,
+    isLoading,
+    isRefreshing,
+    refresh,
+    error,
+  } = useLiveQuery<GuestQueueDetail>(detailUrl, {
+    enabled: Boolean(queueId),
+    fallbackData: initialQueue ?? undefined,
+    fallbackEtag: initialQueue?.hash ? `"${initialQueue.hash}"` : null,
+    refreshInterval: 30_000,
+  });
 
-  const loadQueue = useCallback(
-    async (withToast = false) => {
-      if (!queueId) {
-        setErrorMessage("ID antrean tidak ditemukan.");
-        setIsLoading(false);
-        return;
-      }
+  const errorMessage = queue
+    ? null
+    : !queueId
+      ? "ID antrean tidak ditemukan."
+      : (initialError ?? (error ? getErrorMessage(error, "Gagal memuat detail antrean.") : null));
 
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const data = await guestApi.detail(queueId);
-        setQueue(data);
-        if (withToast) {
-          toast.success("Detail antrean diperbarui");
-        }
-      } catch (error) {
-        const message = getErrorMessage(error, "Gagal memuat detail antrean.");
-        setErrorMessage(message);
-        if (withToast) {
-          toast.error(message);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [queueId]
-  );
-
-  useEffect(() => {
-    void loadQueue();
-  }, [loadQueue]);
+  const handleRefresh = async () => {
+    try {
+      await refresh();
+      toast.success("Detail antrean diperbarui");
+    } catch (refreshError) {
+      toast.error(getErrorMessage(refreshError, "Gagal memuat detail antrean."));
+    }
+  };
 
   return (
     <main className="relative isolate min-h-full overflow-hidden">
@@ -123,7 +124,7 @@ export default function GuestQueuePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {isLoading ? (
+            {isLoading && !queue ? (
               <div className="space-y-3">
                 <Skeleton className="h-5 w-32" />
                 <Skeleton className="h-10 w-52" />
@@ -145,15 +146,10 @@ export default function GuestQueuePage() {
                   <p className="text-4xl font-bold text-foreground md:text-5xl">
                     {queue.queueCode}
                   </p>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Atas nama {queue.guestName}
-                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">Atas nama {queue.guestName}</p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{queue.serviceName}</Badge>
-                    <Badge
-                      variant="outline"
-                      className={statusBadgeClass[queue.status]}
-                    >
+                    <Badge variant="outline" className={statusBadgeClass[queue.status]}>
                       {statusLabels[queue.status]}
                     </Badge>
                     {queue.purpose ? (
@@ -175,22 +171,18 @@ export default function GuestQueuePage() {
             ) : null}
           </CardContent>
           <CardFooter className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push("/guest")}
-            >
+            <Button type="button" variant="secondary" onClick={() => router.push("/guest")}>
               <ArrowLeft className="h-4 w-4" />
               Kembali ke Buku Tamu
             </Button>
             <Button
               type="button"
               variant="outline"
-              onClick={() => loadQueue(true)}
-              disabled={isLoading}
+              onClick={() => void handleRefresh()}
+              disabled={!queueId || isRefreshing}
             >
-              <RefreshCcw className="h-4 w-4" />
-              Muat Ulang
+              <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              {isRefreshing ? "Memuat..." : "Muat Ulang"}
             </Button>
           </CardFooter>
         </Card>

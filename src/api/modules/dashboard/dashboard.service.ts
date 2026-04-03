@@ -3,108 +3,122 @@ import prisma from "@api/infrastructure/database/prisma";
 import { QueueStatus } from "@prisma/client";
 
 const hashPayload = (payload: unknown) =>
-	createHash("md5").update(JSON.stringify(payload)).digest("hex");
+  createHash("md5").update(JSON.stringify(payload)).digest("hex");
 
 export async function getDashboardStats(clientHash?: string | null) {
-	const startOfToday = new Date();
-	startOfToday.setHours(0, 0, 0, 0);
-	const endOfToday = new Date(startOfToday);
-	endOfToday.setDate(endOfToday.getDate() + 1);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(startOfToday);
+  endOfToday.setDate(endOfToday.getDate() + 1);
+  const whereRange = {
+    queueDate: { gte: startOfToday, lt: endOfToday },
+  };
 
-	const [waitingCount, servingCount, completedCount, canceledCount] =
-		await Promise.all([
-			prisma.queue.count({
-				where: {
-					status: QueueStatus.WAITING,
-					queueDate: { gte: startOfToday, lt: endOfToday },
-				},
-			}),
-			prisma.queue.count({
-				where: {
-					status: QueueStatus.SERVING,
-					queueDate: { gte: startOfToday, lt: endOfToday },
-				},
-			}),
-			prisma.queue.count({
-				where: {
-					status: QueueStatus.COMPLETED,
-					queueDate: { gte: startOfToday, lt: endOfToday },
-				},
-			}),
-			prisma.queue.count({
-				where: {
-					status: QueueStatus.CANCELED,
-					queueDate: { gte: startOfToday, lt: endOfToday },
-				},
-			}),
-		]);
+  const [queueAggregate, statusGroups] = await Promise.all([
+    prisma.queue.aggregate({
+      where: whereRange,
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+    prisma.queue.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+      where: whereRange,
+    }),
+  ]);
 
-	const totalCount = waitingCount + servingCount + completedCount + canceledCount;
+  const counts = {
+    waiting: 0,
+    serving: 0,
+    completed: 0,
+    canceled: 0,
+    total: queueAggregate._count._all,
+  };
 
-	const completedQueues = await prisma.queue.findMany({
-		where: {
-			status: {
-				in: [QueueStatus.COMPLETED, QueueStatus.SERVING],
-			},
-			queueDate: {
-				gte: startOfToday,
-				lt: endOfToday,
-			},
-			startTime: {
-				not: null,
-			},
-		},
-		select: {
-			createdAt: true,
-			startTime: true,
-			endTime: true,
-		},
-	});
+  statusGroups.forEach((group) => {
+    switch (group.status) {
+      case QueueStatus.WAITING:
+        counts.waiting = group._count._all;
+        break;
+      case QueueStatus.SERVING:
+        counts.serving = group._count._all;
+        break;
+      case QueueStatus.COMPLETED:
+        counts.completed = group._count._all;
+        break;
+      case QueueStatus.CANCELED:
+        counts.canceled = group._count._all;
+        break;
+      default:
+        break;
+    }
+  });
 
-	let totalWaitTimeMs = 0;
-	let totalServiceTimeMs = 0;
-	let waitCount = 0;
-	let serviceCount = 0;
+  const hash = hashPayload({
+    counts,
+    latestUpdatedAt: queueAggregate._max.updatedAt?.toISOString() ?? null,
+  });
+  const hasChanges = !clientHash || clientHash !== hash;
 
-	completedQueues.forEach((queue) => {
-		if (queue.startTime) {
-			const waitTimeMs =
-				new Date(queue.startTime).getTime() - new Date(queue.createdAt).getTime();
-			totalWaitTimeMs += waitTimeMs;
-			waitCount++;
+  if (!hasChanges) {
+    return {
+      counts,
+      averages: {
+        waitTimeMinutes: 0,
+        serviceTimeMinutes: 0,
+      },
+      hash,
+      hasChanges,
+    };
+  }
 
-			if (queue.endTime) {
-				const serviceTimeMs =
-					new Date(queue.endTime).getTime() -
-					new Date(queue.startTime).getTime();
-				totalServiceTimeMs += serviceTimeMs;
-				serviceCount++;
-			}
-		}
-	});
+  const completedQueues = await prisma.queue.findMany({
+    where: {
+      ...whereRange,
+      status: {
+        in: [QueueStatus.COMPLETED, QueueStatus.SERVING],
+      },
+      startTime: {
+        not: null,
+      },
+    },
+    select: {
+      createdAt: true,
+      startTime: true,
+      endTime: true,
+    },
+  });
 
-	const averages = {
-		waitTimeMinutes:
-			waitCount > 0 ? Math.round(totalWaitTimeMs / waitCount / (1000 * 60)) : 0,
-		serviceTimeMinutes:
-			serviceCount > 0
-				? Math.round(totalServiceTimeMs / serviceCount / (1000 * 60))
-				: 0,
-	};
+  let totalWaitTimeMs = 0;
+  let totalServiceTimeMs = 0;
+  let waitCount = 0;
+  let serviceCount = 0;
 
-	const statsData = {
-		counts: {
-			waiting: waitingCount,
-			serving: servingCount,
-			completed: completedCount,
-			canceled: canceledCount,
-			total: totalCount,
-		},
-		averages,
-	};
+  completedQueues.forEach((queue) => {
+    if (queue.startTime) {
+      const waitTimeMs = new Date(queue.startTime).getTime() - new Date(queue.createdAt).getTime();
+      totalWaitTimeMs += waitTimeMs;
+      waitCount++;
 
-	const hash = hashPayload(statsData);
-	const hasChanges = !clientHash || clientHash !== hash;
+      if (queue.endTime) {
+        const serviceTimeMs =
+          new Date(queue.endTime).getTime() - new Date(queue.startTime).getTime();
+        totalServiceTimeMs += serviceTimeMs;
+        serviceCount++;
+      }
+    }
+  });
 
-	return { ...statsData, hash, hasChanges };
+  const averages = {
+    waitTimeMinutes: waitCount > 0 ? Math.round(totalWaitTimeMs / waitCount / (1000 * 60)) : 0,
+    serviceTimeMinutes:
+      serviceCount > 0 ? Math.round(totalServiceTimeMs / serviceCount / (1000 * 60)) : 0,
+  };
+
+  const statsData = {
+    counts,
+    averages,
+  };
+
+  return { ...statsData, hash, hasChanges };
 }

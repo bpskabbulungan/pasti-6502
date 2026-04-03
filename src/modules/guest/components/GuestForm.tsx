@@ -220,18 +220,12 @@ export default function GuestForm() {
       <Card className="border border-border/40 bg-card/90 shadow-2xl backdrop-blur">
         <CardHeader className="space-y-2 md:space-y-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xl md:text-2xl">Buku Tamu</CardTitle>
+            <CardTitle className="text-xl md:text-2xl">Selamat Datang!</CardTitle>
             <Badge variant="outline" className="gap-1 bg-primary/20">
               <Smartphone className="h-4 w-4 md:h-5 md:w-5" />
               <span>Mobile-first</span>
             </Badge>
           </div>
-          <CardDescription className="text-sm md:text-base">
-            Data yang Anda isi otomatis tersimpan sebagai data tamu dan membuat nomor antrean
-            layanan PST BPS Kabupaten Bulungan. Tunjukkan kode antrean ke petugas setelah mengirim.
-            Setelah pelayanan selesai, mohon isi Survei kebutuhan data (SKD) untuk membantu kami
-            meningkatkan layanan. Semua kolom wajib diisi. Terima kasih!
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>

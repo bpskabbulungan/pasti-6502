@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -25,15 +26,20 @@ enum ServiceStatus {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  username      String         @unique
-  password      String
-  name          String
-  role          Role           @default(PETUGAS)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  queues        Queue[]        @relation("AdminQueue")
-  notifications Notification[]
+  id               String               @id @default(uuid())
+  username         String               @unique
+  password         String
+  name             String
+  phone            String?
+  role             Role                 @default(PETUGAS)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  queues           Queue[]              @relation("AdminQueue")
+  dutyQueues       Queue[]              @relation("DutyStaffQueueUser")
+  dutySchedules    DutySchedule[]       @relation("DutyScheduleStaff")
+  dutyReminderLogs DutyReminderLog[]    @relation("DutyReminderLogStaff")
+  analyticsExports AnalyticsExportJob[]
+  notifications    Notification[]
 }
 
 model Service {
@@ -46,20 +52,20 @@ model Service {
 }
 
 model Visitor {
-  id          String   @id @default(uuid())
-  name        String
-  phone       String
-  address     String?
-  age         Int?
-  gender      Gender?
+  id            String         @id @default(uuid())
+  name          String
+  phone         String
+  address       String?
+  age           Int?
+  gender        Gender?
   lastEducation LastEducation?
-  occupation  String?
-  institution String?
-  email       String?
-  purpose     Purpose?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  queues      Queue[]
+  occupation    String?
+  institution   String?
+  email         String?
+  purpose       Purpose?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  queues        Queue[]
 }
 
 enum QueueType {
@@ -97,6 +103,27 @@ enum DutyCycleStatus {
   COMPLETED
 }
 
+enum DayOffType {
+  HOLIDAY
+  LEAVE
+}
+
+enum ReminderChannel {
+  FONNTE
+}
+
+enum AnalyticsExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AnalyticsExportFormat {
+  XLSX
+  PDF
+}
+
 model Queue {
   id           String      @id @default(uuid())
   queueNumber  Int
@@ -111,6 +138,8 @@ model Queue {
   service      Service     @relation(fields: [serviceId], references: [id])
   adminId      String?
   admin        User?       @relation("AdminQueue", fields: [adminId], references: [id])
+  dutyStaffId  String?
+  dutyStaff    User?       @relation("DutyStaffQueueUser", fields: [dutyStaffId], references: [id])
   startTime    DateTime?
   endTime      DateTime?
   createdAt    DateTime    @default(now())
@@ -119,51 +148,123 @@ model Queue {
   filledSKD    Boolean     @default(false)
   trackingLink String?     @unique
 
+  @@unique([queueDate, queueNumber])
   @@index([visitorId])
   @@index([guestId])
   @@index([serviceId])
   @@index([adminId])
+  @@index([dutyStaffId])
   @@index([createdAt])
   @@index([status, createdAt])
-  @@unique([queueDate, queueNumber])
 }
 
-model StaffMember {
-  id        String        @id @default(uuid())
-  name      String
-  phone     String?
-  isActive  Boolean       @default(true)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  schedules DutySchedule[]
+model QueueCounter {
+  id         String   @id @default(uuid())
+  queueDate  DateTime @unique
+  lastNumber Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model AnalyticsExportJob {
+  id            String                @id @default(uuid())
+  requestedById String
+  requestedBy   User                  @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  status        AnalyticsExportStatus @default(PENDING)
+  format        AnalyticsExportFormat
+  startDate     DateTime
+  endDate       DateTime
+  fileName      String?
+  contentType   String?
+  payload       Bytes?                @db.LongBlob
+  errorMessage  String?
+  expiresAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([requestedById, createdAt])
+  @@index([status, createdAt])
 }
 
 model DutyCycle {
-  id         String           @id @default(uuid())
-  cycleNumber Int
-  status     DutyCycleStatus  @default(ACTIVE)
-  staffOrder Json
-  currentIndex Int            @default(0)
-  startedAt  DateTime         @default(now())
-  completedAt DateTime?
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  schedules  DutySchedule[]
+  id           String          @id @default(uuid())
+  cycleNumber  Int
+  status       DutyCycleStatus @default(ACTIVE)
+  staffOrder   Json
+  currentIndex Int             @default(0)
+  startedAt    DateTime        @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  schedules    DutySchedule[]
 }
 
 model DutySchedule {
-  id           String       @id @default(uuid())
+  id           String            @id @default(uuid())
   scheduleDate DateTime
   staffId      String
-  staff        StaffMember  @relation(fields: [staffId], references: [id])
+  staff        User              @relation("DutyScheduleStaff", fields: [staffId], references: [id])
   cycleId      String
-  cycle        DutyCycle    @relation(fields: [cycleId], references: [id])
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  cycle        DutyCycle         @relation(fields: [cycleId], references: [id])
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  reminderLogs DutyReminderLog[]
 
   @@unique([scheduleDate])
   @@index([staffId])
   @@index([cycleId])
+}
+
+model DutySettings {
+  id                String            @id @default("default")
+  workDays          Json
+  reminderEnabled   Boolean           @default(true)
+  autoAssignEnabled Boolean           @default(true)
+  reminderTemplate  String            @db.Text
+  timezone          String            @default("Asia/Makassar")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  dayOffs           DutyDayOff[]
+  reminderLogs      DutyReminderLog[]
+}
+
+model DutyDayOff {
+  id         String       @id @default(uuid())
+  date       DateTime
+  name       String
+  type       DayOffType   @default(HOLIDAY)
+  note       String?
+  settingsId String       @default("default")
+  settings   DutySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([date])
+  @@index([date])
+}
+
+model DutyReminderLog {
+  id               String          @id @default(uuid())
+  reminderDate     DateTime
+  staffId          String
+  staff            User            @relation("DutyReminderLogStaff", fields: [staffId], references: [id])
+  scheduleId       String?
+  schedule         DutySchedule?   @relation(fields: [scheduleId], references: [id])
+  settingsId       String
+  settings         DutySettings    @relation(fields: [settingsId], references: [id], onDelete: Restrict)
+  phoneNumber      String?
+  message          String          @db.Text
+  channel          ReminderChannel @default(FONNTE)
+  success          Boolean         @default(false)
+  providerResponse Json?
+  errorMessage     String?
+  createdAt        DateTime        @default(now())
+
+  @@unique([reminderDate, staffId, channel])
+  @@index([reminderDate])
+  @@index([staffId])
+  @@index([scheduleId])
 }
 
 model QRCode {
@@ -198,18 +299,18 @@ model Notification {
 }
 
 model Guest {
-  id             String         @id @default(uuid())
-  fullName       String
-  email          String?
-  address        String?
-  phone          String
-  age            Int?
-  institution    String?
-  gender         Gender?
-  lastEducation  LastEducation?
-  occupation     String?
-  purpose        Purpose?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  queues         Queue[]
+  id            String         @id @default(uuid())
+  fullName      String
+  email         String?
+  address       String?
+  phone         String
+  age           Int?
+  institution   String?
+  gender        Gender?
+  lastEducation LastEducation?
+  occupation    String?
+  purpose       Purpose?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  queues        Queue[]
 }

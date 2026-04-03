@@ -11,6 +11,7 @@ const TOKEN_TTL_FALLBACK_MS = 50 * 60 * 1000; // 50 minutes as safe default
 const TOKEN_EXPIRY_BUFFER_MS = 60 * 1000; // refresh 1 minute before expiry
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_RETRIES = 2;
+const FONNTE_API_URL = process.env.FONNTE_API_URL ?? "https://api.fonnte.com/send";
 let cachedToken: TokenCache | null = null;
 
 const fetchWithTimeout = async (
@@ -215,6 +216,89 @@ export async function sendWhatsAppBotReminder(
 		return {
 			success: false,
 			message: "Terjadi kesalahan saat mengirim pengingat",
+		};
+	}
+}
+
+export async function sendWhatsAppFonnteReminder(
+	phoneNumber: string,
+	message: string
+): Promise<ReminderResponse> {
+	const validation = reminderRequestSchema.safeParse({ phoneNumber, message });
+	if (!validation.success) {
+		return {
+			success: false,
+			message: "Payload tidak valid",
+		};
+	}
+
+	const token = process.env.FONNTE_TOKEN;
+	if (!token) {
+		return {
+			success: false,
+			message:
+				"Konfigurasi Fonnte belum lengkap. Tambahkan FONNTE_TOKEN pada environment server.",
+		};
+	}
+
+	try {
+		const cleanNumber = cleanPhoneNumber(phoneNumber);
+		const body = new URLSearchParams({
+			target: cleanNumber,
+			message,
+			countryCode: "62",
+		});
+
+		const response = await fetchWithRetry(FONNTE_API_URL, {
+			method: "POST",
+			headers: {
+				Authorization: token,
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: body.toString(),
+		});
+
+		const responseData = await response.json().catch(() => null);
+		if (!response.ok) {
+			const errorMessage =
+				(responseData as { reason?: string; message?: string } | null)?.reason ||
+				(responseData as { message?: string } | null)?.message ||
+				"Gagal mengirim pesan ke Fonnte";
+			return {
+				success: false,
+				message: errorMessage,
+				data: responseData ?? undefined,
+			};
+		}
+
+		const isSuccess =
+			(responseData as { status?: boolean; success?: boolean } | null)?.status ===
+				true ||
+			(responseData as { status?: boolean; success?: boolean } | null)?.success ===
+				true;
+
+		if (!isSuccess) {
+			const errorMessage =
+				(responseData as { reason?: string; message?: string } | null)?.reason ||
+				(responseData as { message?: string } | null)?.message ||
+				"Fonnte mengembalikan status gagal";
+			return {
+				success: false,
+				message: errorMessage,
+				data: responseData ?? undefined,
+			};
+		}
+
+		return {
+			success: true,
+			message: "Pesan pengingat berhasil dikirim via Fonnte",
+			data: responseData ?? undefined,
+		};
+	} catch (error) {
+		console.error("Error sending reminder via Fonnte:", error);
+		return {
+			success: false,
+			message: "Terjadi kesalahan saat mengirim pesan melalui Fonnte",
 		};
 	}
 }

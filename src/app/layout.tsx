@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import LoadingTransition from "@/components/loading-transition";
 import { Suspense } from "react";
 import SiteFooter from "@/components/site-footer";
+import AppLoadingScreen from "@/components/app-loading-screen";
 
 const poppins = Poppins({
   weight: ["100", "300", "400", "700", "900"],
@@ -47,7 +48,7 @@ export default function RootLayout({
       <body className={`${poppins.variable} font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
-            <Suspense fallback={null}>
+            <Suspense fallback={<AppLoadingScreen />}>
               <LoadingTransition>
                 <div className="flex min-h-screen flex-col">
                   <div className="flex-1 min-h-0">{children}</div>

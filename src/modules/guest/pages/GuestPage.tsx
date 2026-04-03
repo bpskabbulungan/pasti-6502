@@ -20,7 +20,7 @@ export default function GuestPage() {
         <div className="space-y-3 text-center md:space-y-4">
           <div className="flex items-center justify-center gap-2"></div>
           <h1 className="text-3xl font-bold text-foreground md:text-4xl">
-            SELAMAT DATANG DI PELAYANAN STATISTIK TERPADU BPS KABUPATEN BULUNGAN
+            BUKU TAMU PST 6502
           </h1>
         </div>
         <GuestForm />

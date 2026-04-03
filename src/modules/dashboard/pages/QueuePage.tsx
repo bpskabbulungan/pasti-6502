@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import type { Session } from "next-auth";
 import { useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
@@ -16,18 +16,12 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -35,24 +29,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { QueueStatus, Role } from "@/shared/constants/enums";
-import { formatDistance } from "date-fns";
-import { id } from "date-fns/locale";
+import { QueueStatus } from "@/shared/constants/enums";
 import { RefreshCw, Smartphone, AlertCircle, MessageSquareText } from "lucide-react";
 import { queuesApi } from "@/services/api/queues";
+import { useLiveQuery } from "@/hooks/use-live-query";
 import TableSkeleton from "@/modules/dashboard/components/skeletons/TableSkeleton";
-import QueueManagementSkeleton from "@/modules/dashboard/components/skeletons/QueueManagementSkeleton";
+import QueueTableRow from "@/modules/dashboard/components/table-rows/QueueTableRow";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { QueueDetail } from "@shared/types/queue";
-
-// Format queue time to DDMM format (eg. 1405 for May 14)
-const formatQueueTime = (isoDateString: string | Date): string => {
-  const date = new Date(isoDateString);
-  const day = date.getDate().toString().padStart(2, "0");
-  const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Month is 0-indexed, so add 1
-  return `${day}${month}`;
-};
+import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
+import type { QueueDetail, QueueListResponse } from "@shared/types/queue";
 
 const queueStatusParamValues = new Set(["WAITING", "SERVING", "COMPLETED", "CANCELED"]);
 
@@ -75,17 +61,23 @@ const parseDateFilterParam = (value: string | null): "today" | "all" | null => {
 };
 
 type Queue = QueueDetail;
+type QueuePageProps = {
+  currentUser: Session["user"];
+  initialStatus: QueueStatus;
+  initialDateFilter: "today" | "all";
+  initialPageData: QueueListResponse;
+};
 
-export default function QueueManagementPage() {
-  const { data: session } = useSession();
+export default function QueueManagementPage({
+  currentUser,
+  initialStatus,
+  initialDateFilter,
+  initialPageData,
+}: QueuePageProps) {
   const searchParams = useSearchParams();
   const statusParam = searchParams.get("status");
   const dateFilterParam = searchParams.get("dateFilter");
-  const initialStatus = parseStatusParam(statusParam) ?? "WAITING";
-  const initialDateFilter = parseDateFilterParam(dateFilterParam) ?? "today";
-  const [queues, setQueues] = useState<Queue[]>([]);
   const [statusFilter, setStatusFilter] = useState<QueueStatus>(initialStatus);
-  const [loading, setLoading] = useState(true);
   const [showContinueDialog, setShowContinueDialog] = useState(false);
   const [nextInQueue, setNextInQueue] = useState<Queue | null>(null);
   const [showRemindSkdDialog, setShowRemindSkdDialog] = useState(false);
@@ -93,14 +85,12 @@ export default function QueueManagementPage() {
   const [reminderMessage, setReminderMessage] = useState("");
   const [isSendingReminder, setIsSendingReminder] = useState(false);
   const [reminderError, setReminderError] = useState<string | null>(null);
-  const [dataHash, setDataHash] = useState<string>("");
-  const [needsRefresh, setNeedsRefresh] = useState<boolean>(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [dateFilter, setDateFilter] = useState<"today" | "all">(initialDateFilter);
-  const [pageLoading, setPageLoading] = useState(true); // Added for initial page load skeleton
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalQueues, setTotalQueues] = useState<number | null>(null);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [queueToCancel, setQueueToCancel] = useState<Queue | null>(null);
+  const [isCancelingQueue, setIsCancelingQueue] = useState(false);
 
   useEffect(() => {
     const nextStatus = parseStatusParam(statusParam) ?? "WAITING";
@@ -110,150 +100,107 @@ export default function QueueManagementPage() {
     setCurrentPage(1);
   }, [statusParam, dateFilterParam]);
 
-  // Efficient polling with change detection
-  const pollForChanges = useCallback(async () => {
-    try {
-      const offset = (currentPage - 1) * pageSize;
-      const data = await queuesApi.list({
-        status: statusFilter,
-        hash: dataHash,
-        dateFilter,
-        limit: pageSize,
-        offset,
-      });
+  const offset = (currentPage - 1) * pageSize;
+  const queueUrl = queuesApi.listUrl({
+    status: statusFilter,
+    dateFilter,
+    limit: pageSize,
+    offset,
+  });
+  const {
+    data: queueData,
+    isLoading,
+    isRefreshing,
+    lastFetchedAt,
+    refresh,
+  } = useLiveQuery<QueueListResponse>(queueUrl, {
+    fallbackData:
+      currentPage === 1 &&
+      pageSize === 10 &&
+      statusFilter === initialStatus &&
+      dateFilter === initialDateFilter
+        ? initialPageData
+        : undefined,
+    fallbackEtag:
+      currentPage === 1 &&
+      pageSize === 10 &&
+      statusFilter === initialStatus &&
+      dateFilter === initialDateFilter &&
+      initialPageData.hash
+        ? `"${initialPageData.hash}"`
+        : null,
+    refreshInterval: 30_000,
+    onError: (error) => {
+      console.error("Error fetching queues:", error);
+      toast.error("Terjadi kesalahan saat memuat antrean");
+    },
+  });
 
-      if (data.pagination?.total !== undefined) {
-        setTotalQueues(data.pagination.total);
-        const nextTotalPages = Math.max(1, Math.ceil(data.pagination.total / pageSize));
-        if (currentPage > nextTotalPages) {
-          setCurrentPage(nextTotalPages);
-        }
-      }
+  const queues = queueData?.queues ?? [];
+  const totalQueues = queueData?.pagination?.total ?? null;
 
-      if (data.hasChanges) {
-        setQueues(data.queues);
-        setDataHash(data.hash);
-        setLastUpdatedAt(new Date());
-      }
-    } catch (error) {
-      console.error("Error polling for changes:", error);
-    }
-  }, [statusFilter, dataHash, dateFilter, pageSize, currentPage]);
-
-  // Initial data loading when filter changes
-  const fetchQueues = useCallback(
-    async (status: QueueStatus, filter: "today" | "all", page: number, size: number) => {
+  const handleServeQueue = useCallback(
+    async (queueId: string) => {
       try {
-        setLoading(true);
-        const offset = (page - 1) * size;
-        const data = await queuesApi.list({
-          status,
-          dateFilter: filter,
-          limit: size,
-          offset,
-        });
-        setQueues(data.queues);
-        setDataHash(data.hash || "");
-        setLastUpdatedAt(new Date());
-        if (data.pagination?.total !== undefined) {
-          setTotalQueues(data.pagination.total);
-          const totalPages = Math.max(1, Math.ceil(data.pagination.total / size));
-          if (page > totalPages) {
-            setCurrentPage(totalPages);
-          }
-        } else {
-          setTotalQueues(data.queues?.length ?? null);
-        }
+        await queuesApi.serve(queueId);
+        toast.success("Antrean sedang dilayani");
+        await refresh();
       } catch (error) {
-        console.error("Error fetching queues:", error);
-        toast.error("Terjadi kesalahan saat memuat antrean");
-      } finally {
-        setLoading(false);
+        console.error("Error serving queue:", error);
+        toast.error("Terjadi kesalahan saat melayani antrean");
       }
     },
-    []
+    [refresh]
   );
 
-  // Initial data loading when filter/page changes and polling setup
-  useEffect(() => {
-    fetchQueues(statusFilter, dateFilter, currentPage, pageSize);
+  const handleCompleteQueue = useCallback(
+    async (queueId: string) => {
+      try {
+        const result = await queuesApi.complete(queueId);
+        toast.success("Antrean telah selesai dilayani");
+        await refresh();
 
-    const interval = setInterval(pollForChanges, 30000);
-    return () => clearInterval(interval);
-  }, [statusFilter, dateFilter, currentPage, pageSize, fetchQueues, pollForChanges]);
-
-  // Simulate initial page loading
-  useEffect(() => {
-    // Add a slight delay to simulate initial loading
-    const timer = setTimeout(() => {
-      setPageLoading(false);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleServeQueue = async (queueId: string) => {
-    try {
-      await queuesApi.serve(queueId);
-      toast.success("Antrean sedang dilayani");
-      setNeedsRefresh(true);
-    } catch (error) {
-      console.error("Error serving queue:", error);
-      toast.error("Terjadi kesalahan saat melayani antrean");
-    }
-  };
-
-  const handleCompleteQueue = async (queueId: string) => {
-    try {
-      await queuesApi.complete(queueId);
-      toast.success("Antrean telah selesai dilayani");
-
-      const waitingResponse = await queuesApi.list({ status: "WAITING" });
-      if (waitingResponse?.queues?.length > 0) {
-        const nextCustomer = waitingResponse.queues[0];
-        setNextInQueue(nextCustomer);
-        setShowContinueDialog(true);
+        if (result.nextQueue) {
+          setNextInQueue(result.nextQueue);
+          setShowContinueDialog(true);
+        }
+      } catch (error) {
+        console.error("Error completing queue:", error);
+        toast.error("Terjadi kesalahan");
       }
-
-      setNeedsRefresh(true);
-    } catch (error) {
-      console.error("Error completing queue:", error);
-      toast.error("Terjadi kesalahan");
-    }
-  };
+    },
+    [refresh]
+  );
 
   const handleCancelQueue = async (queueId: string) => {
     try {
+      setIsCancelingQueue(true);
       await queuesApi.cancel(queueId);
       toast.success("Antrean telah dibatalkan");
-      setNeedsRefresh(true);
+      setShowCancelDialog(false);
+      setQueueToCancel(null);
+      await refresh();
     } catch (error) {
       console.error("Error canceling queue:", error);
       toast.error("Terjadi kesalahan");
+    } finally {
+      setIsCancelingQueue(false);
     }
   };
 
-  const getWaitingTime = (createdAt: string | Date) => {
-    try {
-      return formatDistance(new Date(createdAt), new Date(), {
-        addSuffix: false,
-        locale: id,
-      });
-    } catch (error) {
-      console.log("Error formatting date:", error);
-
-      return "-";
-    }
-  };
+  const openCancelDialog = useCallback((queue: Queue) => {
+    setQueueToCancel(queue);
+    setShowCancelDialog(true);
+  }, []);
 
   // Function to handle opening the SKD reminder dialog
-  const handleRemindSKD = (queue: Queue) => {
+  const handleRemindSKD = useCallback((queue: Queue) => {
     setSelectedQueue(queue);
     setReminderMessage(
       `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
     );
     setShowRemindSkdDialog(true);
-  };
+  }, []);
 
   // Function to prepare WhatsApp message
   const prepareWhatsAppReminder = async () => {
@@ -268,7 +215,6 @@ export default function QueueManagementPage() {
         window.open(data.data.whatsappUrl, "_blank");
         toast.success("Link WhatsApp berhasil dibuka");
         setShowRemindSkdDialog(false);
-        setNeedsRefresh(true);
       } else {
         toast.error("Gagal menyiapkan pengingat");
       }
@@ -294,7 +240,6 @@ export default function QueueManagementPage() {
       if (result.success) {
         toast.success("Pengingat berhasil dikirim via WhatsApp Bot");
         setShowRemindSkdDialog(false);
-        setNeedsRefresh(true);
       } else {
         setReminderError(result.message);
         toast.error(result.message);
@@ -309,73 +254,26 @@ export default function QueueManagementPage() {
   };
 
   // Function to handle SKD check
-  const handleMarkSkdFilled = async (queue: Queue, filled: boolean) => {
-    try {
-      const status = filled ? "SUDAH_MENGISI" : "BELUM_MENGISI";
-      await queuesApi.updateSkdStatus(queue.id, status);
-      toast.success(filled ? "SKD ditandai telah diisi" : "SKD ditandai belum diisi");
-      setNeedsRefresh(true);
-    } catch (error) {
-      console.error("Error updating SKD status:", error);
-      toast.error("Terjadi kesalahan saat mengubah status SKD");
-    }
-  };
+  const handleMarkSkdFilled = useCallback(
+    async (queue: Queue, filled: boolean) => {
+      try {
+        const status = filled ? "SUDAH_MENGISI" : "BELUM_MENGISI";
+        await queuesApi.updateSkdStatus(queue.id, status);
+        toast.success(filled ? "SKD ditandai telah diisi" : "SKD ditandai belum diisi");
+        await refresh();
+      } catch (error) {
+        console.error("Error updating SKD status:", error);
+        toast.error("Terjadi kesalahan saat mengubah status SKD");
+      }
+    },
+    [refresh]
+  );
 
-  const getActionButtons = (queue: Queue) => {
-    const isAdmin = session?.user?.role === Role.ADMIN;
-    const actions = [];
+  const handleCopyTrackingLink = useCallback((tempUuid: string) => {
+    navigator.clipboard.writeText(`${window.location.origin}/visitor-form/${tempUuid}`);
+    toast.success("Link tracking disalin ke clipboard");
+  }, []);
 
-    // Add "Remind SKD" button for queues that haven't filled SKD
-    if (!queue.filledSKD && queue.tempUuid) {
-      actions.push(
-        <Button
-          key="remind-skd"
-          size="sm"
-          variant="outline"
-          className="flex items-center gap-1"
-          onClick={() => handleRemindSKD(queue)}
-        >
-          <Smartphone className="w-3 h-3" />
-          <span>Kirim Pengingat</span>
-        </Button>
-      );
-    }
-
-    // Add standard action buttons based on queue status
-    switch (queue.status) {
-      case "WAITING":
-        actions.push(
-          <Button key="serve" size="sm" onClick={() => handleServeQueue(queue.id)}>
-            Layani
-          </Button>,
-          <Button
-            key="cancel"
-            size="sm"
-            variant="destructive"
-            onClick={() => handleCancelQueue(queue.id)}
-          >
-            Batalkan
-          </Button>
-        );
-        break;
-      case "SERVING":
-        // Only show complete button if the current admin is serving this queue or is admin
-        if (isAdmin || (queue.admin && queue.admin.name === session?.user?.name)) {
-          actions.push(
-            <Button key="complete" size="sm" onClick={() => handleCompleteQueue(queue.id)}>
-              Selesai
-            </Button>
-          );
-        } else {
-          actions.push(<span key="serving-info">Sedang dilayani oleh {queue.admin?.name}</span>);
-        }
-        break;
-      default:
-        break;
-    }
-
-    return <div className="flex flex-wrap justify-end gap-2">{actions}</div>;
-  };
   const getTableColumns = () => (
     <>
       <TableHead className="w-16">No</TableHead>
@@ -383,102 +281,12 @@ export default function QueueManagementPage() {
       <TableHead>Layanan</TableHead>
       <TableHead>Tipe</TableHead>
       <TableHead>Waktu</TableHead>
+      <TableHead>Dilayani Oleh</TableHead>
       <TableHead>Status SKD</TableHead>
       <TableHead>Link Tracking</TableHead>
       <TableHead className="text-right">Aksi</TableHead>
     </>
-  ); // Function to render queue rows
-  const renderQueueRow = (queue: Queue) => (
-    <TableRow key={queue.id}>
-      <TableCell className="font-medium">
-        {queue.queueNumber}-{formatQueueTime(queue.createdAt)}
-      </TableCell>
-      <TableCell>
-        <div>
-          <p>{queue.visitor.name}</p>
-          <p className="text-muted-foreground text-xs">{queue.visitor.institution || "-"}</p>
-          <p className="text-muted-foreground text-xs">{queue.visitor.phone}</p>
-        </div>
-      </TableCell>
-      <TableCell>{queue.service.name}</TableCell>
-      <TableCell>
-        {queue.queueType === "ONLINE" ? (
-          <span className="inline-flex items-center bg-blue-50 px-2 py-1 rounded-full ring-1 ring-blue-600/20 ring-inset font-medium text-blue-700 text-xs">
-            Online
-          </span>
-        ) : (
-          <span className="inline-flex items-center bg-green-50 px-2 py-1 rounded-full ring-1 ring-green-600/20 ring-inset font-medium text-green-700 text-xs">
-            Offline
-          </span>
-        )}
-      </TableCell>
-      <TableCell>
-        <div>
-          <p className="text-muted-foreground text-xs">{getWaitingTime(queue.createdAt)}</p>
-        </div>
-      </TableCell>
-      <TableCell>
-        {queue.filledSKD ? (
-          <div className="flex items-center space-x-2">
-            <span className="inline-flex items-center bg-green-50 px-2 py-1 rounded-full ring-1 ring-green-600/20 ring-inset font-medium text-green-700 text-xs">
-              Sudah Diisi
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 text-xs"
-              onClick={() => handleMarkSkdFilled(queue, false)}
-            >
-              Tandai Belum
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center space-x-2">
-            <span className="inline-flex items-center bg-red-50 px-2 py-1 rounded-full ring-1 ring-red-600/20 ring-inset font-medium text-red-700 text-xs">
-              Belum Diisi
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 text-xs"
-              onClick={() => handleMarkSkdFilled(queue, true)}
-            >
-              Tandai Sudah
-            </Button>
-          </div>
-        )}
-      </TableCell>
-      <TableCell>
-        {queue.trackingLink ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={() => {
-              // Copy to clipboard
-              navigator.clipboard.writeText(
-                `${window.location.origin}/visitor-form/${queue.tempUuid}`
-              );
-              toast.success("Link tracking disalin ke clipboard");
-            }}
-          >
-            Salin Link
-          </Button>
-        ) : (
-          <span className="text-muted-foreground text-xs">-</span>
-        )}
-      </TableCell>
-      <TableCell className="text-right">{getActionButtons(queue)}</TableCell>
-    </TableRow>
   );
-
-  // Additional effect for manual refresh when needed (triggered by actions like serve, complete, cancel)
-  useEffect(() => {
-    if (needsRefresh) {
-      fetchQueues(statusFilter, dateFilter, currentPage, pageSize);
-      setNeedsRefresh(false);
-    }
-  }, [needsRefresh, statusFilter, dateFilter, currentPage, pageSize, fetchQueues]);
 
   const statusOptions: Array<{ value: QueueStatus; label: string }> = [
     { value: "WAITING", label: "Menunggu" },
@@ -492,13 +300,11 @@ export default function QueueManagementPage() {
   const handleStatusChange = (value: string) => {
     setStatusFilter(value as QueueStatus);
     setCurrentPage(1);
-    setTotalQueues(null);
   };
 
   const handleDateFilterChange = (value: string) => {
     setDateFilter(value as "today" | "all");
     setCurrentPage(1);
-    setTotalQueues(null);
   };
 
   const handlePageSizeChange = (value: string) => {
@@ -509,25 +315,16 @@ export default function QueueManagementPage() {
   };
 
   const handleManualRefresh = () => {
-    if (loading) return; // Prevent multiple refreshes if already loading
+    if (isRefreshing) return;
     toast.info(`Memperbarui data untuk status "${statusLabel}"...`);
-    fetchQueues(statusFilter, dateFilter, currentPage, pageSize);
+    void refresh();
   };
 
-  const updatedLabel = lastUpdatedAt
-    ? new Intl.DateTimeFormat("id-ID", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).format(lastUpdatedAt)
-    : loading && !queues.length
+  const updatedLabel = lastFetchedAt
+    ? formatDisplayDateTimeWithSeconds(lastFetchedAt)
+    : isLoading && !queues.length
       ? "Memuat data awal..."
       : "Belum ada data";
-  const isRefreshing = loading && queues.length > 0;
   const totalLabel = totalQueues ?? "...";
   const totalPages = totalQueues ? Math.max(1, Math.ceil(totalQueues / pageSize)) : 1;
   const canPrevPage = currentPage > 1;
@@ -547,10 +344,6 @@ export default function QueueManagementPage() {
   const handleNextPage = () => {
     setCurrentPage((prev) => Math.min(totalPages, prev + 1));
   };
-
-  if (pageLoading) {
-    return <QueueManagementSkeleton />;
-  }
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
@@ -603,8 +396,12 @@ export default function QueueManagementPage() {
             <div className="w-full rounded-lg border border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground sm:w-auto">
               {showingLabel}
             </div>
-            <Button onClick={handleManualRefresh} disabled={loading} className="w-full sm:w-auto">
-              {loading ? (
+            <Button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="w-full sm:w-auto"
+            >
+              {isRefreshing ? (
                 <>
                   <RefreshCw className="mr-2 w-4 h-4 animate-spin" />
                   Memperbarui...
@@ -628,9 +425,9 @@ export default function QueueManagementPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading && queues.length === 0 ? (
+          {isLoading && queues.length === 0 ? (
             <div className="overflow-x-auto">
-              <TableSkeleton columns={8} rows={5} />
+              <TableSkeleton columns={9} rows={5} />
             </div>
           ) : queues.length > 0 ? (
             <div className="overflow-x-auto">
@@ -638,7 +435,22 @@ export default function QueueManagementPage() {
                 <TableHeader>
                   <TableRow>{getTableColumns()}</TableRow>
                 </TableHeader>
-                <TableBody>{queues.map((queue) => renderQueueRow(queue))}</TableBody>
+                <TableBody>
+                  {queues.map((queue) => (
+                    <QueueTableRow
+                      key={queue.id}
+                      queue={queue}
+                      currentUserRole={currentUser.role}
+                      currentUserName={currentUser.name}
+                      onServe={handleServeQueue}
+                      onComplete={handleCompleteQueue}
+                      onOpenCancel={openCancelDialog}
+                      onRemindSkd={handleRemindSKD}
+                      onMarkSkdFilled={handleMarkSkdFilled}
+                      onCopyTrackingLink={handleCopyTrackingLink}
+                    />
+                  ))}
+                </TableBody>
               </Table>
             </div>
           ) : (
@@ -656,7 +468,7 @@ export default function QueueManagementPage() {
               variant="outline"
               size="sm"
               onClick={handlePrevPage}
-              disabled={!canPrevPage || loading}
+              disabled={!canPrevPage || isRefreshing}
             >
               Sebelumnya
             </Button>
@@ -664,13 +476,60 @@ export default function QueueManagementPage() {
               variant="outline"
               size="sm"
               onClick={handleNextPage}
-              disabled={!canNextPage || loading}
+              disabled={!canNextPage || isRefreshing}
             >
               Berikutnya
             </Button>
           </div>
         </CardFooter>
       </Card>
+      <Dialog
+        open={showCancelDialog}
+        onOpenChange={(open) => {
+          setShowCancelDialog(open);
+          if (!open) {
+            setQueueToCancel(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Batalkan Antrean</DialogTitle>
+            <DialogDescription>
+              Tindakan ini akan mengubah status antrean menjadi dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          {queueToCancel && (
+            <div className="space-y-2 text-sm">
+              <p>
+                Pengunjung: <strong>{queueToCancel.visitor.name}</strong>
+              </p>
+              <p>
+                Nomor antrean: <strong>{queueToCancel.queueNumber}</strong>
+              </p>
+              <p>
+                Layanan: <strong>{queueToCancel.service.name}</strong>
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!queueToCancel || isCancelingQueue}
+              onClick={() => {
+                if (queueToCancel) {
+                  handleCancelQueue(queueToCancel.id);
+                }
+              }}
+            >
+              {isCancelingQueue ? "Memproses..." : "Ya, Batalkan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showContinueDialog} onOpenChange={setShowContinueDialog}>
         <DialogContent>
           <DialogHeader>

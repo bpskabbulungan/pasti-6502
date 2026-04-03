@@ -1,37 +1,28 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 export default function LoadingTransition({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const [isLoading, setIsLoading] = useState(false);
+    const [showIndicator, setShowIndicator] = useState(false);
 
-    // Listen for route changes
     useEffect(() => {
-        // When route changes, show loading
-        setIsLoading(true);
-
-        // Then hide loading after a small delay for animation
+        // Non-blocking indicator for route changes only.
+        setShowIndicator(true);
         const timer = setTimeout(() => {
-            setIsLoading(false);
-        }, 500);
+            setShowIndicator(false);
+        }, 150);
 
         return () => clearTimeout(timer);
-    }, [pathname, searchParams]);
+    }, [pathname]);
 
-    if (isLoading) {
-        return (
-            <div className="z-50 fixed inset-0 flex justify-center items-center bg-background/80 backdrop-blur-sm">
-                <div className="flex flex-col items-center space-y-4">
-                    <Loader2 className="w-12 h-12 text-primary animate-spin" />
-                    <p className="text-muted-foreground">Memuat halaman...</p>
-                </div>
-            </div>
-        );
-    }
-
-    return <>{children}</>;
+    return (
+        <>
+            {children}
+            {showIndicator ? (
+                <div className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 bg-primary/80 animate-pulse" />
+            ) : null}
+        </>
+    );
 }

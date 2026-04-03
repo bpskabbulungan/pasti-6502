@@ -1,13 +1,7 @@
-"use client";
+import UsersPage from "@/modules/dashboard/pages/UsersPage";
+import { requireAdminDashboardUser } from "@/lib/dashboard-session";
 
-import dynamic from "next/dynamic";
-import UsersManagementSkeleton from "@/modules/dashboard/components/skeletons/UsersManagementSkeleton";
-
-const UsersPage = dynamic(
-	() => import("@/modules/dashboard/pages/UsersPage"),
-	{ ssr: false, loading: () => <UsersManagementSkeleton /> }
-);
-
-export default function Page() {
+export default async function Page() {
+	await requireAdminDashboardUser();
 	return <UsersPage />;
 }

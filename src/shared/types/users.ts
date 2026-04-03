@@ -4,8 +4,10 @@ export type UserSummary = {
 	id: string;
 	name: string;
 	username: string;
+	phone: string | null;
 	role: Role;
 	createdAt: string | Date;
+	updatedAt: string | Date;
 };
 
 export type UsersListResponse = {

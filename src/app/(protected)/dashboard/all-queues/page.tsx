@@ -1,19 +1,20 @@
 import { redirect } from "next/navigation";
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     status?: string;
     dateFilter?: string;
-  };
+  }>;
 };
 
-export default function Page({ searchParams }: PageProps) {
+export default async function Page({ searchParams }: PageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const params = new URLSearchParams();
-  if (searchParams?.status) {
-    params.set("status", searchParams.status);
+  if (resolvedSearchParams?.status) {
+    params.set("status", resolvedSearchParams.status);
   }
-  if (searchParams?.dateFilter) {
-    params.set("dateFilter", searchParams.dateFilter);
+  if (resolvedSearchParams?.dateFilter) {
+    params.set("dateFilter", resolvedSearchParams.dateFilter);
   }
   const queryString = params.toString();
   redirect(`/dashboard/queue${queryString ? `?${queryString}` : ""}`);

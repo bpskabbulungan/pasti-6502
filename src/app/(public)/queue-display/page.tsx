@@ -17,20 +17,11 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useQueueDisplay } from "@/modules/queue-display/hooks/useQueueDisplay";
 import PageBackground from "@/components/page-background";
+import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import type { QueueDisplayResponse } from "@shared/types/queue";
 
 const formatTimestamp = (value: Date | null) =>
-  value
-    ? new Intl.DateTimeFormat("id-ID", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).format(value)
-    : "Belum ada data";
+  value ? formatDisplayDateTimeWithSeconds(value) : "Belum ada data";
 
 const formatQueueCode = (serviceName: string, queueNumber: number) => {
   const trimmed = serviceName.toLowerCase();

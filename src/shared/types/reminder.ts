@@ -4,6 +4,7 @@ export type ReminderResponse = {
 	data?: {
 		whatsappUrl?: string;
 		phoneNumber?: string;
+		[key: string]: unknown;
 	};
 };
 

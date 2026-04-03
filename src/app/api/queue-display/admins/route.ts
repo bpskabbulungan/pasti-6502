@@ -1,30 +1,13 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { Role } from "@prisma/client";
+import { listQueueDisplayAdmins } from "@api/modules/users";
 
 export async function GET() {
-	try {
-		// Get all admins and petugas
-		const admins = await prisma.user.findMany({
-			where: {
-				OR: [{ role: Role.ADMIN }, { role: Role.PETUGAS }],
-			},
-			select: {
-				id: true,
-				name: true,
-				role: true,
-			},
-			orderBy: {
-				role: "asc", // ADMIN first, then PETUGAS
-			},
-		});
+  try {
+    const result = await listQueueDisplayAdmins();
 
-		return NextResponse.json({ admins });
-	} catch (error) {
-		console.error("Error fetching admins:", error);
-		return NextResponse.json(
-			{ error: "Failed to fetch admins" },
-			{ status: 500 }
-		);
-	}
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("Error fetching admins:", error);
+    return NextResponse.json({ error: "Failed to fetch admins" }, { status: 500 });
+  }
 }

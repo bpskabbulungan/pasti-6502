@@ -45,6 +45,53 @@ export async function getQueueDisplay(params: {
 		servingWhereClause.adminId = adminId;
 	}
 
+	const [servingSnapshot, nextQueueSnapshot] = await Promise.all([
+		prisma.queue.findMany({
+			where: servingWhereClause,
+			select: {
+				id: true,
+				updatedAt: true,
+			},
+			orderBy: {
+				queueNumber: "asc",
+			},
+		}),
+		prisma.queue.findFirst({
+			where: nextQueueWhereClause,
+			select: {
+				id: true,
+				updatedAt: true,
+			},
+			orderBy: {
+				queueNumber: "asc",
+			},
+		}),
+	]);
+
+	const hashSource = {
+		serving: servingSnapshot.map((item) => ({
+			id: item.id,
+			updatedAt: item.updatedAt.toISOString(),
+		})),
+		next: nextQueueSnapshot
+			? {
+					id: nextQueueSnapshot.id,
+					updatedAt: nextQueueSnapshot.updatedAt.toISOString(),
+			  }
+			: null,
+	};
+	const hash = generateHash(hashSource);
+	const hasChanges = !clientHash || clientHash !== hash;
+
+	if (!hasChanges) {
+		return {
+			servingQueues: [],
+			nextQueue: null,
+			hash,
+			hasChanges,
+		};
+	}
+
 	const servingQueues = await prisma.queue.findMany({
 		where: servingWhereClause,
 		include: {
@@ -81,10 +128,9 @@ export async function getQueueDisplay(params: {
 	const responseData = {
 		servingQueues,
 		nextQueue: nextQueue || null,
+		hash,
+		hasChanges,
 	};
 
-	const hash = generateHash(responseData);
-	const hasChanges = !clientHash || clientHash !== hash;
-
-	return { ...responseData, hash, hasChanges };
+	return responseData;
 }

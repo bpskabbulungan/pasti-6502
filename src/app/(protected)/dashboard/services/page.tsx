@@ -1,13 +1,7 @@
-"use client";
+import ServicesPage from "@/modules/dashboard/pages/ServicesPage";
+import { requireAdminDashboardUser } from "@/lib/dashboard-session";
 
-import dynamic from "next/dynamic";
-import ServicesManagementSkeleton from "@/modules/dashboard/components/skeletons/ServicesManagementSkeleton";
-
-const ServicesPage = dynamic(
-	() => import("@/modules/dashboard/pages/ServicesPage"),
-	{ ssr: false, loading: () => <ServicesManagementSkeleton /> }
-);
-
-export default function Page() {
+export default async function Page() {
+	await requireAdminDashboardUser();
 	return <ServicesPage />;
 }

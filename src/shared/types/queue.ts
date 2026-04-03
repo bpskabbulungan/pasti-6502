@@ -30,6 +30,7 @@ export type QueueDetail = {
 	service: { name: string };
 	visitor: { name: string; phone: string; institution: string | null };
 	admin: { name: string } | null;
+	dutyStaff: { name: string } | null;
 	serviceName?: string;
 	visitorName?: string;
 };
@@ -46,6 +47,12 @@ export type QueueListResponse = {
 	};
 };
 
+export type QueueActionResponse = {
+	message: string;
+	queue: QueueDetail;
+	nextQueue?: QueueDetail | null;
+};
+
 export type QueueDisplayResponse = {
 	servingQueues: Array<{
 		id: string;
@@ -54,6 +61,7 @@ export type QueueDisplayResponse = {
 		queueType: QueueType;
 		service: { name: string };
 		admin: { name: string } | null;
+		dutyStaff?: { name: string } | null;
 		createdAt: Date;
 		startTime: Date | null;
 		endTime: Date | null;
@@ -65,6 +73,7 @@ export type QueueDisplayResponse = {
 		queueType: QueueType;
 		service: { name: string };
 		admin?: { name: string } | null;
+		dutyStaff?: { name: string } | null;
 		createdAt: Date;
 		startTime: Date | null;
 		endTime: Date | null;

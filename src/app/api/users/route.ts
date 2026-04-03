@@ -45,9 +45,9 @@ export async function POST(req: NextRequest) {
 		}
 
 		const data = await req.json();
-		const { name, username, password, role } = data;
+		const { name, username, password, phone, role } = data;
 
-		const result = await createUser({ name, username, password, role });
+		const result = await createUser({ name, username, password, phone, role });
 
 		if (!result.ok) {
 			return NextResponse.json({ error: result.error }, { status: result.status });

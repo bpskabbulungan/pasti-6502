@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,32 +15,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Role } from "@/shared/constants/enums";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Clock3,
-  Pencil,
-  RefreshCcw,
-  Search,
-  Shield,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  UserPlus,
-  X,
-} from "lucide-react";
+import { Clock3, RefreshCcw, Search, Sparkles, UserPlus, X } from "lucide-react";
 import { usersApi } from "@/services/api/users";
+import UsersTableRow from "@/modules/dashboard/components/table-rows/UsersTableRow";
+import { formatDisplayDateTime } from "@/lib/date-format";
 import type { ErrorResponse } from "@shared/types/api";
 import type { UserSummary } from "@shared/types/users";
 
@@ -66,8 +46,6 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 };
 
 export default function UsersManagementPage() {
-  const { data: session } = useSession();
-  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
@@ -80,18 +58,12 @@ export default function UsersManagementPage() {
 
   const [newUsername, setNewUsername] = useState("");
   const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   useEffect(() => {
-    if (session && session.user.role !== Role.ADMIN) {
-      toast.error("Anda tidak memiliki akses ke halaman ini");
-      router.push("/dashboard");
-    }
-  }, [session, router]);
-
-  useEffect(() => {
-    fetchUsers();
+    void fetchUsers();
   }, []);
 
   const fetchUsers = async () => {
@@ -142,14 +114,7 @@ export default function UsersManagementPage() {
     roleFilter === "ALL" ? "Semua role" : roleFilter === Role.ADMIN ? "Admin" : "Petugas";
   const hasFetched = Boolean(lastFetchedAt);
   const lastFetchedLabel = lastFetchedAt
-    ? new Intl.DateTimeFormat("id-ID", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(lastFetchedAt)
+    ? formatDisplayDateTime(lastFetchedAt)
     : loading
       ? "Memuat data..."
       : "Belum ada data";
@@ -179,6 +144,7 @@ export default function UsersManagementPage() {
       await usersApi.create({
         name: newName,
         username: newUsername,
+        phone: newPhone.trim() || null,
         password: newPassword,
         role: Role.PETUGAS,
       });
@@ -204,6 +170,7 @@ export default function UsersManagementPage() {
       await usersApi.update(selectedUser.id, {
         name: newName || selectedUser.name,
         username: newUsername || selectedUser.username,
+        phone: newPhone.trim() || null,
         ...(newPassword ? { password: newPassword } : {}),
       });
       toast.success("Pengguna berhasil diperbarui");
@@ -233,61 +200,26 @@ export default function UsersManagementPage() {
   const resetFormFields = () => {
     setNewUsername("");
     setNewName("");
+    setNewPhone("");
     setNewPassword("");
     setConfirmPassword("");
     setSelectedUser(null);
   };
 
-  const openEditDialog = (user: User) => {
+  const openEditDialog = useCallback((user: User) => {
     setSelectedUser(user);
     setNewUsername(user.username);
     setNewName(user.name);
+    setNewPhone(user.phone ?? "");
     setNewPassword("");
     setConfirmPassword("");
     setEditDialogOpen(true);
-  };
+  }, []);
 
-  const openDeleteDialog = (user: User) => {
+  const openDeleteDialog = useCallback((user: User) => {
     setSelectedUser(user);
     setDeleteDialogOpen(true);
-  };
-
-  const getInitials = (value: string) => {
-    if (!value) return "AD";
-    const parts = value.trim().split(" ").filter(Boolean);
-    if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase();
-    }
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  };
-
-  const formatDate = (value: string | Date) =>
-    new Intl.DateTimeFormat("id-ID", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }).format(new Date(value));
-
-  const formatRelativeTime = (value: string | Date) => {
-    const diff = Date.now() - new Date(value).getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    if (days <= 0) return "Hari ini";
-    if (days === 1) return "Kemarin";
-    if (days < 7) return `${days} hari lalu`;
-    const weeks = Math.floor(days / 7);
-    if (weeks < 4) return `${weeks} minggu lalu`;
-    const months = Math.floor(days / 30);
-    return `${months} bulan lalu`;
-  };
-  if (session?.user?.role !== Role.ADMIN) {
-    return (
-      <div className="flex min-h-full items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
+  }, []);
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <div className="relative overflow-hidden rounded-2xl border border-custom bg-gradient-to-r from-primary/15 via-secondary/20 to-background shadow-md">
@@ -398,6 +330,16 @@ export default function UsersManagementPage() {
                         )}
                       </div>
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">No. WhatsApp (opsional)</Label>
+                      <Input
+                        id="phone"
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value)}
+                        placeholder="08xxxxxxxxxx"
+                        autoComplete="tel"
+                      />
+                    </div>
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
@@ -494,7 +436,7 @@ export default function UsersManagementPage() {
               </Badge>
               {trimmedSearch && (
                 <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                  Pencarian: "{trimmedSearch}"
+                  Pencarian: {`"${trimmedSearch}"`}
                 </Badge>
               )}
               <span className="text-secondary-color">
@@ -559,158 +501,29 @@ export default function UsersManagementPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="hidden overflow-hidden rounded-xl border border-border/80 md:block">
-                <Table className="min-w-[720px]">
-                  <TableHeader className="bg-muted/50">
+              <div className="overflow-hidden rounded-xl border border-border/80">
+                <Table className="w-full md:min-w-[720px]">
+                  <TableHeader className="hidden bg-muted/50 md:table-header-group">
                     <TableRow>
-                      <TableHead>Pengelola</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Dibuat</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
+                      <TableHead className="text-center">Pengelola</TableHead>
+                      <TableHead className="text-center">Username</TableHead>
+                      <TableHead className="text-center">WhatsApp</TableHead>
+                      <TableHead className="text-center">Role</TableHead>
+                      <TableHead className="text-center">Dibuat</TableHead>
+                      <TableHead className="text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredUsers.map((user) => (
-                      <TableRow key={user.id} className="hover:bg-muted/50">
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar className="bg-primary/10 text-primary-color">
-                              <AvatarFallback>
-                                {getInitials(user.name || user.username)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-semibold text-primary-color">{user.name}</p>
-                              <p className="text-xs text-secondary-color">@{user.username}</p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={user.role === Role.ADMIN ? "secondary" : "outline"}
-                            className={`border-border ${
-                              user.role === Role.ADMIN
-                                ? "bg-primary/10 text-primary-color"
-                                : "bg-accent/10 text-accent"
-                            }`}
-                          >
-                            {user.role === Role.ADMIN ? "Admin" : "Petugas"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1 text-sm">
-                            <p className="font-medium text-primary-color">
-                              {formatDate(user.createdAt)}
-                            </p>
-                            <p className="text-xs text-secondary-color">
-                              {formatRelativeTime(user.createdAt)}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                              onClick={() => openEditDialog(user)}
-                              disabled={user.role === Role.ADMIN}
-                              title={
-                                user.role === Role.ADMIN
-                                  ? "Akun admin tidak dapat diedit"
-                                  : "Edit pengguna"
-                              }
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              className="gap-2"
-                              onClick={() => openDeleteDialog(user)}
-                              disabled={user.role === Role.ADMIN}
-                              title={
-                                user.role === Role.ADMIN
-                                  ? "Akun admin tidak dapat dihapus"
-                                  : "Hapus pengguna"
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Hapus
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                      <UsersTableRow
+                        key={user.id}
+                        user={user}
+                        onEdit={openEditDialog}
+                        onDelete={openDeleteDialog}
+                      />
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-              <div className="space-y-3 md:hidden">
-                {filteredUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="bg-primary/10 text-primary-color">
-                          <AvatarFallback>{getInitials(user.name || user.username)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-semibold text-primary-color">{user.name}</p>
-                          <p className="text-xs text-secondary-color">@{user.username}</p>
-                        </div>
-                      </div>
-                      <Badge
-                        variant={user.role === Role.ADMIN ? "secondary" : "outline"}
-                        className={`border-border ${
-                          user.role === Role.ADMIN
-                            ? "bg-primary/10 text-primary-color"
-                            : "bg-accent/10 text-accent"
-                        }`}
-                      >
-                        {user.role === Role.ADMIN ? "Admin" : "Petugas"}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 space-y-1 text-xs text-secondary-color">
-                      <p className="text-primary-color">{formatDate(user.createdAt)}</p>
-                      <p>{formatRelativeTime(user.createdAt)}</p>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => openEditDialog(user)}
-                        disabled={user.role === Role.ADMIN}
-                        title={
-                          user.role === Role.ADMIN
-                            ? "Akun admin tidak dapat diedit"
-                            : "Edit pengguna"
-                        }
-                      >
-                        <Pencil className="h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => openDeleteDialog(user)}
-                        disabled={user.role === Role.ADMIN}
-                        title={
-                          user.role === Role.ADMIN
-                            ? "Akun admin tidak dapat dihapus"
-                            : "Hapus pengguna"
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Hapus
-                      </Button>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           )}
@@ -762,6 +575,16 @@ export default function UsersManagementPage() {
               <p className="text-xs text-secondary-color">
                 Biarkan kosong bila tidak ada perubahan.
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">No. WhatsApp (opsional)</Label>
+              <Input
+                id="edit-phone"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                placeholder="08xxxxxxxxxx"
+                autoComplete="tel"
+              />
             </div>
             {newPassword && (
               <div className="space-y-2">

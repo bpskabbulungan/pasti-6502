@@ -1,204 +1,179 @@
+import { createHash } from "crypto";
 import { nanoid } from "nanoid";
-import {
-	Purpose,
-	QueueStatus,
-	QueueType,
-	ServiceStatus,
-} from "@prisma/client";
+import { Purpose, QueueStatus, QueueType, ServiceStatus } from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
+import { createGuestParticipantPair } from "@api/modules/participants";
+import {
+  allocateNextQueueNumber,
+  normalizeQueueDate,
+} from "@api/modules/queues/queue-counter.service";
 import { guestSchema } from "@shared/schemas/guest";
+import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
 const purposeToServiceName: Record<Purpose, string> = {
-	[Purpose.KONSULTASI_STATISTIK]: "Konsultasi Statistik",
-	[Purpose.PERPUSTAKAAN]: "Perpustakaan",
-	[Purpose.REKOMENDASI_STATISTIK]: "Rekomendasi Statistik",
-	[Purpose.LAINNYA]: "Konsultasi Statistik",
+  [Purpose.KONSULTASI_STATISTIK]: "Konsultasi Statistik",
+  [Purpose.PERPUSTAKAAN]: "Perpustakaan",
+  [Purpose.REKOMENDASI_STATISTIK]: "Rekomendasi Statistik",
+  [Purpose.LAINNYA]: "Konsultasi Statistik",
 };
 
-const formatQueueDate = (date: Date): string => {
-	const day = date.getDate().toString().padStart(2, "0");
-	const month = (date.getMonth() + 1).toString().padStart(2, "0");
-	return `${day}${month}`;
-};
+const hashPayload = (payload: unknown) =>
+  createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 
 export type GuestSubmissionResult = {
-	queueId: string;
-	queueNumber: number;
-	queueCode: string;
-	status: QueueStatus;
-	purpose: Purpose | null;
-	serviceName: string;
-	guestName: string;
-	trackingLink: string | null;
+  queueId: string;
+  queueNumber: number;
+  queueCode: string;
+  status: QueueStatus;
+  purpose: Purpose | null;
+  serviceName: string;
+  guestName: string;
+  trackingLink: string | null;
 };
 
-export async function getGuestQueueDetail(queueId: string) {
-	const queue = await prisma.queue.findUnique({
-		where: { id: queueId },
-		include: {
-			service: { select: { name: true } },
-			guest: { select: { fullName: true, purpose: true } },
-			visitor: { select: { name: true } },
-		},
-	});
+export async function getGuestQueueDetail(queueId: string, clientHash?: string | null) {
+  const queue = await prisma.queue.findUnique({
+    where: { id: queueId },
+    include: {
+      service: { select: { name: true, updatedAt: true } },
+      guest: { select: { fullName: true, purpose: true, updatedAt: true } },
+      visitor: { select: { name: true, updatedAt: true } },
+    },
+  });
 
-	if (!queue) {
-		return { ok: false as const, status: 404, error: "Queue not found" };
-	}
-	if (!queue.guest) {
-		return { ok: false as const, status: 404, error: "Queue not found" };
-	}
+  if (!queue) {
+    return { ok: false as const, status: 404, error: "Queue not found" };
+  }
+  if (!queue.guest) {
+    return { ok: false as const, status: 404, error: "Queue not found" };
+  }
 
-	const guestName = queue.guest?.fullName ?? queue.visitor?.name ?? "Pengunjung";
+  const guestName = queue.guest?.fullName ?? queue.visitor?.name ?? "Pengunjung";
+  const data = {
+    queueId: queue.id,
+    queueNumber: queue.queueNumber,
+    queueCode: formatGuestQueueCode(queue.guest?.purpose, queue.queueNumber),
+    status: queue.status,
+    purpose: queue.guest?.purpose ?? null,
+    serviceName: queue.service.name,
+    guestName,
+    trackingLink: queue.trackingLink,
+  } satisfies GuestSubmissionResult;
+  const hash = hashPayload({
+    queueId: queue.id,
+    queueUpdatedAt: queue.updatedAt.toISOString(),
+    serviceUpdatedAt: queue.service.updatedAt.toISOString(),
+    guestUpdatedAt: queue.guest?.updatedAt?.toISOString() ?? null,
+    visitorUpdatedAt: queue.visitor?.updatedAt?.toISOString() ?? null,
+    data,
+  });
+  const hasChanges = !clientHash || clientHash !== hash;
 
-	return {
-		ok: true as const,
-		data: {
-			queueId: queue.id,
-			queueNumber: queue.queueNumber,
-			queueCode: `${queue.queueNumber}-${formatQueueDate(new Date(queue.createdAt))}`,
-			status: queue.status,
-			purpose: queue.guest?.purpose ?? null,
-			serviceName: queue.service.name,
-			guestName,
-			trackingLink: queue.trackingLink,
-		} satisfies GuestSubmissionResult,
-	};
+  return {
+    ok: true as const,
+    data: {
+      ...data,
+      hash,
+      hasChanges,
+    },
+    hash,
+    hasChanges,
+  };
 }
 
 export async function processGuestSubmission(body: unknown) {
-	const parsed = guestSchema.safeParse(body);
+  const parsed = guestSchema.safeParse(body);
 
-	if (!parsed.success) {
-		return {
-			ok: false as const,
-			status: 400,
-			error: "Data tidak valid",
-			details: parsed.error.flatten().fieldErrors,
-		};
-	}
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Data tidak valid",
+      details: parsed.error.flatten().fieldErrors,
+    };
+  }
 
-	const data = parsed.data;
-	const sanitized = {
-		...data,
-		fullName: data.fullName.trim(),
-		email: data.email?.trim() ?? null,
-		address: data.address?.trim(),
-		phone: data.phone.trim(),
-		institution: data.institution.trim(),
-		occupation: data.occupation.trim(),
-	};
+  const data = parsed.data;
+  const sanitized = {
+    ...data,
+    fullName: data.fullName.trim(),
+    email: data.email?.trim() ?? null,
+    address: data.address?.trim(),
+    phone: data.phone.trim(),
+    institution: data.institution.trim(),
+    occupation: data.occupation.trim(),
+  };
 
-	const queueDate = new Date();
-	queueDate.setHours(0, 0, 0, 0);
+  const queueDate = normalizeQueueDate(new Date());
 
-	let result: GuestSubmissionResult | null = null;
+  const transactionResult = await prisma.$transaction(async (tx) => {
+    const preferredServiceName = purposeToServiceName[sanitized.purpose];
+    const preferredService = await tx.service.findFirst({
+      where: {
+        name: preferredServiceName,
+        status: ServiceStatus.ACTIVE,
+      },
+    });
 
-	for (let attempt = 0; attempt < 3; attempt++) {
-		try {
-			const transactionResult = await prisma.$transaction(async (tx) => {
-				const preferredServiceName = purposeToServiceName[sanitized.purpose];
-				const preferredService = await tx.service.findFirst({
-					where: {
-						name: preferredServiceName,
-						status: ServiceStatus.ACTIVE,
-					},
-				});
+    const fallbackService =
+      preferredService ??
+      (await tx.service.findFirst({
+        where: { status: ServiceStatus.ACTIVE },
+        orderBy: { createdAt: "asc" },
+      }));
 
-				const fallbackService =
-					preferredService ??
-					(await tx.service.findFirst({
-						where: { status: ServiceStatus.ACTIVE },
-						orderBy: { createdAt: "asc" },
-					}));
+    if (!fallbackService) {
+      throw new Error("NO_ACTIVE_SERVICE");
+    }
 
-				if (!fallbackService) {
-					throw new Error("NO_ACTIVE_SERVICE");
-				}
+    const nextQueueNumber = await allocateNextQueueNumber(tx, queueDate);
+    const { visitor, guest } = await createGuestParticipantPair(tx, {
+      fullName: sanitized.fullName,
+      phone: sanitized.phone,
+      institution: sanitized.institution,
+      email: sanitized.email,
+      address: sanitized.address ?? null,
+      age: sanitized.age,
+      gender: sanitized.gender,
+      lastEducation: sanitized.lastEducation,
+      occupation: sanitized.occupation,
+      purpose: sanitized.purpose,
+    });
 
-				const latestQueue = await tx.queue.findFirst({
-					where: {
-						queueDate,
-					},
-					select: { queueNumber: true },
-					orderBy: { queueNumber: "desc" },
-				});
+    const queue = await tx.queue.create({
+      data: {
+        queueNumber: nextQueueNumber,
+        queueDate,
+        status: QueueStatus.WAITING,
+        queueType: QueueType.OFFLINE,
+        visitorId: visitor.id,
+        guestId: guest.id,
+        serviceId: fallbackService.id,
+        trackingLink: nanoid(10),
+        filledSKD: false,
+      },
+      include: { service: true },
+    });
 
-				const nextQueueNumber = latestQueue ? latestQueue.queueNumber + 1 : 1;
+    return { guest, queue };
+  });
 
-				const guest = await tx.guest.create({
-					data: {
-						fullName: sanitized.fullName,
-						email: sanitized.email,
-						address: sanitized.address,
-						phone: sanitized.phone,
-						age: sanitized.age,
-						institution: sanitized.institution,
-						gender: sanitized.gender,
-						lastEducation: sanitized.lastEducation,
-						occupation: sanitized.occupation,
-						purpose: sanitized.purpose,
-					},
-				});
+  const result: GuestSubmissionResult = {
+    queueId: transactionResult.queue.id,
+    queueNumber: transactionResult.queue.queueNumber,
+    queueCode: formatGuestQueueCode(
+      transactionResult.guest.purpose,
+      transactionResult.queue.queueNumber
+    ),
+    status: transactionResult.queue.status,
+    purpose: transactionResult.guest.purpose,
+    serviceName: transactionResult.queue.service.name,
+    guestName: transactionResult.guest.fullName,
+    trackingLink: transactionResult.queue.trackingLink,
+  };
 
-				const visitor = await tx.visitor.create({
-					data: {
-						name: sanitized.fullName,
-						phone: sanitized.phone,
-						institution: sanitized.institution,
-						email: sanitized.email,
-					},
-				});
-
-				const queue = await tx.queue.create({
-					data: {
-						queueNumber: nextQueueNumber,
-						queueDate,
-						status: QueueStatus.WAITING,
-						queueType: QueueType.OFFLINE,
-						visitorId: visitor.id,
-						guestId: guest.id,
-						serviceId: fallbackService.id,
-						trackingLink: nanoid(10),
-						filledSKD: false,
-					},
-					include: { service: true },
-				});
-
-				return { guest, queue };
-			});
-
-			result = {
-				queueId: transactionResult.queue.id,
-				queueNumber: transactionResult.queue.queueNumber,
-				queueCode: `${transactionResult.queue.queueNumber}-${formatQueueDate(
-					new Date(transactionResult.queue.createdAt)
-				)}`,
-				status: transactionResult.queue.status,
-				purpose: transactionResult.guest.purpose,
-				serviceName: transactionResult.queue.service.name,
-				guestName: transactionResult.guest.fullName,
-				trackingLink: transactionResult.queue.trackingLink,
-			};
-			break;
-		} catch (error) {
-			if ((error as { code?: string }).code === "P2002" && attempt < 2) {
-				continue;
-			}
-			throw error;
-		}
-	}
-
-	if (!result) {
-		return {
-			ok: false as const,
-			status: 409,
-			error: "Gagal menetapkan nomor antrean, coba lagi.",
-		};
-	}
-
-	return {
-		ok: true as const,
-		data: result,
-	};
+  return {
+    ok: true as const,
+    data: result,
+  };
 }
