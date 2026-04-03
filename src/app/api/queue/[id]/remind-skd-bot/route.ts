@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { triggerSkdReminderBot } from "@api/modules/queues";
 import type { ReminderResponse } from "@shared/types/reminder";
 
@@ -9,12 +8,13 @@ export async function POST(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json(
-				{ success: false, message: "Unauthorized" },
-				{ status: 401 }
-			);
+		const guard = await requireApiGuard({
+			request: req,
+			unauthorizedBody: { success: false, message: "Unauthorized" },
+			forbiddenBody: { success: false, message: "Forbidden" },
+		});
+		if (!guard.ok) {
+			return guard.response;
 		}
 
 		const { id } = await params;

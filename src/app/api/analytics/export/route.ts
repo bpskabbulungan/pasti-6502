@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { format } from "date-fns";
+import { Role } from "@prisma/client";
+import { requireApiGuard } from "@/lib/api-guard";
 import { createAnalyticsExportJob, parseDateRange } from "@api/modules/analytics";
+import { toIsoDateInTimeZone } from "@shared/utils/date-boundary";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireApiGuard({ request: req, roles: [Role.ADMIN] });
+    if (!guard.ok) {
+      return guard.response;
     }
 
     const body = (await req.json().catch(() => null)) as {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       format?: "xlsx" | "pdf";
     } | null;
 
-    const todayString = format(new Date(), "yyyy-MM-dd");
+    const todayString = toIsoDateInTimeZone(new Date());
     const startDateParam = body?.startDate || todayString;
     const endDateParam = body?.endDate || startDateParam;
     const formatParam = body?.format ?? "xlsx";
@@ -31,7 +31,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsedRange.error }, { status: parsedRange.status });
     }
 
-    const result = await createAnalyticsExportJob(session.user.id, parsedRange.range, formatParam);
+    const result = await createAnalyticsExportJob(
+      guard.session.user.id,
+      parsedRange.range,
+      formatParam
+    );
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
 
     return NextResponse.json(result, { status: 202 });
   } catch (error) {

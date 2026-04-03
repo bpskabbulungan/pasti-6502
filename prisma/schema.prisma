@@ -40,6 +40,7 @@ model User {
   dutyReminderLogs DutyReminderLog[]    @relation("DutyReminderLogStaff")
   analyticsExports AnalyticsExportJob[]
   notifications    Notification[]
+  notificationReads NotificationRead[]
 }
 
 model Service {
@@ -175,6 +176,7 @@ model AnalyticsExportJob {
   startDate     DateTime
   endDate       DateTime
   fileName      String?
+  storageKey    String?               @unique
   contentType   String?
   payload       Bytes?                @db.LongBlob
   errorMessage  String?
@@ -294,8 +296,23 @@ model Notification {
   updatedAt DateTime @updatedAt
   userId    String? // Optional, if notification is targeted to specific user
   user      User?    @relation(fields: [userId], references: [id])
+  reads     NotificationRead[]
 
   @@index([userId])
+}
+
+model NotificationRead {
+  id             String       @id @default(uuid())
+  notificationId String
+  userId         String
+  readAt         DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId, readAt])
+  @@index([notificationId])
 }
 
 model Guest {

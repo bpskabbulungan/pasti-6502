@@ -10,6 +10,8 @@ const buckets = new Map<string, Bucket>();
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_WINDOW_MS = 60_000;
+const MEMORY_BUCKET_CLEANUP_INTERVAL_MS = 60_000;
+let lastMemoryBucketCleanupAt = 0;
 
 const getClientIp = (req: NextRequest): string => {
 	const xfwd = req.headers.get("x-forwarded-for");
@@ -52,8 +54,24 @@ const redisRateLimit = async (
 			resetAt: now + remainingTtl,
 		};
 	} catch (error) {
-		console.error("Redis rate limit failed, falling back to memory", error);
+		console.error("Redis rate limit failed", error);
+		if (process.env.NODE_ENV === "production") {
+			throw error;
+		}
 		return null;
+	}
+};
+
+const cleanupExpiredMemoryBuckets = (now: number) => {
+	if (now - lastMemoryBucketCleanupAt < MEMORY_BUCKET_CLEANUP_INTERVAL_MS) {
+		return;
+	}
+
+	lastMemoryBucketCleanupAt = now;
+	for (const [key, bucket] of buckets.entries()) {
+		if (bucket.expiresAt <= now) {
+			buckets.delete(key);
+		}
 	}
 };
 
@@ -63,6 +81,7 @@ const memoryRateLimit = (
 	windowMs: number
 ): RateLimitResult => {
 	const now = Date.now();
+	cleanupExpiredMemoryBuckets(now);
 	const bucket = buckets.get(cacheKey);
 
 	if (!bucket || bucket.expiresAt <= now) {
@@ -84,7 +103,7 @@ const memoryRateLimit = (
 };
 
 /**
- * IP-based rate limiter. Uses Redis when configured (REDIS_URL), falls back to in-memory.
+ * IP-based rate limiter. Requires Redis in production, falls back to in-memory in non-production.
  */
 export async function rateLimit(
 	req: NextRequest,
@@ -99,6 +118,9 @@ export async function rateLimit(
 
 	const redisResult = await redisRateLimit(cacheKey, limit, windowMs);
 	if (redisResult) return redisResult;
+	if (process.env.NODE_ENV === "production") {
+		throw new Error("Redis is required for rate limiting in production");
+	}
 
 	return memoryRateLimit(cacheKey, limit, windowMs);
 }

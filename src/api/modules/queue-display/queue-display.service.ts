@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import prisma from "@api/infrastructure/database/prisma";
 import { Prisma, QueueStatus } from "@prisma/client";
+import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 
 const generateHash = (data: unknown) => {
 	const dataString = JSON.stringify(data);
@@ -16,9 +17,6 @@ export async function getQueueDisplay(params: {
 }) {
 	const { adminId, dateFilter = "today", clientHash = "" } = params;
 
-	const today = new Date();
-	today.setHours(0, 0, 0, 0);
-
 	const servingWhereClause: Prisma.QueueWhereInput = {
 		status: QueueStatus.SERVING,
 	};
@@ -28,16 +26,15 @@ export async function getQueueDisplay(params: {
 	};
 
 	if (dateFilter === "today") {
-		const tomorrow = new Date(today);
-		tomorrow.setDate(today.getDate() + 1);
+		const { start, end } = getDayRangeInTimeZone(new Date());
 
 		servingWhereClause.queueDate = {
-			gte: today,
-			lt: tomorrow,
+			gte: start,
+			lt: end,
 		};
 		nextQueueWhereClause.queueDate = {
-			gte: today,
-			lt: tomorrow,
+			gte: start,
+			lt: end,
 		};
 	}
 

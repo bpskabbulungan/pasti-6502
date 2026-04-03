@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { extractEtagMarker, toEtag } from "@/lib/http-cache";
 import { getDashboardStats } from "@api/modules/dashboard";
 import type { DashboardStatsResponse } from "@shared/types/dashboard";
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireApiGuard({ request });
+    if (!guard.ok) {
+      return guard.response;
     }
 
     const url = new URL(request.url);

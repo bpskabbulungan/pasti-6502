@@ -6,7 +6,12 @@ const globalForRedis = globalThis as unknown as {
 
 const createRedisClient = () => {
 	const url = process.env.REDIS_URL;
-	if (!url) return null;
+	if (!url) {
+		if (process.env.NODE_ENV === "production") {
+			throw new Error("REDIS_URL is required in production");
+		}
+		return null;
+	}
 
 	const client =
 		globalForRedis.redisClient ??
@@ -23,6 +28,9 @@ export const getRedisClient = () => {
 		return createRedisClient();
 	} catch (error) {
 		console.error("Failed to init Redis client", error);
+		if (process.env.NODE_ENV === "production") {
+			throw error;
+		}
 		return null;
 	}
 };

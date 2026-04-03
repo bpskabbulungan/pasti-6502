@@ -1,7 +1,6 @@
 import { Role } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { cancelQueue } from "@api/modules/queues";
 import type { QueueDetail } from "@shared/types/queue";
 
@@ -10,14 +9,14 @@ export async function POST(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		const guard = await requireApiGuard({ request: req });
+		if (!guard.ok) {
+			return guard.response;
 		}
 
 		const { id } = await params;
 
-		const result = await cancelQueue(id, session.user.id, session.user.role as Role);
+		const result = await cancelQueue(id, guard.session.user.id, guard.session.user.role as Role);
 
 		if (!result.ok) {
 			return NextResponse.json({ error: result.error }, { status: result.status });

@@ -1,14 +1,12 @@
 import AnalyticsPage from "@/modules/dashboard/pages/AnalyticsPage";
 import { requireAdminDashboardUser } from "@/lib/dashboard-session";
 import { getAnalyticsSummary } from "@api/modules/analytics";
+import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 
 export default async function Page() {
   await requireAdminDashboardUser();
 
-  const startDate = new Date();
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 1);
+  const { start: startDate, end: endDate } = getDayRangeInTimeZone(new Date());
 
   const initialAnalytics = await getAnalyticsSummary(startDate, endDate);
 

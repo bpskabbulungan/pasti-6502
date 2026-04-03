@@ -1,15 +1,13 @@
 import { createHash } from "crypto";
 import prisma from "@api/infrastructure/database/prisma";
 import { QueueStatus } from "@prisma/client";
+import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 
 const hashPayload = (payload: unknown) =>
   createHash("md5").update(JSON.stringify(payload)).digest("hex");
 
 export async function getDashboardStats(clientHash?: string | null) {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const endOfToday = new Date(startOfToday);
-  endOfToday.setDate(endOfToday.getDate() + 1);
+  const { start: startOfToday, end: endOfToday } = getDayRangeInTimeZone(new Date());
   const whereRange = {
     queueDate: { gte: startOfToday, lt: endOfToday },
   };

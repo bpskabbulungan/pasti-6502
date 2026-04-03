@@ -3,6 +3,12 @@ import { QueueStatus as PrismaQueueStatus, Role, Prisma } from "@prisma/client";
 import { sendWhatsAppBotReminder } from "@api/modules/reminders";
 import { QueueStatus as SharedQueueStatus } from "@shared/constants/enums";
 import type { QueueDetail } from "@shared/types/queue";
+import {
+	canUserManageServingQueue,
+	getQueueTransitionConflictResult,
+	isTransitionConflict,
+} from "./queue.transition-policy";
+import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 
 const formatQueueDate = (date: Date): string => {
 	const day = date.getDate().toString().padStart(2, "0");
@@ -81,21 +87,6 @@ export async function getQueueDetail(id: string) {
 }
 
 export async function serveQueue(queueId: string, adminId: string) {
-	const queue = await prisma.queue.findUnique({
-		where: { id: queueId },
-	});
-
-	if (!queue) {
-		return { ok: false as const, status: 404, error: "Queue not found" };
-	}
-	if (queue.status !== PrismaQueueStatus.WAITING) {
-		return {
-			ok: false as const,
-			status: 400,
-			error: "Queue is not in waiting status",
-		};
-	}
-
 	const adminUser = await prisma.user.findUnique({
 		where: { id: adminId },
 		select: { id: true, name: true },
@@ -105,235 +96,354 @@ export async function serveQueue(queueId: string, adminId: string) {
 		return { ok: false as const, status: 404, error: "Admin user not found in database" };
 	}
 
-	const dutySchedule = await prisma.dutySchedule.findUnique({
-		where: { scheduleDate: queue.queueDate },
-		select: { staffId: true },
+	const transitionResult = await prisma.$transaction(async (tx) => {
+		const queue = await tx.queue.findUnique({
+			where: { id: queueId },
+			select: {
+				id: true,
+				status: true,
+				queueDate: true,
+			},
+		});
+
+		if (!queue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		if (queue.status !== PrismaQueueStatus.WAITING) {
+			return {
+				ok: false as const,
+				status: 400,
+				error: "Queue is not in waiting status",
+			};
+		}
+
+		const dutySchedule = await tx.dutySchedule.findUnique({
+			where: { scheduleDate: queue.queueDate },
+			select: { staffId: true },
+		});
+
+		const updated = await tx.queue.updateMany({
+			where: {
+				id: queueId,
+				status: PrismaQueueStatus.WAITING,
+			},
+			data: {
+				status: PrismaQueueStatus.SERVING,
+				startTime: new Date(),
+				adminId,
+				dutyStaffId: dutySchedule?.staffId ?? null,
+			},
+		});
+
+		if (isTransitionConflict(updated.count)) {
+			return getQueueTransitionConflictResult();
+		}
+
+		const updatedQueue = await tx.queue.findUnique({
+			where: { id: queueId },
+			include: {
+				visitor: {
+					select: {
+						name: true,
+						phone: true,
+						institution: true,
+					},
+				},
+				service: {
+					select: {
+						name: true,
+					},
+				},
+				admin: {
+					select: {
+						name: true,
+					},
+				},
+				dutyStaff: {
+					select: {
+						name: true,
+					},
+				},
+			},
+		});
+
+		if (!updatedQueue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		return { ok: true as const, queue: updatedQueue };
 	});
 
-	const updatedQueue = await prisma.queue.update({
-		where: { id: queueId },
-		data: {
-			status: PrismaQueueStatus.SERVING,
-			startTime: new Date(),
-			adminId,
-			dutyStaffId: dutySchedule?.staffId ?? null,
-		},
-		include: {
-			visitor: {
-				select: {
-					name: true,
-					phone: true,
-					institution: true,
-				},
-			},
-			service: {
-				select: {
-					name: true,
-				},
-			},
-			admin: {
-				select: {
-					name: true,
-				},
-			},
-			dutyStaff: {
-				select: {
-					name: true,
-				},
-			},
-		},
-	});
+	if (!transitionResult.ok) {
+		return transitionResult;
+	}
 
 	createNotificationAsync({
 		type: "QUEUE_SERVING",
 		title: "Antrean Sedang Dilayani",
-		message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
-			new Date(updatedQueue.createdAt)
+		message: `Antrean #${transitionResult.queue.queueNumber}-${formatQueueDate(
+			new Date(transitionResult.queue.createdAt)
 		)} (${
-			updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
+			transitionResult.queue.queueType === "ONLINE" ? "Online" : "Offline"
 		}) sedang dilayani oleh ${adminUser.name}`,
 		isRead: false,
 	});
 
-	return { ok: true as const, queue: updatedQueue };
+	return transitionResult;
 }
 
 export async function completeQueue(queueId: string, userId: string, role: Role) {
-	const queue = await prisma.queue.findUnique({
-		where: { id: queueId },
+	const transitionResult = await prisma.$transaction(async (tx) => {
+		const queue = await tx.queue.findUnique({
+			where: { id: queueId },
+			select: {
+				id: true,
+				status: true,
+				adminId: true,
+				queueDate: true,
+			},
+		});
+
+		if (!queue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		if (queue.status !== PrismaQueueStatus.SERVING) {
+			return { ok: false as const, status: 400, error: "Queue is not currently being served" };
+		}
+
+		if (!canUserManageServingQueue(role, queue.adminId, userId)) {
+			return {
+				ok: false as const,
+				status: 403,
+				error: "You are not authorized to complete this queue",
+			};
+		}
+
+		const whereClause: Prisma.QueueWhereInput = {
+			id: queueId,
+			status: PrismaQueueStatus.SERVING,
+		};
+		if (role !== Role.ADMIN) {
+			whereClause.adminId = userId;
+		}
+
+		const updated = await tx.queue.updateMany({
+			where: whereClause,
+			data: {
+				status: PrismaQueueStatus.COMPLETED,
+				endTime: new Date(),
+			},
+		});
+
+		if (isTransitionConflict(updated.count)) {
+			return getQueueTransitionConflictResult();
+		}
+
+		const updatedQueue = await tx.queue.findUnique({
+			where: { id: queueId },
+			include: {
+				visitor: {
+					select: {
+						name: true,
+						phone: true,
+						institution: true,
+					},
+				},
+				service: {
+					select: {
+						name: true,
+					},
+				},
+				admin: {
+					select: {
+						name: true,
+					},
+				},
+				dutyStaff: {
+					select: {
+						name: true,
+					},
+				},
+			},
+		});
+
+		if (!updatedQueue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		const { start: dayStart, end: dayEnd } = getDayRangeInTimeZone(queue.queueDate);
+
+		const nextQueue = await tx.queue.findFirst({
+			where: {
+				status: PrismaQueueStatus.WAITING,
+				queueDate: {
+					gte: dayStart,
+					lt: dayEnd,
+				},
+			},
+			include: {
+				visitor: {
+					select: {
+						name: true,
+						phone: true,
+						institution: true,
+					},
+				},
+				service: {
+					select: {
+						name: true,
+					},
+				},
+				admin: {
+					select: {
+						name: true,
+					},
+				},
+				dutyStaff: {
+					select: {
+						name: true,
+					},
+				},
+			},
+			orderBy: {
+				queueNumber: "asc",
+			},
+		});
+
+		return { ok: true as const, queue: updatedQueue, nextQueue: nextQueue ?? null };
 	});
 
-	if (!queue) {
-		return { ok: false as const, status: 404, error: "Queue not found" };
+	if (!transitionResult.ok) {
+		return transitionResult;
 	}
-
-	if (queue.status !== PrismaQueueStatus.SERVING) {
-		return { ok: false as const, status: 400, error: "Queue is not currently being served" };
-	}
-
-	if (role !== Role.ADMIN && queue.adminId !== userId) {
-		return { ok: false as const, status: 403, error: "You are not authorized to complete this queue" };
-	}
-
-	const updatedQueue = await prisma.queue.update({
-		where: { id: queueId },
-		data: {
-			status: PrismaQueueStatus.COMPLETED,
-			endTime: new Date(),
-		},
-		include: {
-			visitor: {
-				select: {
-					name: true,
-					phone: true,
-					institution: true,
-				},
-			},
-			service: {
-				select: {
-					name: true,
-				},
-			},
-			admin: {
-				select: {
-					name: true,
-				},
-			},
-			dutyStaff: {
-				select: {
-					name: true,
-				},
-			},
-		},
-	});
 
 	createNotificationAsync({
 		type: "QUEUE_COMPLETED",
 		title: "Antrean Selesai",
-		message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
-			new Date(updatedQueue.createdAt)
+		message: `Antrean #${transitionResult.queue.queueNumber}-${formatQueueDate(
+			new Date(transitionResult.queue.createdAt)
 		)} (${
-			updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
-		}) telah selesai dilayani untuk ${updatedQueue.service.name}`,
+			transitionResult.queue.queueType === "ONLINE" ? "Online" : "Offline"
+		}) telah selesai dilayani untuk ${transitionResult.queue.service.name}`,
 		isRead: false,
 		userId,
 	});
 
-	const dayStart = new Date(queue.queueDate);
-	dayStart.setHours(0, 0, 0, 0);
-	const dayEnd = new Date(dayStart);
-	dayEnd.setDate(dayEnd.getDate() + 1);
-
-	const nextQueue = await prisma.queue.findFirst({
-		where: {
-			status: PrismaQueueStatus.WAITING,
-			queueDate: {
-				gte: dayStart,
-				lt: dayEnd,
-			},
-		},
-		include: {
-			visitor: {
-				select: {
-					name: true,
-					phone: true,
-					institution: true,
-				},
-			},
-			service: {
-				select: {
-					name: true,
-				},
-			},
-			admin: {
-				select: {
-					name: true,
-				},
-			},
-			dutyStaff: {
-				select: {
-					name: true,
-				},
-			},
-		},
-		orderBy: {
-			queueNumber: "asc",
-		},
-	});
-
-	return { ok: true as const, queue: updatedQueue, nextQueue: nextQueue ?? null };
+	return transitionResult;
 }
 
 export async function cancelQueue(queueId: string, userId: string, role: Role) {
-	const queue = await prisma.queue.findUnique({
-		where: { id: queueId },
+	const transitionResult = await prisma.$transaction(async (tx) => {
+		const queue = await tx.queue.findUnique({
+			where: { id: queueId },
+			select: {
+				id: true,
+				status: true,
+				adminId: true,
+			},
+		});
+
+		if (!queue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		const allowedStatuses: PrismaQueueStatus[] = [
+			PrismaQueueStatus.WAITING,
+			PrismaQueueStatus.SERVING,
+		];
+		if (!allowedStatuses.includes(queue.status)) {
+			return {
+				ok: false as const,
+				status: 400,
+				error: "Queue cannot be canceled in its current state",
+			};
+		}
+
+		if (
+			queue.status === PrismaQueueStatus.SERVING &&
+			!canUserManageServingQueue(role, queue.adminId, userId)
+		) {
+			return {
+				ok: false as const,
+				status: 403,
+				error: "You are not authorized to cancel this queue",
+			};
+		}
+
+		const whereClause: Prisma.QueueWhereInput = {
+			id: queueId,
+			status: queue.status,
+		};
+		if (queue.status === PrismaQueueStatus.SERVING && role !== Role.ADMIN) {
+			whereClause.adminId = userId;
+		}
+
+		const updated = await tx.queue.updateMany({
+			where: whereClause,
+			data: {
+				status: PrismaQueueStatus.CANCELED,
+				endTime: new Date(),
+			},
+		});
+
+		if (isTransitionConflict(updated.count)) {
+			return getQueueTransitionConflictResult();
+		}
+
+		const updatedQueue = await tx.queue.findUnique({
+			where: { id: queueId },
+			include: {
+				visitor: {
+					select: {
+						name: true,
+						phone: true,
+						institution: true,
+					},
+				},
+				service: {
+					select: {
+						name: true,
+					},
+				},
+				admin: {
+					select: {
+						name: true,
+					},
+				},
+				dutyStaff: {
+					select: {
+						name: true,
+					},
+				},
+			},
+		});
+
+		if (!updatedQueue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		return { ok: true as const, queue: updatedQueue };
 	});
 
-	if (!queue) {
-		return { ok: false as const, status: 404, error: "Queue not found" };
+	if (!transitionResult.ok) {
+		return transitionResult;
 	}
-
-	const allowedStatuses: PrismaQueueStatus[] = [
-		PrismaQueueStatus.WAITING,
-		PrismaQueueStatus.SERVING,
-	];
-	if (!allowedStatuses.includes(queue.status)) {
-		return { ok: false as const, status: 400, error: "Queue cannot be canceled in its current state" };
-	}
-
-	if (
-		queue.status === PrismaQueueStatus.SERVING &&
-		role !== Role.ADMIN &&
-		queue.adminId !== userId
-	) {
-		return { ok: false as const, status: 403, error: "You are not authorized to cancel this queue" };
-	}
-
-	const updatedQueue = await prisma.queue.update({
-		where: { id: queueId },
-		data: {
-			status: PrismaQueueStatus.CANCELED,
-			endTime: new Date(),
-		},
-		include: {
-			visitor: {
-				select: {
-					name: true,
-					phone: true,
-					institution: true,
-				},
-			},
-			service: {
-				select: {
-					name: true,
-				},
-			},
-			admin: {
-				select: {
-					name: true,
-				},
-			},
-			dutyStaff: {
-				select: {
-					name: true,
-				},
-			},
-		},
-	});
 
 	createNotificationAsync({
 		type: "QUEUE_CANCELED",
 		title: "Antrean Dibatalkan",
-		message: `Antrean #${updatedQueue.queueNumber}-${formatQueueDate(
-			new Date(updatedQueue.createdAt)
+		message: `Antrean #${transitionResult.queue.queueNumber}-${formatQueueDate(
+			new Date(transitionResult.queue.createdAt)
 		)} (${
-			updatedQueue.queueType === "ONLINE" ? "Online" : "Offline"
-		}) untuk layanan ${updatedQueue.service.name} telah dibatalkan`,
+			transitionResult.queue.queueType === "ONLINE" ? "Online" : "Offline"
+		}) untuk layanan ${transitionResult.queue.service.name} telah dibatalkan`,
 		isRead: false,
 		userId,
 	});
 
-	return { ok: true as const, queue: updatedQueue };
+	return transitionResult;
 }
 
 export async function prepareSkdReminder(queueId: string, message?: string) {

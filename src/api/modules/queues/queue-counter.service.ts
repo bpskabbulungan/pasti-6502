@@ -1,12 +1,11 @@
 import { Prisma } from "@prisma/client";
+import { startOfDayInTimeZone } from "@shared/utils/date-boundary";
 
 const isUniqueConstraintError = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 
 export const normalizeQueueDate = (date: Date) => {
-  const queueDate = new Date(date);
-  queueDate.setHours(0, 0, 0, 0);
-  return queueDate;
+  return startOfDayInTimeZone(date);
 };
 
 export async function allocateNextQueueNumber(tx: Prisma.TransactionClient, date: Date) {

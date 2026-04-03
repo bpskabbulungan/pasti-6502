@@ -1,11 +1,5 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { toast } from "sonner";
-import { useParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -27,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { SelectTrigger } from "@/modules/visitor-form/components/visitor-form-select";
-import { Gender, LastEducation, Purpose, ServiceStatus } from "@/shared/constants/enums";
+import { ServiceStatus } from "@/shared/constants/enums";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle, Clock, Loader2, RefreshCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -35,378 +29,33 @@ import { ClientTimestamp } from "@/components/client-timestamp";
 import { ThemeToggle } from "@/components/theme-toggle";
 import PageBackground from "@/components/page-background";
 import VisitorFormSkeleton from "@/modules/visitor-form/components/VisitorFormSkeleton";
-import { visitorFormApi } from "@/services/api/visitor-form";
-import type { ErrorResponse } from "@shared/types/api";
-import type { QueueTracking } from "@shared/types/queue";
-import type { VisitorFormService } from "@shared/types/visitor-form";
-
-type Service = VisitorFormService;
-const TRACKING_POLL_INTERVAL_MS = 60000;
-
-const genderOptions = [
-  { value: Gender.MALE, label: "Laki-Laki" },
-  { value: Gender.FEMALE, label: "Perempuan" },
-];
-
-const educationOptions = [
-  { value: LastEducation.SD, label: "SD atau setingkatnya" },
-  { value: LastEducation.SMP, label: "SMP atau setingkatnya" },
-  { value: LastEducation.SMA_SMK, label: "SMA atau setingkatnya" },
-  { value: LastEducation.D1, label: "D1" },
-  { value: LastEducation.D2, label: "D2" },
-  { value: LastEducation.D3, label: "D3" },
-  { value: LastEducation.D4_S1, label: "D4 / S1" },
-  { value: LastEducation.S2, label: "S2" },
-  { value: LastEducation.S3, label: "S3" },
-  { value: LastEducation.LAINNYA, label: "Lainnya" },
-];
-
-const occupationOptions = [
-  { value: "Guru/Dosen", label: "Guru/Dosen" },
-  { value: "Karyawan BUMN", label: "Karyawan BUMN" },
-  { value: "Karyawan Swasta", label: "Karyawan Swasta" },
-  { value: "Pelajar/Mahasiswa", label: "Pelajar/Mahasiswa" },
-  { value: "PNS/PPPK", label: "PNS/PPPK" },
-  { value: "TNI/Polri", label: "TNI/Polri" },
-  { value: "Wiraswasta", label: "Wiraswasta" },
-  { value: "Lainnya", label: "Lainnya" },
-];
-
-const purposeOptions: { value: Purpose; label: string; description?: string }[] = [
-  {
-    value: Purpose.KONSULTASI_STATISTIK,
-    label: "Konsultasi Statistik",
-    description: "Diskusi dan pendampingan data",
-  },
-  {
-    value: Purpose.PERPUSTAKAAN,
-    label: "Perpustakaan",
-    description: "Akses ruang baca & referensi",
-  },
-  {
-    value: Purpose.REKOMENDASI_STATISTIK,
-    label: "Rekomendasi Statistik",
-    description: "Surat rekomendasi/pendataan",
-  },
-  { value: Purpose.LAINNYA, label: "Lainnya" },
-];
-
-const visitorFormSchema = z.object({
-  name: z.string().min(2, "Nama lengkap minimal 2 karakter"),
-  email: z.string().email("Format email tidak valid"),
-  address: z.string().min(5, "Alamat minimal 5 karakter").max(200, "Alamat terlalu panjang"),
-  phone: z
-    .string()
-    .min(10, "No. WhatsApp minimal 10 digit")
-    .max(20, "No. WhatsApp maksimal 20 digit")
-    .regex(/^[0-9+()\s-]+$/, "Gunakan format nomor yang valid"),
-  age: z.preprocess(
-    (value) => {
-      if (value === "" || value === null || typeof value === "undefined") {
-        return undefined;
-      }
-      const asNumber = Number(value);
-      return Number.isNaN(asNumber) ? value : asNumber;
-    },
-    z.number().int().min(1, "Umur minimal 1 tahun").max(120, "Umur tidak valid")
-  ),
-  institution: z
-    .string()
-    .min(2, "Asal/Instansi minimal 2 karakter")
-    .max(150, "Isian terlalu panjang"),
-  gender: z.nativeEnum(Gender, {
-    required_error: "Jenis kelamin wajib dipilih",
-  }),
-  lastEducation: z.nativeEnum(LastEducation, {
-    required_error: "Pendidikan terakhir wajib dipilih",
-  }),
-  occupation: z.enum(occupationOptions.map((option) => option.value) as [string, ...string[]], {
-    required_error: "Pekerjaan wajib dipilih",
-  }),
-  purpose: z.nativeEnum(Purpose, {
-    required_error: "Keperluan wajib dipilih",
-  }),
-  serviceId: z.string().min(1, "Layanan harus dipilih"),
-  queueType: z.enum(["ONLINE", "OFFLINE"], {
-    required_error: "Tipe antrean harus dipilih",
-  }),
-});
-
-type VisitorFormFormValues = z.input<typeof visitorFormSchema>;
-type VisitorFormValues = z.output<typeof visitorFormSchema>;
-
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
-
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
-
-const isApiError = (error: unknown): error is { status: number } => {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    typeof (error as { status?: number }).status === "number"
-  );
-};
+import { useVisitorFormController } from "@/modules/visitor-form/pages/visitor-form-page/controller";
+import { formatQueueTime } from "@/modules/visitor-form/pages/visitor-form-page/helper";
+import {
+  educationOptions,
+  genderOptions,
+  occupationOptions,
+  purposeOptions,
+} from "@/modules/visitor-form/pages/visitor-form-page/view-model";
 
 export default function VisitorFormPage() {
-  const [isLoading, setIsLoading] = useState(true); // Start with loading state
-  const [isValid, setIsValid] = useState(true);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isTracking, setIsTracking] = useState(false);
-  const [services, setServices] = useState<Service[]>([]);
-  const [queueInfo, setQueueInfo] = useState<{
-    queueNumber: number;
-    serviceName: string;
-    visitorName: string;
-    createdAt?: string | Date;
-    queueType?: string;
-    redirectUrl?: string;
-  } | null>(null);
-  const [trackingInfo, setTrackingInfo] = useState<QueueTracking | null>(null);
-  const [trackingStatus, setTrackingStatus] = useState<string | null>(null);
-  const [trackingMessage, setTrackingMessage] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false); // Control when to show the form
-  const [queueHash, setQueueHash] = useState<string>("");
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null); // Track when the data was last updated
-  const params = useParams<{ uuid: string }>();
-  const uuid = params?.uuid || "";
-
-  // Get search params to check for direct form flag    // const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  // const shouldShowForm = searchParams.get('directToForm') === 'true';
-
-  // Format queue time to DDMM format (eg. 1405 for May 14)
-  const formatQueueTime = (isoDateString: string | Date): string => {
-    const date = new Date(isoDateString);
-    const day = date.getDate().toString().padStart(2, "0");
-    const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Month is 0-indexed, so add 1
-    return `${day}${month}`;
-  };
-
-  const form = useForm<VisitorFormFormValues, unknown, VisitorFormValues>({
-    resolver: zodResolver(visitorFormSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      address: "",
-      phone: "",
-      age: undefined,
-      institution: "",
-      gender: undefined,
-      lastEducation: undefined,
-      occupation: "Pelajar/Mahasiswa",
-      purpose: Purpose.KONSULTASI_STATISTIK,
-      serviceId: "",
-      queueType: "OFFLINE", // Default to offline
-    } satisfies Partial<VisitorFormFormValues>,
-  }); // Function to check tracking status
-  const checkTrackingStatus = useCallback(
-    async (forceRefresh: boolean = false, manageLoading: boolean = true) => {
-      let statusResult: string | null = null;
-      try {
-        // Only show loading indicator on initial load or forced refresh
-        if (manageLoading && (!trackingInfo || forceRefresh)) {
-          setIsLoading(true);
-        }
-
-        const data = await visitorFormApi.track(uuid, !forceRefresh ? queueHash : undefined);
-
-        // Only update the UI if there are changes to the tracking data, this is the first load, or we're forcing a refresh
-        if (data.hasChanges || !trackingInfo || forceRefresh) {
-          if (data.tracking.status === "SUCCESS") {
-            setTrackingInfo(data.tracking.queue);
-            setTrackingStatus("SUCCESS");
-            statusResult = "SUCCESS";
-            setIsTracking(true);
-            setIsValid(true);
-            // Store the hash for future comparisons
-            setQueueHash(data.hash || "");
-            // Update the last updated timestamp
-            setLastUpdatedAt(new Date());
-          } else if (data.tracking.status === "NOT_SUBMITTED") {
-            setTrackingStatus("NOT_SUBMITTED");
-            statusResult = "NOT_SUBMITTED";
-            setTrackingMessage(data.tracking.message);
-            setIsTracking(false);
-            setIsValid(true);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking tracking status", error);
-        if (!trackingInfo || !isTracking) {
-          setIsTracking(false);
-          setTrackingStatus(null);
-        }
-      } finally {
-        // Only update loading state for initial load or manual refresh
-        if (manageLoading && (!trackingInfo || forceRefresh)) {
-          setIsLoading(false);
-        }
-      }
-      return statusResult;
-    },
-    [uuid, queueHash, trackingInfo, isTracking]
-  );
-
-  useEffect(() => {
-    const validateUuid = async () => {
-      if (!uuid) return;
-      try {
-        setIsLoading(true);
-
-        const trackingResult = await checkTrackingStatus(true, false);
-        if (trackingResult === "SUCCESS") {
-          setIsLoading(false);
-          return;
-        }
-
-        // Try to get services directly (valid for dynamic UUID)
-        try {
-          const data = await visitorFormApi.getServices(uuid);
-          setServices(data.services);
-          setIsValid(true);
-          setShowForm(true);
-          setIsLoading(false);
-          return;
-        } catch (error) {
-          if (!isApiError(error)) {
-            throw error;
-          }
-        }
-
-        // If services are not available, attempt to exchange static UUID for dynamic
-        try {
-          const data = await visitorFormApi.getDynamicUuid(uuid);
-          window.location.href = "/visitor-form/preload?uuid=" + data.dynamicUuid;
-          return;
-        } catch (error) {
-          if (!isApiError(error)) {
-            throw error;
-          }
-        }
-
-        setIsValid(false);
-      } catch (error) {
-        console.error("Error validating UUID", error);
-        setIsValid(false);
-        toast.error("Terjadi kesalahan, silakan coba lagi");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    validateUuid();
-  }, [uuid, checkTrackingStatus]);
-  useEffect(() => {
-    let isActive = true;
-    let pollingInterval: NodeJS.Timeout | null = null;
-
-    if (isTracking && trackingStatus === "SUCCESS" && trackingInfo?.status !== "COMPLETED") {
-      const clearPoll = () => {
-        if (pollingInterval) {
-          clearTimeout(pollingInterval);
-          pollingInterval = null;
-        }
-      };
-
-      const scheduleNextPoll = () => {
-        if (!isActive || document.visibilityState !== "visible") {
-          return;
-        }
-
-        pollingInterval = setTimeout(runPoll, TRACKING_POLL_INTERVAL_MS);
-      };
-
-      const runPoll = async () => {
-        if (!isActive || document.visibilityState !== "visible") {
-          clearPoll();
-          return;
-        }
-
-        await checkTrackingStatus(false);
-        scheduleNextPoll();
-      };
-
-      const handleVisibilityChange = () => {
-        if (!isActive) {
-          return;
-        }
-
-        if (document.visibilityState === "visible") {
-          clearPoll();
-          void checkTrackingStatus(false);
-          scheduleNextPoll();
-        } else {
-          clearPoll();
-        }
-      };
-
-      if (document.visibilityState === "visible") {
-        scheduleNextPoll();
-      }
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-
-      return () => {
-        isActive = false;
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-        clearPoll();
-      };
-    }
-
-    return () => {
-      isActive = false;
-      if (pollingInterval) clearTimeout(pollingInterval);
-    };
-  }, [isTracking, trackingStatus, trackingInfo, checkTrackingStatus]);
-
-  const onSubmit = async (data: VisitorFormValues) => {
-    try {
-      setIsLoading(true);
-      const { name, email, address, phone, institution, occupation, ...rest } =
-        data as VisitorFormValues;
-      const payload = {
-        ...rest,
-        name: name.trim(),
-        email: email.trim(),
-        address: address.trim(),
-        phone: phone.trim(),
-        institution: institution.trim(),
-        occupation: occupation.trim(),
-        tempUuid: uuid,
-      };
-
-      const result = await visitorFormApi.submit(payload);
-      setQueueInfo(result.data);
-      setIsSubmitted(true);
-      toast.success("Formulir berhasil dikirim");
-
-      // If redirectUrl is provided, use it to go directly to tracking view
-      if (result.data.redirectUrl) {
-        // Add a short delay before redirecting to allow the toast to show
-        setTimeout(() => {
-          window.location.href = result.data.redirectUrl;
-        }, 1000);
-        return;
-      }
-
-      // After submission, check tracking status to show queue info
-      await checkTrackingStatus();
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat mengirim formulir"));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const {
+    form,
+    isLoading,
+    isValid,
+    isSubmitted,
+    isTracking,
+    services,
+    queueInfo,
+    trackingInfo,
+    trackingStatus,
+    trackingMessage,
+    showForm,
+    lastUpdatedAt,
+    checkTrackingStatus,
+    submitVisitorForm,
+    markSkdFilled: markSKDFilled,
+  } = useVisitorFormController();
 
   const getQueueStatusBadge = (status: string) => {
     switch (status) {
@@ -439,30 +88,7 @@ export default function VisitorFormPage() {
     }
   };
   const openSKD2025Form = () => {
-    // TODO: This token is embedded client-side; if it grants privileged access, proxy via a server route or use a safer token mechanism.
-    window.open(
-      "https://skd.bps.go.id/SKD2025/web/entri/responden/blok1?token=NNLZR0-Ikj98u0ciQHM0bpCHH018ESCbIDW0w90wUTUU2k5dv7OylsciSW4odYl5ZFrBGLweIGNGOYTXy6_AjBPg3QzJvcMRE4Cq",
-      "_blank"
-    );
-  };
-
-  const markSKDFilled = async () => {
-    if (!uuid) return;
-
-    try {
-      setIsLoading(true);
-      await visitorFormApi.markSkd(uuid, true);
-      toast.success("Terima kasih! Status SKD telah diperbarui");
-      // Refresh tracking info to show updated SKD status
-      await checkTrackingStatus();
-      // Update last updated time
-      setLastUpdatedAt(new Date());
-    } catch (error) {
-      console.error("Error updating SKD status:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat memperbarui status SKD"));
-    } finally {
-      setIsLoading(false);
-    }
+    window.open("/api/visitor-form/skd/open", "_blank", "noopener,noreferrer");
   };
   // Render loading state
   if (isLoading) {
@@ -767,7 +393,7 @@ export default function VisitorFormPage() {
                   </CardHeader>
                   <CardContent>
                     <Form {...form}>
-                      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                      <form onSubmit={form.handleSubmit(submitVisitorForm)} className="space-y-6">
                         <div className="grid gap-4 md:grid-cols-2">
                           <FormField
                             control={form.control}

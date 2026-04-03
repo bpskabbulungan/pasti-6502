@@ -11,4 +11,4 @@ export {
   removeDutyDayOff,
   runDutyReminder,
   updateDutySettings,
-} from "./schedule.service";
+} from "./schedule.controller";

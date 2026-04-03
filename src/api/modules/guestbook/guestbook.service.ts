@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import prisma from "@api/infrastructure/database/prisma";
 import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
+import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
 type DateFilter = "today" | "all";
@@ -132,11 +133,8 @@ const buildGuestbookBaseWhere = ({
   };
 
   if (dateFilter === "today") {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    baseWhere.queueDate = { gte: today, lt: tomorrow };
+    const { start, end } = getDayRangeInTimeZone(new Date());
+    baseWhere.queueDate = { gte: start, lt: end };
   }
 
   if (normalizedPurpose) {

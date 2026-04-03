@@ -4,6 +4,20 @@ import { getToken } from "next-auth/jwt";
 export async function middleware(request: NextRequest) {
 	const path = request.nextUrl.pathname;
 
+	if (path.startsWith("/api/")) {
+		const traceId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+		const requestHeaders = new Headers(request.headers);
+		requestHeaders.set("x-request-id", traceId);
+
+		const response = NextResponse.next({
+			request: {
+				headers: requestHeaders,
+			},
+		});
+		response.headers.set("x-request-id", traceId);
+		return response;
+	}
+
 	// Define public paths that don't require authentication
 	// TODO: If /queue-display should be restricted (e.g., auth/IP allowlist), update public paths and add protections.
 	const publicPaths = ["/", "/login", "/visitor-form", "/guest", "/queue-display"];
@@ -55,14 +69,14 @@ export async function middleware(request: NextRequest) {
 // Only run middleware on specific paths
 export const config = {
 	matcher: [
+		"/api/:path*",
 		/*
 		 * Match all paths except:
-		 * 1. /api routes
-		 * 2. /_next (Next.js system files)
-		 * 3. /qrcodes (Static files)
-		 * 4.  /sitemap.xml, /robots.txt (static files)
-		 * 5.  Any file with an extension (e.g. .png, .ico, .css, .js)
+		 * 1. /_next (Next.js system files)
+		 * 2. /qrcodes (Static files)
+		 * 3. /sitemap.xml, /robots.txt (static files)
+		 * 4. Any file with an extension (e.g. .png, .ico, .css, .js)
 		 */
-		"/((?!api|_next|qrcodes|sitemap.xml|robots.txt|.*\\..*).*)",
+		"/((?!_next|qrcodes|sitemap.xml|robots.txt|.*\\..*).*)",
 	],
 };

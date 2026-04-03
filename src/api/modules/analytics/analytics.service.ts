@@ -5,12 +5,18 @@ import * as XLSX from "xlsx";
 import prisma from "@api/infrastructure/database/prisma";
 import { QueueStatus, Prisma } from "@prisma/client";
 import { formatDisplayDate, formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
+import { addDaysInTimeZone, parseDateOnlyInTimeZone } from "@shared/utils/date-boundary";
 import type { AnalyticsExportRow } from "@shared/types/analytics";
 
 type DateRange = {
   startDate: Date;
   endDate: Date;
 };
+
+const MAX_ANALYTICS_EXPORT_ROWS = (() => {
+  const parsed = Number.parseInt(process.env.ANALYTICS_EXPORT_MAX_ROWS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10000;
+})();
 
 const hashPayload = (payload: unknown) =>
   createHash("sha256").update(JSON.stringify(payload)).digest("hex");
@@ -20,13 +26,9 @@ const parseDateRange = (
   endDateParam: string,
   maxRangeDays: number
 ): { ok: true; range: DateRange } | { ok: false; status: number; error: string } => {
-  const startDate = new Date(startDateParam);
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(endDateParam);
-  endDate.setHours(0, 0, 0, 0);
-  endDate.setDate(endDate.getDate() + 1);
-
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+  const startDate = parseDateOnlyInTimeZone(startDateParam);
+  const endDateStart = parseDateOnlyInTimeZone(endDateParam);
+  if (!startDate || !endDateStart) {
     return {
       ok: false,
       status: 400,
@@ -34,7 +36,16 @@ const parseDateRange = (
     };
   }
 
+  const endDate = addDaysInTimeZone(endDateStart, 1);
   const diffDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Rentang tanggal tidak valid. Pastikan tanggal akhir tidak lebih kecil dari tanggal awal.",
+    };
+  }
+
   if (diffDays > maxRangeDays) {
     return {
       ok: false,
@@ -369,6 +380,18 @@ const buildPdfBuffer = async (rows: AnalyticsExportRow[], range: DateRange) => {
 };
 
 export async function exportAnalytics(range: DateRange, exportFormat: ExportFormat) {
+  if (
+    Number.isNaN(range.startDate.getTime()) ||
+    Number.isNaN(range.endDate.getTime()) ||
+    range.endDate.getTime() <= range.startDate.getTime()
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Rentang tanggal export tidak valid",
+    };
+  }
+
   const queueWithRelations = {
     include: {
       visitor: true,
@@ -393,6 +416,14 @@ export async function exportAnalytics(range: DateRange, exportFormat: ExportForm
       ok: false as const,
       status: 404,
       error: "No data to export for the selected date range",
+    };
+  }
+
+  if (totalRows > MAX_ANALYTICS_EXPORT_ROWS) {
+    return {
+      ok: false as const,
+      status: 413,
+      error: `Jumlah data export melebihi batas (${MAX_ANALYTICS_EXPORT_ROWS} baris). Persempit rentang tanggal.`,
     };
   }
 

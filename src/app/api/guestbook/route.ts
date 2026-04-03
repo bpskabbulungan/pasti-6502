@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { extractEtagMarker, toEtag } from "@/lib/http-cache";
 import { getGuestbookEntries } from "@api/modules/guestbook";
 import type { GuestbookListResponse } from "@shared/types/guestbook";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireApiGuard({ request: req });
+    if (!guard.ok) {
+      return guard.response;
     }
 
     const url = new URL(req.url);

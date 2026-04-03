@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { sendWhatsAppBotReminder } from "@api/modules/reminders";
 import type { ReminderResponse } from "@shared/types/reminder";
 
 export async function POST(req: NextRequest) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json(
-				{ success: false, message: "Unauthorized" },
-				{ status: 401 }
-			);
+		const guard = await requireApiGuard({
+			request: req,
+			unauthorizedBody: { success: false, message: "Unauthorized" },
+			forbiddenBody: { success: false, message: "Forbidden" },
+		});
+		if (!guard.ok) {
+			return guard.response;
 		}
 
 		const { phoneNumber, message } = await req.json();

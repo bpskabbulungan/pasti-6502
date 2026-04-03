@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { Role } from "@prisma/client";
+import { requireApiGuard } from "@/lib/api-guard";
 import { getQueueDetail } from "@api/modules/queues";
 import type { QueueDetail } from "@shared/types/queue";
 
@@ -15,13 +14,12 @@ export async function GET(req: Request) {
 	}
 
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		if (![Role.ADMIN, Role.PETUGAS].includes(session.user.role)) {
-			return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+		const guard = await requireApiGuard({
+			request: req,
+			roles: [Role.ADMIN, Role.PETUGAS],
+		});
+		if (!guard.ok) {
+			return guard.response;
 		}
 
 		const result = await getQueueDetail(queueId);

@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { format } from "date-fns";
 import { extractEtagMarker, toEtag } from "@/lib/http-cache";
+import { Role } from "@prisma/client";
+import { requireApiGuard } from "@/lib/api-guard";
 import { getAnalyticsSummary, parseDateRange } from "@api/modules/analytics";
+import { toIsoDateInTimeZone } from "@shared/utils/date-boundary";
 import type { AnalyticsSummary } from "@shared/types/analytics";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireApiGuard({ request: req, roles: [Role.ADMIN] });
+    if (!guard.ok) {
+      return guard.response;
     }
 
     const { searchParams } = new URL(req.url);
-    const todayString = format(new Date(), "yyyy-MM-dd");
+    const todayString = toIsoDateInTimeZone(new Date());
     const startDateParam = searchParams.get("startDate") || todayString;
     const endDateParam = searchParams.get("endDate") || startDateParam;
     const clientHash =

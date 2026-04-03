@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import {
 	getUnreadNotificationsWithHashCheck,
 	markAllNotificationsAsRead,
@@ -9,16 +8,16 @@ import type { NotificationListResponse } from "@shared/types/notification";
 
 export async function GET(request: Request) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		const guard = await requireApiGuard({ request });
+		if (!guard.ok) {
+			return guard.response;
 		}
 
 		const url = new URL(request.url);
 		const clientHash = url.searchParams.get("hash");
 
 		const result = await getUnreadNotificationsWithHashCheck(
-			session.user.id,
+			guard.session.user.id,
 			clientHash
 		);
 
@@ -34,12 +33,12 @@ export async function GET(request: Request) {
 
 export async function POST() {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		const guard = await requireApiGuard();
+		if (!guard.ok) {
+			return guard.response;
 		}
 
-		const result = await markAllNotificationsAsRead(session.user.id);
+		const result = await markAllNotificationsAsRead(guard.session.user.id);
 
 		return NextResponse.json<NotificationListResponse>(result);
 	} catch (error) {

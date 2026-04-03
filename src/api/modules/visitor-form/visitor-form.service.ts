@@ -9,6 +9,7 @@ import {
 } from "@api/modules/queues/queue-counter.service";
 import { QueueStatus, QueueType, ServiceStatus } from "@prisma/client";
 import { visitorSubmissionSchema } from "@shared/schemas/visitor-form";
+import { addHours, getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 import type { VisitorFormTrackResponse } from "@shared/types/visitor-form";
 
 const hashPayload = (payload: unknown) =>
@@ -36,8 +37,7 @@ export async function generateDynamicUuid(staticUuid: string) {
   }
 
   const dynamicUuid = uuidv4();
-  const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 1);
+  const expiresAt = addHours(new Date(), 1);
 
   await prisma.tempVisitorLink.create({
     data: {
@@ -259,10 +259,7 @@ export async function trackVisitorQueue(
     return { ok: false as const, status: 404, error: "Antrean tidak ditemukan" };
   }
 
-  const currentDate = new Date();
-  currentDate.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(currentDate);
-  tomorrow.setDate(currentDate.getDate() + 1);
+  const { start: currentDate, end: tomorrow } = getDayRangeInTimeZone(new Date());
 
   const waitingQueuesBeforeThis = await prisma.queue.count({
     where: {
@@ -306,9 +303,17 @@ export async function trackVisitorQueue(
 }
 
 export async function markSkdFilled(tempUuid: string, filled: boolean) {
-  const updatedQueue = await prisma.queue.update({
+  const updateResult = await prisma.queue.updateMany({
     where: { tempUuid },
     data: { filledSKD: filled },
+  });
+
+  if (updateResult.count === 0) {
+    return { ok: false as const, status: 404, error: "Queue not found" };
+  }
+
+  const updatedQueue = await prisma.queue.findUnique({
+    where: { tempUuid },
     include: {
       visitor: {
         select: {

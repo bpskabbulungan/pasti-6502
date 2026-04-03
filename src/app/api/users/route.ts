@@ -1,20 +1,20 @@
 import { Role } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { createUser, listUsers } from "@api/modules/users";
 
 export async function GET() {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		if (session.user.role !== Role.ADMIN) {
+		const guard = await requireApiGuard({ roles: [Role.ADMIN] });
+		if (!guard.ok) {
 			return NextResponse.json(
-				{ error: "Only admins can view users" },
-				{ status: 403 }
+				{
+					error:
+						guard.response.status === 403
+							? "Only admins can view users"
+							: "Unauthorized",
+				},
+				{ status: guard.response.status }
 			);
 		}
 
@@ -32,15 +32,16 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		if (session.user.role !== Role.ADMIN) {
+		const guard = await requireApiGuard({ request: req, roles: [Role.ADMIN] });
+		if (!guard.ok) {
 			return NextResponse.json(
-				{ error: "Only admins can create users" },
-				{ status: 403 }
+				{
+					error:
+						guard.response.status === 403
+							? "Only admins can create users"
+							: "Unauthorized",
+				},
+				{ status: guard.response.status }
 			);
 		}
 

@@ -1,6 +1,7 @@
 import { Prisma, QueueStatus } from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
 import { generateQueueHash } from "./queue.utils";
+import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 import type { QueueDetail } from "@shared/types/queue";
 
 type DateFilter = "today" | "all";
@@ -54,14 +55,11 @@ export async function getQueues({
   };
 
   if (dateFilter === "today") {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
+    const { start, end } = getDayRangeInTimeZone(new Date());
 
     whereClause.queueDate = {
-      gte: today,
-      lt: tomorrow,
+      gte: start,
+      lt: end,
     };
   }
 

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { Role } from "@prisma/client";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { removeDutyDayOff } from "@api/modules/schedule";
 
 export async function DELETE(
@@ -9,12 +8,9 @@ export async function DELETE(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-		if (session.user.role !== Role.ADMIN) {
-			return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+		const guard = await requireApiGuard({ request: _req, roles: [Role.ADMIN] });
+		if (!guard.ok) {
+			return guard.response;
 		}
 
 		const { id } = await params;
@@ -32,4 +28,3 @@ export async function DELETE(
 		);
 	}
 }
-

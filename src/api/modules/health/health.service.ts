@@ -22,7 +22,16 @@ export async function getHealthStatus(): Promise<HealthStatusResponse> {
 		});
 	}
 
-	const redis = getRedisClient();
+	let redis: ReturnType<typeof getRedisClient> = null;
+	try {
+		redis = getRedisClient();
+	} catch (error) {
+		redisStatus = "error";
+		logger.error("Health check: redis client initialization failed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+
 	if (redis) {
 		try {
 			const pong = await redis.ping();

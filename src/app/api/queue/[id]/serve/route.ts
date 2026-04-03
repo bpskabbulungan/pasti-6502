@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { serveQueue } from "@api/modules/queues";
 import type { QueueDetail } from "@shared/types/queue";
 
@@ -9,14 +8,19 @@ export async function POST(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session || !session.user?.id) {
+		const guard = await requireApiGuard({ request: req });
+		if (!guard.ok) {
+			return guard.response;
+		}
+
+		const userId = guard.session.user?.id;
+		if (!userId) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
 		const { id } = await params;
 
-		const result = await serveQueue(id, session.user.id);
+		const result = await serveQueue(id, userId);
 
 		if (!result.ok) {
 			return NextResponse.json(

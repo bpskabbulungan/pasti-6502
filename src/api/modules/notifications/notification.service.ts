@@ -1,5 +1,9 @@
 import prisma from "@api/infrastructure/database/prisma";
 import { generateNotificationsHash } from "./notification.utils";
+import {
+	buildUnreadNotificationsWhere,
+	isNotificationReadForUser,
+} from "./notification.read-model";
 
 type NotificationShape = {
 	id: string;
@@ -12,12 +16,26 @@ type NotificationShape = {
 	userId: string | null;
 };
 
+const toNotificationShape = (
+	notification: Pick<
+		NotificationShape,
+		"id" | "type" | "title" | "message" | "createdAt" | "updatedAt" | "userId"
+	>,
+	isRead: boolean
+): NotificationShape => ({
+	id: notification.id,
+	type: notification.type,
+	title: notification.title,
+	message: notification.message,
+	createdAt: notification.createdAt,
+	updatedAt: notification.updatedAt,
+	userId: notification.userId,
+	isRead,
+});
+
 export async function getUnreadNotifications(userId: string) {
 	const notifications = await prisma.notification.findMany({
-		where: {
-			isRead: false,
-			OR: [{ userId: null }, { userId }],
-		},
+		where: buildUnreadNotificationsWhere(userId),
 		orderBy: {
 			createdAt: "desc",
 		},
@@ -43,14 +61,23 @@ export async function getUnreadNotificationsWithHashCheck(
 }
 
 export async function markAllNotificationsAsRead(userId: string) {
-	await prisma.notification.updateMany({
-		where: {
-			isRead: false,
-			OR: [{ userId: null }, { userId }],
-		},
-		data: {
-			isRead: true,
-		},
+	await prisma.$transaction(async (tx) => {
+		const unreadNotifications = await tx.notification.findMany({
+			where: buildUnreadNotificationsWhere(userId),
+			select: { id: true },
+		});
+
+		if (unreadNotifications.length === 0) {
+			return;
+		}
+
+		await tx.notificationRead.createMany({
+			data: unreadNotifications.map((notification) => ({
+				notificationId: notification.id,
+				userId,
+			})),
+			skipDuplicates: true,
+		});
 	});
 
 	const refreshed = await getUnreadNotifications(userId);
@@ -72,6 +99,13 @@ export async function markNotificationAsRead(
 		where: {
 			id: notificationId,
 		},
+		include: {
+			reads: {
+				where: { userId },
+				select: { userId: true },
+				take: 1,
+			},
+		},
 	});
 
 	if (!notification) {
@@ -86,26 +120,39 @@ export async function markNotificationAsRead(
 		};
 	}
 
-	if (notification.isRead) {
+	if (isNotificationReadForUser(notification, userId)) {
 		return {
 			success: true,
-			notification,
+			notification: toNotificationShape(notification, true),
 			message: "Notification was already marked as read",
 		};
 	}
 
-	const updatedNotification = await prisma.notification.update({
+	const updatedNotification = await prisma.notificationRead.upsert({
 		where: {
-			id: notificationId,
+			notificationId_userId: {
+				notificationId,
+				userId,
+			},
 		},
-		data: {
-			isRead: true,
+		create: {
+			notificationId,
+			userId,
+		},
+		update: {
+			readAt: new Date(),
 		},
 	});
 
 	return {
 		success: true,
-		notification: updatedNotification,
+		notification: toNotificationShape(
+			{
+				...notification,
+				updatedAt: updatedNotification.readAt,
+			},
+			true
+		),
 		message: "Notification marked as read",
 	};
 }

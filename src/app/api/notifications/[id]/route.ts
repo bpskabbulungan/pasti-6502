@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { markNotificationAsRead } from "@api/modules/notifications";
 
 export async function POST(
@@ -8,8 +7,13 @@ export async function POST(
 	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
-		const session = await getServerSession(authOptions);
-		if (!session || !session.user || !session.user.id) {
+		const guard = await requireApiGuard({ request: req });
+		if (!guard.ok) {
+			return guard.response;
+		}
+
+		const userId = guard.session.user?.id;
+		if (!userId) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
@@ -17,7 +21,7 @@ export async function POST(
 
 		const result = await markNotificationAsRead(
 			notificationId,
-			session.user.id
+			userId
 		);
 
 		if (!result.success) {

@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { Role } from "@prisma/client";
+import { requireApiGuard } from "@/lib/api-guard";
 import { getAnalyticsExportDownload } from "@api/modules/analytics";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const guard = await requireApiGuard({ request: _req, roles: [Role.ADMIN] });
+    if (!guard.ok) {
+      return guard.response;
     }
 
     const { id } = await params;
-    const result = await getAnalyticsExportDownload(id, session.user.id);
+    const result = await getAnalyticsExportDownload(id, guard.session.user.id);
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });

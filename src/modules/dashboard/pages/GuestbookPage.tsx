@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -36,304 +34,61 @@ import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import GuestbookTableRow from "@/modules/dashboard/components/table-rows/GuestbookTableRow";
 import TableSkeleton from "@/modules/dashboard/components/skeletons/TableSkeleton";
-import { guestbookApi } from "@/services/api/guestbook";
-import { useLiveQuery } from "@/hooks/use-live-query";
-import { Gender, LastEducation, Purpose, QueueStatus } from "@/shared/constants/enums";
-import { formatDisplayDateTime } from "@/lib/date-format";
-import type { ErrorResponse } from "@shared/types/api";
-import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
-
-type StatusFilter = "ALL" | QueueStatus;
-type PurposeFilter = "ALL" | Purpose;
-
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
-
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
-
-const genderLabels: Record<Gender, string> = {
-  [Gender.MALE]: "Laki-Laki",
-  [Gender.FEMALE]: "Perempuan",
-};
-
-const educationLabels: Record<LastEducation, string> = {
-  [LastEducation.SD]: "SD",
-  [LastEducation.SMP]: "SMP",
-  [LastEducation.SMA_SMK]: "SMA / SMK",
-  [LastEducation.D1]: "D1",
-  [LastEducation.D2]: "D2",
-  [LastEducation.D3]: "D3",
-  [LastEducation.D4_S1]: "D4 / S1",
-  [LastEducation.S2]: "S2",
-  [LastEducation.S3]: "S3",
-  [LastEducation.LAINNYA]: "Lainnya",
-};
-
-const purposeOptions: Array<{ value: Purpose; label: string; accent: string }> = [
-  {
-    value: Purpose.KONSULTASI_STATISTIK,
-    label: "Konsultasi Statistik",
-    accent: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-100",
-  },
-  {
-    value: Purpose.PERPUSTAKAAN,
-    label: "Perpustakaan",
-    accent: "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100",
-  },
-  {
-    value: Purpose.REKOMENDASI_STATISTIK,
-    label: "Rekomendasi Statistik",
-    accent: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100",
-  },
-  {
-    value: Purpose.LAINNYA,
-    label: "Lainnya",
-    accent: "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100",
-  },
-];
-
-const statusLabels: Record<QueueStatus, string> = {
-  WAITING: "Menunggu",
-  SERVING: "Sedang Dilayani",
-  COMPLETED: "Selesai",
-  CANCELED: "Dibatalkan",
-};
-
-const statusBadgeClass: Record<QueueStatus, string> = {
-  WAITING: "border-amber-500/30 bg-amber-500/10 text-amber-700",
-  SERVING: "border-sky-500/30 bg-sky-500/10 text-sky-700",
-  COMPLETED: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
-  CANCELED: "border-red-500/30 bg-red-500/10 text-red-700",
-};
-
-const formatDateTime = (value: string | Date) => formatDisplayDateTime(value);
-
-const getFilenameFromContentDisposition = (value: string | null) => {
-  if (!value) return null;
-  const match = value.match(/filename="?([^"]+)"?/i);
-  return match?.[1] ?? null;
-};
+import { QueueStatus } from "@/shared/constants/enums";
+import type { GuestbookListResponse } from "@shared/types/guestbook";
+import { useGuestbookPageController } from "@/modules/dashboard/pages/guestbook-page/controller";
+import { formatGuestbookDateTime } from "@/modules/dashboard/pages/guestbook-page/helper";
+import {
+  educationLabels,
+  genderLabels,
+  purposeOptions,
+  statusBadgeClass,
+  statusLabels,
+} from "@/modules/dashboard/pages/guestbook-page/view-model";
+import type { PurposeFilter, StatusFilter } from "@/modules/dashboard/pages/guestbook-page/schema";
 
 type GuestbookPageProps = {
   initialData: GuestbookListResponse;
 };
 
 export default function GuestbookPage({ initialData }: GuestbookPageProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [purposeFilter, setPurposeFilter] = useState<PurposeFilter>("ALL");
-  const [dateFilter, setDateFilter] = useState<"today" | "all">("today");
-  const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selectedEntry, setSelectedEntry] = useState<GuestbookEntry | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [exportingFormat, setExportingFormat] = useState<"xlsx" | "pdf" | null>(null);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(searchTerm.trim());
-    }, 400);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [statusFilter, purposeFilter, dateFilter, pageSize, debouncedSearch]);
-
-  const offset = (currentPage - 1) * pageSize;
-  const guestbookUrl = guestbookApi.listUrl({
-    status: statusFilter,
-    purpose: purposeFilter,
-    dateFilter,
-    search: debouncedSearch || undefined,
-    limit: pageSize,
-    offset,
-  });
   const {
-    data: guestbookData,
-    isLoading,
+    searchTerm,
+    setSearchTerm,
+    statusFilter,
+    setStatusFilter,
+    purposeFilter,
+    setPurposeFilter,
+    dateFilter,
+    setDateFilter,
+    pageSize,
+    setPageSize,
+    currentPage,
+    setCurrentPage,
+    selectedEntry,
+    detailOpen,
+    exportingFormat,
+    entries,
+    summaryData,
+    totalPages,
+    canPrevPage,
+    canNextPage,
+    isInitialLoading,
     isRefreshing,
-    lastFetchedAt,
+    hasFetched,
+    lastFetchedLabel,
+    statusLabel,
+    showingLabel,
+    purposeFilterLabel,
+    statusFilterLabel,
+    hasActiveFilters,
+    debouncedSearch,
     refresh,
-  } = useLiveQuery<GuestbookListResponse>(guestbookUrl, {
-    fallbackData:
-      currentPage === 1 &&
-      pageSize === 10 &&
-      statusFilter === "ALL" &&
-      purposeFilter === "ALL" &&
-      dateFilter === "today" &&
-      !debouncedSearch
-        ? initialData
-        : undefined,
-    fallbackEtag:
-      currentPage === 1 &&
-      pageSize === 10 &&
-      statusFilter === "ALL" &&
-      purposeFilter === "ALL" &&
-      dateFilter === "today" &&
-      !debouncedSearch &&
-      initialData.hash
-        ? `"${initialData.hash}"`
-        : null,
-    refreshInterval: 60_000,
-    onError: (error) => {
-      console.error("Error fetching guestbook:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat buku tamu"));
-    },
-  });
-
-  const entries = guestbookData?.entries ?? [];
-  const summary = guestbookData?.summary ?? null;
-  const totalEntries = guestbookData?.pagination.total ?? null;
-
-  const fallbackSummary = useMemo(() => {
-    const statusCount = entries.reduce(
-      (acc, entry) => {
-        acc.total += 1;
-        acc.skdPending += entry.filledSKD ? 0 : 1;
-        switch (entry.status) {
-          case QueueStatus.WAITING:
-            acc.waiting += 1;
-            break;
-          case QueueStatus.SERVING:
-            acc.serving += 1;
-            break;
-          case QueueStatus.COMPLETED:
-            acc.completed += 1;
-            break;
-          case QueueStatus.CANCELED:
-            acc.canceled += 1;
-            break;
-          default:
-            break;
-        }
-        return acc;
-      },
-      {
-        total: 0,
-        waiting: 0,
-        serving: 0,
-        completed: 0,
-        canceled: 0,
-        skdPending: 0,
-      }
-    );
-
-    return {
-      ...statusCount,
-      total: totalEntries ?? statusCount.total,
-    };
-  }, [entries, totalEntries]);
-
-  const summaryData = summary ?? fallbackSummary;
-
-  const hasFetched = Boolean(lastFetchedAt);
-  const lastFetchedLabel = lastFetchedAt
-    ? formatDateTime(lastFetchedAt)
-    : isLoading
-      ? "Memuat data..."
-      : "Belum ada data";
-  const statusLabel = isRefreshing
-    ? "Memperbarui data..."
-    : hasFetched
-      ? "Data terbaru"
-      : "Belum ada data";
-  const isInitialLoading = isLoading && entries.length === 0;
-
-  const purposeFilterLabel =
-    purposeFilter === "ALL"
-      ? "Semua keperluan"
-      : (purposeOptions.find((option) => option.value === purposeFilter)?.label ?? "Keperluan");
-
-  const statusFilterLabel = statusFilter === "ALL" ? "Semua status" : statusLabels[statusFilter];
-
-  const totalItems = totalEntries ?? entries.length;
-  const totalPages = totalEntries ? Math.max(1, Math.ceil(totalEntries / pageSize)) : 1;
-  const rangeStart = totalItems > 0 ? (currentPage - 1) * pageSize + 1 : 0;
-  const rangeEnd = totalItems > 0 ? Math.min(currentPage * pageSize, totalItems) : 0;
-  const showingLabel =
-    totalEntries !== null
-      ? `Menampilkan ${rangeStart}-${rangeEnd} dari ${totalItems} data`
-      : `Menampilkan ${entries.length} data`;
-
-  const canPrevPage = currentPage > 1;
-  const canNextPage = totalEntries ? currentPage < totalPages : false;
-
-  const resetFilters = () => {
-    setSearchTerm("");
-    setStatusFilter("ALL");
-    setPurposeFilter("ALL");
-    setDateFilter("today");
-  };
-
-  const handleExport = async (format: "xlsx" | "pdf") => {
-    try {
-      setExportingFormat(format);
-
-      const params = new URLSearchParams();
-      if (statusFilter !== "ALL") {
-        params.set("status", statusFilter);
-      }
-      if (purposeFilter !== "ALL") {
-        params.set("purpose", purposeFilter);
-      }
-      if (debouncedSearch) {
-        params.set("search", debouncedSearch);
-      }
-      params.set("dateFilter", dateFilter);
-      params.set("format", format);
-
-      const response = await fetch(`/api/guestbook/export?${params.toString()}`);
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error || "Gagal mengunduh data buku tamu");
-      }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const serverFileName = getFilenameFromContentDisposition(
-        response.headers.get("content-disposition")
-      );
-      link.href = objectUrl;
-      link.download = serverFileName ?? `buku-tamu-pst.${format}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
-
-      toast.success(
-        format === "xlsx" ? "Export Excel berhasil diunduh" : "Export PDF berhasil diunduh"
-      );
-    } catch (error) {
-      console.error("Error exporting guestbook:", error);
-      toast.error(getErrorMessage(error, "Gagal mengekspor data buku tamu"));
-    } finally {
-      setExportingFormat(null);
-    }
-  };
-
-  const openDetail = useCallback((entry: GuestbookEntry) => {
-    setSelectedEntry(entry);
-    setDetailOpen(true);
-  }, []);
-
-  const handleDetailOpenChange = (open: boolean) => {
-    setDetailOpen(open);
-    if (!open) {
-      setSelectedEntry(null);
-    }
-  };
+    handleExport,
+    openDetail,
+    handleDetailOpenChange,
+    resetFilters,
+  } = useGuestbookPageController(initialData);
 
   const summaryCards = [
     {
@@ -370,11 +125,6 @@ export default function GuestbookPage({ initialData }: GuestbookPageProps) {
     },
   ];
 
-  const hasActiveFilters =
-    statusFilter !== "ALL" ||
-    purposeFilter !== "ALL" ||
-    dateFilter !== "today" ||
-    Boolean(debouncedSearch);
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <section className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-r from-primary/15 via-secondary/20 to-background p-6 shadow-md">
@@ -730,7 +480,7 @@ export default function GuestbookPage({ initialData }: GuestbookPageProps) {
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-secondary-color">
-                  Dibuat pada {formatDateTime(selectedEntry.createdAt)}
+                  Dibuat pada {formatGuestbookDateTime(selectedEntry.createdAt)}
                 </p>
               </div>
 

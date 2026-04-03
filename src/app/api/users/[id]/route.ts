@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { Role } from "@prisma/client";
+import { requireApiGuard } from "@/lib/api-guard";
 import { deleteUser, updateUser } from "@api/modules/users";
 
 // PATCH - Update a user
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.user.role !== Role.ADMIN) {
-      return NextResponse.json({ error: "Only admins can update users" }, { status: 403 });
+    const guard = await requireApiGuard({ request: req, roles: [Role.ADMIN] });
+    if (!guard.ok) {
+      return NextResponse.json(
+        {
+          error:
+            guard.response.status === 403 ? "Only admins can update users" : "Unauthorized",
+        },
+        { status: guard.response.status }
+      );
     }
 
     const { id } = await params;
@@ -38,13 +39,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 // DELETE - Delete a user
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.user.role !== Role.ADMIN) {
-      return NextResponse.json({ error: "Only admins can delete users" }, { status: 403 });
+    const guard = await requireApiGuard({ request: req, roles: [Role.ADMIN] });
+    if (!guard.ok) {
+      return NextResponse.json(
+        {
+          error:
+            guard.response.status === 403 ? "Only admins can delete users" : "Unauthorized",
+        },
+        { status: guard.response.status }
+      );
     }
 
     const { id } = await params;

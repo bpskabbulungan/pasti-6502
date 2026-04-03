@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { Role } from "@prisma/client";
-import { authOptions } from "@/lib/auth";
+import { requireApiGuard } from "@/lib/api-guard";
 import { runDutyReminder } from "@api/modules/schedule";
 
 const isCronRequestAuthorized = (req: NextRequest) => {
@@ -15,15 +14,15 @@ const isCronRequestAuthorized = (req: NextRequest) => {
 
 export async function POST(req: NextRequest) {
 	try {
-		const session = await getServerSession(authOptions);
 		const cronAuthorized = isCronRequestAuthorized(req);
-
-		if (!session && !cronAuthorized) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		if (session && session.user.role !== Role.ADMIN) {
-			return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+		const guard = await requireApiGuard({ request: req, roles: [Role.ADMIN] });
+		if (!guard.ok) {
+			if (guard.response.status === 403) {
+				return guard.response;
+			}
+			if (!cronAuthorized) {
+				return guard.response;
+			}
 		}
 
 		const body = await req.json().catch(() => ({}));

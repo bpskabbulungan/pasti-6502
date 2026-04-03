@@ -67,7 +67,7 @@ services:
   # Redis for rate limiting / caching
   pasti_redis:
     container_name: pasti_redis
-    image: pasti_redis:7-alpine
+    image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     restart: unless-stopped
     volumes:

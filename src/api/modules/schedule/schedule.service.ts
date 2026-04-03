@@ -1,175 +1,25 @@
 import { DayOffType, DutyCycleStatus, Prisma, ReminderChannel, Role } from "@prisma/client";
-import { z } from "zod";
 import prisma from "@api/infrastructure/database/prisma";
 import { sendWhatsAppFonnteReminder } from "@api/modules/reminders";
 import { formatDisplayDate } from "@/lib/date-format";
-
-const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5];
-const DEFAULT_TIMEZONE = "Asia/Makassar";
-const DEFAULT_REMINDER_TEMPLATE =
-  "Assalamu'alaikum/selamat pagi {{nama_petugas}}.\n\n" +
-  "Pengingat jadwal PST {{hari}}, {{tanggal}}.\n" +
-  "Anda dijadwalkan bertugas layanan {{layanan}} di {{lokasi}}.\n\n" +
-  "Mohon hadir tepat waktu. Terima kasih.";
-const AVAILABLE_TEMPLATE_PLACEHOLDERS = [
-  "{{nama_petugas}}",
-  "{{hari}}",
-  "{{tanggal}}",
-  "{{tanggal_iso}}",
-  "{{layanan}}",
-  "{{lokasi}}",
-];
-
-const WEEKDAY_LABELS: Record<number, string> = {
-  1: "Senin",
-  2: "Selasa",
-  3: "Rabu",
-  4: "Kamis",
-  5: "Jumat",
-  6: "Sabtu",
-  7: "Minggu",
-};
-
-const DUTY_STAFF_SELECT = {
-  id: true,
-  name: true,
-  username: true,
-  phone: true,
-  role: true,
-  createdAt: true,
-  updatedAt: true,
-} satisfies Prisma.UserSelect;
-
-const scheduleSettingsSchema = z.object({
-  workDays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
-  reminderEnabled: z.boolean().optional(),
-  autoAssignEnabled: z.boolean().optional(),
-  reminderTemplate: z.string().trim().min(1).optional(),
-  timezone: z.string().trim().min(1).optional(),
-});
-
-const dayOffSchema = z.object({
-  date: z.string().trim().min(1, "Tanggal wajib diisi"),
-  name: z.string().trim().min(1, "Nama hari libur/cuti wajib diisi"),
-  type: z.nativeEnum(DayOffType).optional(),
-  note: z.string().trim().optional().nullable(),
-});
-
-const ensureDateAtStartOfDay = (date: Date) => {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
-};
-
-const parseInputDate = (value: string) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
-  if (match) {
-    const year = Number(match[1]);
-    const month = Number(match[2]) - 1;
-    const day = Number(match[3]);
-    return new Date(year, month, day);
-  }
-  return new Date(value);
-};
-
-const toIsoDate = (date: Date) => {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}-${String(date.getDate()).padStart(2, "0")}`;
-};
-
-const toIsoWeekday = (date: Date) => {
-  const value = date.getDay();
-  return value === 0 ? 7 : value;
-};
-
-const getWeekdayLabel = (date: Date) => WEEKDAY_LABELS[toIsoWeekday(date)] ?? "-";
-
-const parseScheduleDate = (dateParam?: string | null) => {
-  const scheduleDate = dateParam ? parseInputDate(dateParam) : new Date();
-  if (Number.isNaN(scheduleDate.getTime())) {
-    return {
-      ok: false as const,
-      status: 400,
-      error: "Tanggal tidak valid, gunakan format YYYY-MM-DD",
-    };
-  }
-  return { ok: true as const, scheduleDate: ensureDateAtStartOfDay(scheduleDate) };
-};
-
-const normalizeStaffOrder = (value: Prisma.JsonValue): string[] => {
-  if (Array.isArray(value)) {
-    return value.filter((id): id is string => typeof id === "string");
-  }
-  return [];
-};
-
-const normalizeWorkDays = (value: Prisma.JsonValue): number[] => {
-  if (!Array.isArray(value)) {
-    return [...DEFAULT_WORK_DAYS];
-  }
-
-  const normalized = [
-    ...new Set(
-      value
-        .filter((item): item is number => typeof item === "number")
-        .map((item) => Math.trunc(item))
-        .filter((item) => item >= 1 && item <= 7)
-    ),
-  ].sort((a, b) => a - b);
-
-  return normalized.length > 0 ? normalized : [...DEFAULT_WORK_DAYS];
-};
-
-const resolveNextStaff = (
-  staffOrder: string[],
-  activeStaffIds: Set<string>,
-  startIndex: number
-) => {
-  if (staffOrder.length === 0) {
-    return { staffId: null, nextIndex: startIndex };
-  }
-
-  let index = startIndex;
-  for (let checked = 0; checked < staffOrder.length; checked++) {
-    const staffId = staffOrder[index];
-    if (activeStaffIds.has(staffId)) {
-      return { staffId, nextIndex: index + 1 };
-    }
-    index = (index + 1) % staffOrder.length;
-  }
-
-  return { staffId: null, nextIndex: startIndex };
-};
-
-const renderTemplate = (
-  template: string,
-  params: {
-    staffName: string;
-    scheduleDate: Date;
-  }
-) => {
-  return template
-    .replaceAll("{{nama_petugas}}", params.staffName)
-    .replaceAll("{{hari}}", getWeekdayLabel(params.scheduleDate))
-    .replaceAll("{{tanggal}}", formatDisplayDate(params.scheduleDate))
-    .replaceAll("{{tanggal_iso}}", toIsoDate(params.scheduleDate))
-    .replaceAll("{{layanan}}", "Pelayanan Statistik Terpadu")
-    .replaceAll("{{lokasi}}", "BPS Kabupaten Bulungan");
-};
-
-const toPrismaJson = (value: unknown): Prisma.InputJsonValue => {
-  if (value === undefined || value === null) {
-    return {} as Prisma.InputJsonValue;
-  }
-
-  try {
-    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-  } catch {
-    return { value: String(value) } as Prisma.InputJsonValue;
-  }
-};
+import {
+	addOneDayAtStartOfDay,
+	DUTY_STAFF_SELECT,
+	SCHEDULE_DEFAULTS,
+	ensureDateAtStartOfDay,
+	getWeekdayLabel,
+	normalizeStaffOrder,
+	normalizeWorkDays,
+	parseInputDate,
+	parseScheduleDate,
+	renderTemplate,
+	resolveNextStaff,
+	toIsoDate,
+	toIsoWeekday,
+	toPrismaJson,
+} from "./schedule.helper";
+import { dayOffSchema, scheduleSettingsSchema } from "./schedule.schema";
+import { toDutySettingsViewModel, toDutySummaryViewModel } from "./schedule.view-model";
 
 async function getOrCreateDutySettings() {
   const existing = await prisma.dutySettings.findUnique({
@@ -182,11 +32,11 @@ async function getOrCreateDutySettings() {
   return prisma.dutySettings.create({
     data: {
       id: "default",
-      workDays: [...DEFAULT_WORK_DAYS],
+      workDays: [...SCHEDULE_DEFAULTS.DEFAULT_WORK_DAYS],
       reminderEnabled: true,
       autoAssignEnabled: true,
-      reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
-      timezone: DEFAULT_TIMEZONE,
+      reminderTemplate: SCHEDULE_DEFAULTS.DEFAULT_REMINDER_TEMPLATE,
+      timezone: SCHEDULE_DEFAULTS.DEFAULT_TIMEZONE,
     },
   });
 }
@@ -381,8 +231,8 @@ export async function listSchedules(fromParam?: string | null, toParam?: string 
   const whereClause: Prisma.DutyScheduleWhereInput = {};
 
   if (fromParam || toParam) {
-    const startDate = fromParam ? new Date(fromParam) : new Date();
-    const endDate = toParam ? new Date(toParam) : new Date();
+    const startDate = fromParam ? parseInputDate(fromParam) : new Date();
+    const endDate = toParam ? parseInputDate(toParam) : new Date();
     if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
       return {
         ok: false as const,
@@ -390,13 +240,12 @@ export async function listSchedules(fromParam?: string | null, toParam?: string 
         error: "Rentang tanggal tidak valid, gunakan format YYYY-MM-DD",
       };
     }
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    endDate.setDate(endDate.getDate() + 1);
+    const normalizedStartDate = ensureDateAtStartOfDay(startDate);
+    const normalizedEndDate = addOneDayAtStartOfDay(endDate);
 
     whereClause.scheduleDate = {
-      gte: startDate,
-      lt: endDate,
+      gte: normalizedStartDate,
+      lt: normalizedEndDate,
     };
   }
 
@@ -430,11 +279,11 @@ export async function getDutySettings() {
   const settings = await getOrCreateDutySettings();
   return {
     ok: true as const,
-    settings: {
-      ...settings,
-      workDays: normalizeWorkDays(settings.workDays),
-      availableTemplatePlaceholders: AVAILABLE_TEMPLATE_PLACEHOLDERS,
-    },
+    settings: toDutySettingsViewModel(
+      settings,
+      normalizeWorkDays,
+      SCHEDULE_DEFAULTS.AVAILABLE_TEMPLATE_PLACEHOLDERS
+    ),
   };
 }
 
@@ -468,11 +317,11 @@ export async function updateDutySettings(payload: unknown) {
 
   return {
     ok: true as const,
-    settings: {
-      ...updated,
-      workDays: normalizeWorkDays(updated.workDays),
-      availableTemplatePlaceholders: AVAILABLE_TEMPLATE_PLACEHOLDERS,
-    },
+    settings: toDutySettingsViewModel(
+      updated,
+      normalizeWorkDays,
+      SCHEDULE_DEFAULTS.AVAILABLE_TEMPLATE_PLACEHOLDERS
+    ),
   };
 }
 
@@ -480,8 +329,8 @@ export async function listDutyDayOffs(fromParam?: string | null, toParam?: strin
   const whereClause: Prisma.DutyDayOffWhereInput = {};
 
   if (fromParam || toParam) {
-    const startDate = fromParam ? new Date(fromParam) : new Date();
-    const endDate = toParam ? new Date(toParam) : new Date();
+    const startDate = fromParam ? parseInputDate(fromParam) : new Date();
+    const endDate = toParam ? parseInputDate(toParam) : new Date();
     if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
       return {
         ok: false as const,
@@ -489,10 +338,10 @@ export async function listDutyDayOffs(fromParam?: string | null, toParam?: strin
         error: "Rentang tanggal tidak valid, gunakan format YYYY-MM-DD",
       };
     }
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    endDate.setDate(endDate.getDate() + 1);
-    whereClause.date = { gte: startDate, lt: endDate };
+    whereClause.date = {
+      gte: ensureDateAtStartOfDay(startDate),
+      lt: addOneDayAtStartOfDay(endDate),
+    };
   }
 
   const dayOffs = await prisma.dutyDayOff.findMany({
@@ -568,8 +417,8 @@ export async function listDutyReminderLogs(fromParam?: string | null, toParam?: 
   const whereClause: Prisma.DutyReminderLogWhereInput = {};
 
   if (fromParam || toParam) {
-    const startDate = fromParam ? new Date(fromParam) : new Date();
-    const endDate = toParam ? new Date(toParam) : new Date();
+    const startDate = fromParam ? parseInputDate(fromParam) : new Date();
+    const endDate = toParam ? parseInputDate(toParam) : new Date();
     if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
       return {
         ok: false as const,
@@ -577,10 +426,10 @@ export async function listDutyReminderLogs(fromParam?: string | null, toParam?: 
         error: "Rentang tanggal tidak valid, gunakan format YYYY-MM-DD",
       };
     }
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    endDate.setDate(endDate.getDate() + 1);
-    whereClause.reminderDate = { gte: startDate, lt: endDate };
+    whereClause.reminderDate = {
+      gte: ensureDateAtStartOfDay(startDate),
+      lt: addOneDayAtStartOfDay(endDate),
+    };
   }
 
   const logs = await prisma.dutyReminderLog.findMany({
@@ -672,9 +521,11 @@ export async function getDutyScheduleBootstrap(dateParam?: string | null) {
         schedule: schedule ?? null,
       },
       settings: {
-        ...settings,
-        workDays,
-        availableTemplatePlaceholders: AVAILABLE_TEMPLATE_PLACEHOLDERS,
+        ...toDutySettingsViewModel(
+          settings,
+          normalizeWorkDays,
+          SCHEDULE_DEFAULTS.AVAILABLE_TEMPLATE_PLACEHOLDERS
+        ),
       },
       staff: staffResult.staff,
       schedules: schedulesResult.schedules,
@@ -709,18 +560,13 @@ export async function getDutySummary(dateParam?: string | null) {
 
   return {
     ok: true as const,
-    summary: {
-      date: scheduleDate,
-      dateLabel: formatDisplayDate(scheduleDate),
-      isWorkingDay: eligibility.ok,
-      reason: eligibility.ok ? null : eligibility.reason,
-      settings: {
-        workDays: normalizeWorkDays(settings.workDays),
-        reminderEnabled: settings.reminderEnabled,
-        autoAssignEnabled: settings.autoAssignEnabled,
-      },
+    summary: toDutySummaryViewModel({
+      scheduleDate,
+      eligibility,
+      settings,
       schedule: schedule ?? null,
-    },
+      normalizeWorkDays,
+    }),
   };
 }
 

@@ -75,3 +75,12 @@ export const visitorSubmissionSchema = z.object({
 		required_error: "Tipe antrean wajib dipilih",
 	}),
 });
+
+export const visitorFormClientSchema = visitorSubmissionSchema.omit({
+	tempUuid: true,
+});
+
+export type VisitorSubmissionInput = z.input<typeof visitorSubmissionSchema>;
+export type VisitorSubmissionData = z.output<typeof visitorSubmissionSchema>;
+export type VisitorFormClientInput = z.input<typeof visitorFormClientSchema>;
+export type VisitorFormClientData = z.output<typeof visitorFormClientSchema>;

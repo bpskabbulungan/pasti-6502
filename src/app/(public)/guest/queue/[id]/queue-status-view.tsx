@@ -106,8 +106,7 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const rawSkdLink = process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
-  const skdLink = rawSkdLink.startsWith("http") ? rawSkdLink : `https://${rawSkdLink}`;
+  const skdProxyLink = "/api/visitor-form/skd/open";
 
   const queueCode = useMemo(() => {
     if (!data) return "--";
@@ -309,7 +308,7 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
               ) : (
                 <>
                   <Button asChild>
-                    <a href={skdLink} target="_blank" rel="noreferrer">
+                    <a href={skdProxyLink} target="_blank" rel="noreferrer">
                       Isi SKD Sekarang
                     </a>
                   </Button>
