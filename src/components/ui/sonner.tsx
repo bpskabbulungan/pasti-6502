@@ -26,7 +26,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          toast: "group font-sans text-sm p-4 shadow-lg border-custom rounded-lg",
+          toast: "group rounded-xl border border-border bg-card p-4 font-sans text-sm shadow-[var(--shadow-soft)]",
           title: "text-primary-color font-semibold",
           description: "text-secondary-color text-sm mt-1",
           actionButton: "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]",

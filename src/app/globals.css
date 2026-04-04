@@ -42,97 +42,95 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* UPDATED: Color palette according to new design requirements */
 :root {
   --radius: 0.625rem;
-  --background: #FFF4EC; /* Background color */
-  --foreground: #2D2D2D; /* Text primary color for main content */
-  --card: #FFE5D3; /* Card background = surface color */
-  --card-foreground: #2D2D2D; /* Text on cards */
-  --popover: #FFF4EC; /* Popover background = surface color */
-  --popover-foreground: #2D2D2D; /* Text on popovers */
-  --primary: #F79039; /* Primary orange */
-  --primary-hover: #e67620; /* Hover state for primary buttons */
-  --primary-foreground: #2D2D2D; /* Text on primary elements */
-  --secondary: #FEB856; /* Secondary color */
-  --secondary-foreground: #2D2D2D; /* Text on secondary elements */
-  --muted: #FFE5D3; /* Muted color = surface */
-  --muted-foreground: #5C5C5C; /* Text secondary */
-  --accent: #9A0501; /* Accent color */
-  --accent-foreground: #FFFFFF; /* Text on accent */
-  --destructive: #9A0501; /* Destructive actions */
-  --destructive-foreground: #FFFFFF; /* Text on destructive */
-  --border: #E0D4C8; /* Border color */
-  --input: #E0D4C8; /* Input borders */
-  --ring: #F79039; /* Focus ring color */
-  
-  /* Chart colors - preserved */
-  --chart-1: #F79039; /* Orange primary */
-  --chart-2: #FEB856; /* Orange secondary */
-  --chart-3: #FFE5D3; /* Surface/muted */
-  --chart-4: #9A0501; /* Accent/destructive */
-  --chart-5: #FFE5D3; /* Background */
-  
-  /* Sidebar colors - preserved with updated values */
-  --sidebar: #FFF4EC; /* Background color */
-  --sidebar-foreground: #2D2D2D; /* Text primary */
-  --sidebar-primary: #F79039; /* Primary */
-  --sidebar-primary-foreground: #2D2D2D; /* Text on primary */
-  --sidebar-accent: #9A0501; /* Accent */
-  --sidebar-accent-foreground: #FFFFFF; /* Text on accent */
-  --sidebar-border: #E0D4C8; /* Border color */
-  --sidebar-ring: #F79039; /* Focus ring color */
-  
-  /* Additional variables for direct access */
-  --surface: ##FFF4EC;
-  --text-primary: #2D2D2D;
-  --text-secondary: #5C5C5C;
+  --background: #f5f7fb;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-foreground: #ffffff;
+  --secondary: #e6edf8;
+  --secondary-foreground: #0f172a;
+  --muted: #eef3f9;
+  --muted-foreground: #607189;
+  --accent: #0f766e;
+  --accent-foreground: #e6fffb;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #d7e0eb;
+  --input: #c8d4e3;
+  --ring: #3b82f6;
+
+  --chart-1: #2563eb;
+  --chart-2: #0f766e;
+  --chart-3: #8b5cf6;
+  --chart-4: #ea580c;
+  --chart-5: #16a34a;
+
+  --sidebar: #f8fbff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8f0ff;
+  --sidebar-accent-foreground: #1e293b;
+  --sidebar-border: #d7e0eb;
+  --sidebar-ring: #3b82f6;
+
+  --surface: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #607189;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 50%, transparent);
+  --shadow-soft: 0 14px 34px rgba(15, 23, 42, 0.06);
+  --shadow-strong: 0 22px 55px rgba(15, 23, 42, 0.12);
 }
 
-/* UPDATED: Dark mode colors according to new design requirements */
 .dark {
-  --background: #1A1A1A; /* Dark background */
-  --foreground: #FFFFFF; /* Light text for dark mode */
-  --card: #2A2A2A; /* Card background = surface in dark mode */
-  --card-foreground: #FFFFFF; /* Text on cards */
-  --popover: #2A2A2A; /* Popover background = surface */
-  --popover-foreground: #FFFFFF; /* Text on popovers */
-  --primary: #F79039; /* Primary stays consistent */
-  --primary-hover: #FF9F3C; /* Brighter hover for dark mode */
-  --primary-foreground: #FFFFFF; /* Dark text on primary */
-  --secondary: #FEB856; /* Secondary stays consistent */
-  --secondary-foreground: #FFFFFF; /* Dark text on secondary */
-  --muted: #2A2A2A; /* Muted = surface in dark mode */
-  --muted-foreground: #CCCCCC; /* Secondary text */
-  --accent: #FF6A5E; /* Accent for dark mode */
-  --accent-foreground: #1A1A1A; /* Text on accent */
-  --destructive: #FF6A5E; /* Destructive = accent */
-  --destructive-foreground: #1A1A1A; /* Text on destructive */
-  --border: #3A3A3A; /* Border color */
-  --input: #3A3A3A; /* Input borders */
-  --ring: #F79039; /* Focus ring consistent with primary */
-  
-  /* Chart colors stay consistent for data visualization continuity */
-  --chart-1: #F79039;
-  --chart-2: #FEB856;
-  --chart-3: #2A2A2A; /* Surface in dark mode */
-  --chart-4: #FF6A5E; /* Accent in dark mode */
-  --chart-5: #1A1A1A; /* Background in dark mode */
-  
-  /* Sidebar colors - updated for dark mode */
-  --sidebar: #2A2A2A; /* Surface color for sidebar */
-  --sidebar-foreground: #FFFFFF; /* Text primary */
-  --sidebar-primary: #F79039; /* Primary stays consistent */
-  --sidebar-primary-foreground: #1A1A1A; /* Dark text on primary */
-  --sidebar-accent: #FF6A5E; /* Accent */
-  --sidebar-accent-foreground: #1A1A1A; /* Text on accent */
-  --sidebar-border: #3A3A3A; /* Border color */
-  --sidebar-ring: #F79039; /* Focus ring color */
-  
-  /* Additional variables for direct access */
-  --surface: #2A2A2A;
-  --text-primary: #FFFFFF;
-  --text-secondary: #CCCCCC;
+  --background: #0b1220;
+  --foreground: #e2ebf7;
+  --card: #111a2b;
+  --card-foreground: #e2ebf7;
+  --popover: #111a2b;
+  --popover-foreground: #e2ebf7;
+  --primary: #60a5fa;
+  --primary-hover: #3b82f6;
+  --primary-foreground: #061427;
+  --secondary: #1f2c43;
+  --secondary-foreground: #dbe6f8;
+  --muted: #17243a;
+  --muted-foreground: #91a3bf;
+  --accent: #2dd4bf;
+  --accent-foreground: #062f2a;
+  --destructive: #f87171;
+  --destructive-foreground: #2d0808;
+  --border: #273652;
+  --input: #314567;
+  --ring: #60a5fa;
+
+  --chart-1: #60a5fa;
+  --chart-2: #34d399;
+  --chart-3: #a78bfa;
+  --chart-4: #fb923c;
+  --chart-5: #4ade80;
+
+  --sidebar: #0f1728;
+  --sidebar-foreground: #e2ebf7;
+  --sidebar-primary: #60a5fa;
+  --sidebar-primary-foreground: #04101f;
+  --sidebar-accent: #1a2a45;
+  --sidebar-accent-foreground: #cbd6ea;
+  --sidebar-border: #273652;
+  --sidebar-ring: #60a5fa;
+
+  --surface: #111a2b;
+  --text-primary: #e2ebf7;
+  --text-secondary: #91a3bf;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 50%, transparent);
+  --shadow-soft: 0 16px 38px rgba(2, 8, 23, 0.32);
+  --shadow-strong: 0 24px 58px rgba(2, 8, 23, 0.5);
 }
 
 /* Utility classes for direct theme color access */
@@ -164,7 +162,91 @@
     @apply overflow-x-hidden;
   }
   body {
-    @apply bg-background min-h-screen text-foreground overflow-x-hidden;
+    @apply bg-background min-h-screen text-foreground overflow-x-hidden antialiased;
+    line-height: 1.5;
+    background-image:
+      radial-gradient(
+        circle at 0% 0%,
+        color-mix(in srgb, var(--primary) 10%, transparent) 0,
+        transparent 36%
+      ),
+      radial-gradient(
+        circle at 100% 0%,
+        color-mix(in srgb, var(--accent) 8%, transparent) 0,
+        transparent 34%
+      );
+    background-attachment: fixed;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.015em;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 28%, transparent);
+    color: var(--foreground);
+  }
+}
+
+@layer components {
+  .dashboard-page {
+    @apply mx-auto w-full max-w-7xl space-y-5 md:space-y-6;
+  }
+
+  .dashboard-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--primary) 10%, transparent),
+        color-mix(in srgb, var(--card) 94%, transparent) 44%,
+        color-mix(in srgb, var(--muted) 65%, transparent)
+      );
+    box-shadow: var(--shadow-soft);
+  }
+
+  .dashboard-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(
+        circle at 18% 18%,
+        color-mix(in srgb, var(--primary) 20%, transparent),
+        transparent 48%
+      ),
+      radial-gradient(
+        circle at 82% 12%,
+        color-mix(in srgb, var(--accent) 10%, transparent),
+        transparent 48%
+      );
+    opacity: 0.82;
+    pointer-events: none;
+  }
+
+  .dashboard-hero > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dashboard-panel {
+    @apply rounded-xl border border-border/80 bg-card/90 shadow-[var(--shadow-soft)];
+  }
+
+  .dashboard-filter-panel {
+    @apply rounded-xl border border-border/80 bg-muted/40 p-3.5 sm:p-4;
+  }
+
+  .dashboard-table-shell {
+    @apply overflow-hidden rounded-xl border border-border/80;
+  }
+
+  .dashboard-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground;
   }
 }
 

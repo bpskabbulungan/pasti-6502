@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiGuard } from "@/lib/api-guard";
 import { extractEtagMarker, toEtag } from "@/lib/http-cache";
-import { getGuestbookEntries } from "@api/modules/guestbook";
+import { getGuestbookEntries } from "@api/modules/guestbook/guestbook-list.service";
 import type { GuestbookListResponse } from "@shared/types/guestbook";
 
 export async function GET(req: NextRequest) {

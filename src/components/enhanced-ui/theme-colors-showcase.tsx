@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { EnhancedThemeToggle } from "@/components/enhanced-theme-toggle";
+import { EnhancedThemeToggle } from "@/components/theme/enhanced-theme-toggle";
 import { toast } from "sonner";
 
 export function ThemeColorsShowcase() {
@@ -177,3 +177,4 @@ export function ThemeColorsShowcase() {
         </Card>
     );
 }
+

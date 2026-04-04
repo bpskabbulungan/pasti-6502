@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiGuard } from "@/lib/api-guard";
 import { z } from "zod";
-import { updateSkdStatusByQueueId } from "@api/modules/queues";
+import { updateSkdStatusByQueueId } from "@api/modules/queues/queue.actions";
 
 export async function PATCH(
 	req: NextRequest,

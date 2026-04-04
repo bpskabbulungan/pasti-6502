@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import PageBackground from "@/components/page-background";
+import PageBackground from "@/components/shared/page-background";
 import { Home } from "lucide-react";
 
 export default function NotFound() {
@@ -35,3 +35,4 @@ export default function NotFound() {
     </div>
   );
 }
+

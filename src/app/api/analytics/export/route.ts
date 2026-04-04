@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { requireApiGuard } from "@/lib/api-guard";
-import { createAnalyticsExportJob, parseDateRange } from "@api/modules/analytics";
+import { createAnalyticsExportJob } from "@api/modules/analytics";
+import { parseDateRange } from "@api/modules/analytics/analytics-summary.service";
 import { toIsoDateInTimeZone } from "@shared/utils/date-boundary";
 
 export async function POST(req: NextRequest) {

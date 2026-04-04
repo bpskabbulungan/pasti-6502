@@ -1,6 +1,6 @@
-import AnalyticsPage from "@/modules/dashboard/pages/AnalyticsPage";
+import AnalyticsPage from "@/features/dashboard/screens/analytics-screen";
 import { requireAdminDashboardUser } from "@/lib/dashboard-session";
-import { getAnalyticsSummary } from "@api/modules/analytics";
+import { getAnalyticsSummary } from "@api/modules/analytics/analytics-summary.service";
 import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
 
 export default async function Page() {
@@ -12,3 +12,5 @@ export default async function Page() {
 
   return <AnalyticsPage initialAnalytics={initialAnalytics} />;
 }
+
+

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import {
   RefreshCw,
   ArrowRight,
@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { useQueueDisplay } from "@/modules/queue-display/hooks/useQueueDisplay";
-import PageBackground from "@/components/page-background";
+import { useQueueDisplay } from "@/features/queue-display/hooks/use-queue-display";
+import PageBackground from "@/components/shared/page-background";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import type { QueueDisplayResponse } from "@shared/types/queue";
 
@@ -328,16 +328,16 @@ export default function QueueDisplayPage() {
             <ThemeToggle />
           </div>
         ) : (
-          <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-custom/80 bg-white/80 px-5 py-4 shadow-sm backdrop-blur dark:bg-card">
+          <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-border/70 bg-white/85 px-5 py-4 shadow-md backdrop-blur dark:bg-card">
             <div className="flex items-center gap-4">
-              <div className="rounded-2xl bg-primary/10 p-3 text-primary">
+              <div className="rounded-2xl border border-border/70 bg-primary/10 p-3 text-primary">
                 <LayoutGrid className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-2xl font-black text-primary-color md:text-3xl">
+                <h1 className="text-2xl font-black leading-tight text-primary-color md:text-3xl lg:text-4xl">
                   Informasi Antrean PST BPS Kabupaten Bulungan
                 </h1>
-                <p className="text-sm text-secondary-color">
+                <p className="text-sm text-secondary-color md:text-base">
                   Nomor yang sedang dan akan dilayani secara real-time.
                 </p>
               </div>
@@ -392,7 +392,7 @@ export default function QueueDisplayPage() {
         >
           <div className={isFullscreen ? "w-full max-w-6xl" : ""}>
             <Card
-              className={`relative overflow-hidden border border-custom/80 bg-gradient-to-br from-primary/12 via-white to-[#FFF7F1] shadow-lg dark:from-primary/10 dark:via-card dark:to-card ${
+              className={`relative overflow-hidden border border-border/70 bg-gradient-to-br from-primary/15 via-white to-[#FFF7F1] shadow-xl dark:from-primary/10 dark:via-card dark:to-card ${
                 isFullscreen ? "px-4 py-4 sm:px-6 sm:py-6" : ""
               }`}
             >
@@ -404,7 +404,7 @@ export default function QueueDisplayPage() {
               >
                 <CardTitle
                   className={`font-bold text-primary-color ${
-                    isFullscreen ? "text-2xl sm:text-3xl" : "text-xl"
+                    isFullscreen ? "text-3xl sm:text-4xl" : "text-2xl"
                   }`}
                 >
                   {highlightedQueue?.title ?? "Antrean Berikutnya"}
@@ -439,8 +439,8 @@ export default function QueueDisplayPage() {
                         </Badge>
                       </div>
                       <div
-                        className={`rounded-3xl border border-border/80 bg-white/90 text-center shadow-lg backdrop-blur dark:bg-card ${
-                          isFullscreen ? "p-10 sm:p-12" : "p-8"
+                        className={`rounded-3xl border border-border/80 bg-white/92 text-center shadow-xl backdrop-blur dark:bg-card ${
+                          isFullscreen ? "p-10 sm:p-14" : "p-8"
                         }`}
                       >
                         <p
@@ -453,8 +453,8 @@ export default function QueueDisplayPage() {
                         <p
                           className={`font-black leading-tight text-primary-color ${
                             isFullscreen
-                              ? "text-[clamp(3.5rem,12vw,9.5rem)]"
-                              : "text-[clamp(2.75rem,8vw,6.8rem)]"
+                              ? "text-[clamp(4rem,13vw,10.5rem)]"
+                              : "text-[clamp(2.75rem,8vw,7.2rem)]"
                           }`}
                         >
                           {formatQueueCode(
@@ -534,7 +534,7 @@ export default function QueueDisplayPage() {
                   {displayServingQueues.map((queue) => (
                     <div
                       key={queue.id}
-                      className="flex h-full flex-col gap-4 rounded-3xl border border-border/70 bg-white/80 p-6 shadow-lg backdrop-blur dark:bg-card"
+                      className="flex h-full flex-col gap-4 rounded-3xl border border-border/70 bg-white/90 p-6 shadow-md backdrop-blur dark:bg-card"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -584,3 +584,6 @@ export default function QueueDisplayPage() {
     </div>
   );
 }
+
+
+

@@ -1,7 +1,7 @@
 import { Role } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiGuard } from "@/lib/api-guard";
-import { cancelQueue } from "@api/modules/queues";
+import { cancelQueue } from "@api/modules/queues/queue.actions";
 import type { QueueDetail } from "@shared/types/queue";
 
 export async function POST(

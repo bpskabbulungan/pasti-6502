@@ -1,4 +1,5 @@
-export { getAnalyticsSummary, exportAnalytics, parseDateRange } from "./analytics.service";
+export { getAnalyticsSummary, parseDateRange } from "./analytics-summary.service";
+export { exportAnalytics } from "./analytics.service";
 export {
   createAnalyticsExportJob,
   getAnalyticsExportDownload,

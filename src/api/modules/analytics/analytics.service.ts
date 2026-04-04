@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import PDFDocument from "pdfkit";
 import * as XLSX from "xlsx";
 import prisma from "@api/infrastructure/database/prisma";
-import { QueueStatus, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { formatDisplayDate, formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import { addDaysInTimeZone, parseDateOnlyInTimeZone } from "@shared/utils/date-boundary";
 import type { AnalyticsExportRow } from "@shared/types/analytics";

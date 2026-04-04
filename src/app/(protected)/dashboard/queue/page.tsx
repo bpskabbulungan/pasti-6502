@@ -1,7 +1,7 @@
-import QueuePage from "@/modules/dashboard/pages/QueuePage";
+import QueuePage from "@/features/dashboard/screens/queue-management-screen";
 import { requireDashboardUser } from "@/lib/dashboard-session";
 import { QueueStatus } from "@prisma/client";
-import { getQueues } from "@api/modules/queues";
+import { getQueues } from "@api/modules/queues/queue.service";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -51,3 +51,5 @@ export default async function Page({ searchParams }: PageProps) {
     />
   );
 }
+
+

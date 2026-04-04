@@ -1,4 +1,4 @@
-import DashboardPage from "@/modules/dashboard/pages/DashboardPage";
+import DashboardPage from "@/features/dashboard/screens/dashboard-screen";
 import { requireDashboardUser } from "@/lib/dashboard-session";
 import { getDashboardStats } from "@api/modules/dashboard";
 
@@ -7,3 +7,5 @@ export default async function Page() {
   const initialStats = await getDashboardStats();
   return <DashboardPage currentUser={user} initialStats={initialStats} />;
 }
+
+

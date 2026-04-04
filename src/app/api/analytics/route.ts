@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractEtagMarker, toEtag } from "@/lib/http-cache";
 import { Role } from "@prisma/client";
 import { requireApiGuard } from "@/lib/api-guard";
-import { getAnalyticsSummary, parseDateRange } from "@api/modules/analytics";
+import {
+  getAnalyticsSummary,
+  parseDateRange,
+} from "@api/modules/analytics/analytics-summary.service";
 import { toIsoDateInTimeZone } from "@shared/utils/date-boundary";
 import type { AnalyticsSummary } from "@shared/types/analytics";
 

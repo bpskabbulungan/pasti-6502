@@ -1,120 +1,174 @@
-# Pelayanan Statistik Terpadu Terintegrasi (PASTI)
+# PASTI 6502
 
-Pasti adalah sistem antrean digital untuk Pelayanan Statistik Terpadu BPS Kabupaten Bulungan. Pengunjung bisa datang langsung ke PST BPS Kabupaten Bulungan kemudian melalukan scan pada kode QR mengisi buku tamu dan kemudian mendapatkan nomor antrian, petugas PST memantau dari dashboard, dan antrean ditampilkan di layar publik. Proyek ini mengembangkan inovasi dari proyek [Sistem Antrean PST](https://github.com/Jstfire/bbbb-antrean) (Muhammad Mahbubbillah - BPS Kabupaten Buton Selatan).
+Sistem antrean digital Pelayanan Statistik Terpadu (PST) BPS Kabupaten Bulungan.
 
-## Ringkasan Fitur
+## Project Overview
 
-- Antrean online via QR dan antrean walk-in/buku tamu, nomor ulang setiap hari.
-- Dashboard petugas: pantau antrean, mulai/selesai/batalkan, atur layanan dan pengguna.
-- Jadwal petugas PST mengambil sumber dari akun pengguna role `PETUGAS` (admin tidak ikut rotasi).
-- Layar antrean publik untuk TV/monitor; QR bisa diunduh dari dashboard.
-- Notifikasi antrean baru dan pengingat SKD via WA Bot (opsional).
-- Statistik antrean harian, sebaran layanan, kinerja petugas, ekspor CSV/JSON.
-- Dibangun dengan Next.js, React, Tailwind, Prisma, MySQL, NextAuth, Bun.
+PASTI mengelola alur layanan pengunjung dari scan QR hingga antrean selesai, dengan dashboard petugas, tampilan antrean publik, buku tamu digital, dan analitik layanan.
 
-## Daftar Isi
+Fitur utama:
+- Buku tamu dan antrean berbasis QR
+- Dashboard petugas untuk proses antrean
+- Manajemen layanan dan pengguna
+- Tampilan antrean publik (TV/monitor)
+- Statistik dan ekspor analitik
+- Notifikasi antrean dan reminder (opsional WhatsApp/Fonnte)
 
-- [Prasyarat](#prasyarat)
-- [Catatan Penting](#catatan-penting)
-- [Quickstart](#quickstart)
-- [Instalasi (Detail)](#instalasi-detail)
-- [Kredit](#kredit)
+## Tech Stack
 
-## Prasyarat
+- Next.js App Router
+- React + TypeScript
+- Tailwind CSS
+- Prisma + MySQL
+- NextAuth
+- Bun
 
-- Bun 1.1.x atau Node.js 18+ (disarankan Bun sesuai Dockerfile)
-- MySQL 8.0+ (bisa lokal atau via docker compose)
-- Git, Docker, dan docker compose (jika ingin jalan dengan kontainer)
+## Frontend Architecture (Refactored)
 
-## Catatan Penting
+Refactor frontend saat ini menggunakan pendekatan domain-first:
+- `src/app` hanya untuk route, server boundary, dan composition page
+- `src/features` untuk logic UI per domain
+- `src/components/ui` untuk UI primitive reusable
+- `src/components/shared` untuk komponen lintas fitur (layout, feedback, dialogs)
+- `src/services/api` untuk API client typed
+- `src/shared` untuk types/schemas/constants lintas backend-frontend
 
-- Buat `.env` sendiri; contoh hanya panduan, bukan untuk produksi.
-- Perintah seed (`bun run db:seed` atau via docker compose) hanya untuk development; tidak aktif di `NODE_ENV=production`.
-- Wajib gunakan nilai unik untuk `NEXTAUTH_SECRET` dan `NEXT_PUBLIC_STATIC_UUID`.
-- WA Bot opsional; jika `NEXT_PUBLIC_WA_API_URL` atau `WA_ADMIN_KEY` kosong, pengingat SKD tidak dijalankan.
-- Pengingat jadwal petugas PST via Fonnte opsional; set `FONNTE_TOKEN` bila ingin kirim otomatis.
-- Endpoint automasi reminder jadwal bisa diamankan dengan `SCHEDULE_CRON_SECRET`.
-- Jika memakai docker compose, port default 3001 (host) -> 3000 (container); ubah `NEXTAUTH_URL` jika mapping berbeda.
-- Jika beralih dari PostgreSQL ke MySQL, regenerasi migration Prisma (lihat langkah di bagian Instalasi).
+### Folder Structure
 
-## Quickstart
+```text
+src
+|-- app
+|   |-- (public)
+|   |-- (protected)
+|   `-- api
+|-- api
+|-- components
+|   |-- auth
+|   |-- shared
+|   |   |-- dialogs
+|   |   |-- feedback
+|   |   `-- layout
+|   |-- theme
+|   `-- ui
+|-- constants
+|-- features
+|   |-- dashboard
+|   |   |-- components
+|   |   |   |-- layout
+|   |   |   |-- rows
+|   |   |   `-- skeletons
+|   |   |-- constants
+|   |   `-- screens
+|   |-- guest
+|   |-- notifications
+|   |-- queue-display
+|   `-- visitor-form
+|-- hooks
+|-- lib
+|-- services
+|-- shared
+|-- styles
+`-- tests
+```
 
-1. Clone repo lalu masuk: `git clone <url> && cd pasti-6502`
-2. Salin `.env.example` ke `.env`, isi koneksi database dan secret.
-3. Instal dependensi: `bun install`
-4. Migrasi + generate Prisma: `bunx prisma migrate dev --name init && bunx prisma generate`
-5. Isi data contoh (akun, layanan, QR): `bun run db:seed`
-6. Jalankan dev server: `bun run dev` lalu buka `http://localhost:3000`
+## Module Guide
 
-## Instalasi (Detail)
+- `features/dashboard`: layar internal petugas/admin (queue, users, services, analytics, QR, schedule, guestbook)
+- `features/guest`: halaman buku tamu dan status antrean pengunjung
+- `features/visitor-form`: alur form antrean dari QR
+- `features/queue-display`: public queue display real-time
+- `features/notifications`: dropdown notifikasi dashboard
 
-### 1) Konfigurasi Lingkungan
+## Setup
 
-Isi `.env` dengan nilai aman. Contoh minimal:
+### 1) Prerequisites
+
+- Bun 1.x (disarankan) atau Node.js 18+
+- MySQL 8+
+- Git
+- Docker + Docker Compose (opsional)
+
+### 2) Installation
+
+```bash
+git clone <repo-url>
+cd pasti-6502
+bun install
+```
+
+### 3) Environment Variables
+
+Buat `.env` di root project.
+
+Variabel inti:
+- `DATABASE_URL`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL`
+- `NEXT_PUBLIC_STATIC_UUID`
+
+Variabel opsional:
+- `NEXT_PUBLIC_QR_BASE_URL`
+- `NEXT_PUBLIC_WA_API_URL`
+- `WA_ADMIN_KEY`
+- `FONNTE_TOKEN`
+- `SCHEDULE_CRON_SECRET`
+- `ANALYTICS_EXPORT_MAX_ROWS`
+
+Contoh minimal:
 
 ```env
-DATABASE_URL="mysql://USER:PASSWORD@pasti_db:3306/pasti_db"
-MYSQL_ROOT_PASSWORD="root_password"
-MYSQL_DATABASE="pasti_db"
-MYSQL_USER="pasti_user"
-MYSQL_PASSWORD="pasti_password"
+DATABASE_URL="mysql://USER:PASSWORD@localhost:3306/pasti_db"
 NEXTAUTH_SECRET="ganti_dengan_string_acak"
-NEXTAUTH_URL="http://localhost:3000"        # jika docker compose (3001:3000), gunakan http://localhost:3001
+NEXTAUTH_URL="http://localhost:3000"
 NEXT_PUBLIC_STATIC_UUID="uuid_statis_qr"
-NEXT_PUBLIC_WA_API_URL="https://example.com/wa-api"  # opsional
-WA_ADMIN_KEY="server_only_admin_key"                 # opsional, jangan diawali NEXT_PUBLIC
-FONNTE_TOKEN="token_fonnte_anda"                     # opsional, untuk reminder jadwal petugas PST
-SCHEDULE_CRON_SECRET="secret_khusus_cron"            # opsional, header x-cron-secret
-# Opsi seed dev
-# SEED_ADMIN_USERNAME="admin"
-# SEED_ADMIN_PASSWORD="password_dev"
-# SEED_OPERATOR_USERNAME="petugas"
-# SEED_OPERATOR_PASSWORD="password_dev"
 ```
 
-`NEXT_PUBLIC_STATIC_UUID` dipakai untuk QR statis; perintah seed membuat `public/qrcodes/pst-qrcode.png` yang mengarah ke `/guest`.
-
-### Catatan Migrasi (MySQL)
-
-Jika sebelumnya memakai PostgreSQL, migration yang ada tidak kompatibel dengan MySQL. Arsipkan/hapus folder `prisma/migrations` lama lalu buat ulang migration:
+### 4) Database
 
 ```bash
-bunx prisma migrate dev --name init
-```
-
-### 2) Mode Lokal (Bun)
-
-- Pastikan MySQL aktif dan `DATABASE_URL` sudah benar.
-- Jalankan:
-
-```bash
-bun install
 bunx prisma migrate dev
 bunx prisma generate
-bun run db:seed   # boleh dilewati di produksi
-bun run dev       # akses http://localhost:3000
+bun run db:seed
 ```
 
-### 3) Mode Docker Compose
-
-- Pastikan `.env` sudah diisi.
-- Build dan jalankan:
+### 5) Run
 
 ```bash
-docker compose up -d --build
+bun run dev
 ```
 
-- App: host `3001` -> container `3000` (ubah `NEXTAUTH_URL` jika port beda).
-- DB: service `pasti_db` (MySQL, lihat user/pass di `docker-compose.yml`).
-- Deploy migrasi (wajib) dan seed dev (opsional):
+Akses `http://localhost:3000`.
 
-```bash
-docker compose exec pasti_app bunx prisma migrate deploy
-docker compose exec pasti_app bun run db:seed    # hanya di dev
-```
+## Scripts
 
-- Untuk mengaktifkan WA Bot, buka komentar service `wa-bot` dan set `ADMIN_KEY` sesuai.
+- `bun run dev` - jalankan dev server
+- `bun run build` - build production
+- `bun run start` - start server production
+- `bun run lint` - lint codebase
+- `bun run typecheck` - validasi TypeScript
+- `bun run test` - jalankan unit tests
+- `bun run db:seed` - seed data development
+- `bun run db:studio` - Prisma Studio
 
-## Kredit
+## Coding Conventions
 
-Pengembangan dari proyek antrean BPS Kabupaten Buru Selatan: [bbbb-antrean](https://github.com/Jstfire/bbbb-antrean) (Muhammad Mahbubbillah). Terima kasih kepada kontributor awal dan tim PST BPS Bulungan.
+- Gunakan naming `kebab-case` untuk file/folder frontend
+- Simpan logic domain di `features/<domain>`
+- Gunakan `components/ui` hanya untuk primitive UI
+- Gunakan `components/shared` untuk reusable pattern lintas fitur
+- Simpan API call di `services/api` (jangan fetch mentah tersebar di UI)
+- Semua perubahan harus lolos:
+  - `bun run typecheck`
+  - `bun run lint`
+  - `bun run test`
+
+## Notes
+
+- Seed hanya untuk development
+- Integrasi WhatsApp/Fonnte bersifat opsional
+- Footer aplikasi otomatis menampilkan rentang tahun dinamis (`2025-current year`)
+
+## Credit
+
+Pengembangan melanjutkan inovasi dari proyek antrean PST sebelumnya:  
+https://github.com/Jstfire/bbbb-antrean

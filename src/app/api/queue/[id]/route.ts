@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { requireApiGuard } from "@/lib/api-guard";
-import { getQueueDetail } from "@api/modules/queues";
+import { getQueueDetail } from "@api/modules/queues/queue.actions";
 import type { QueueDetail } from "@shared/types/queue";
 
 export async function GET(req: Request) {

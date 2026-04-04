@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import GuestQueuePage from "@/modules/guest/pages/GuestQueuePage";
+import GuestQueuePage from "@/features/guest/screens/guest-queue-screen";
 import { getGuestQueueDetail } from "@api/modules/guest";
 
 export const metadata: Metadata = {
@@ -24,3 +24,5 @@ export default async function Page({ params }: PageProps) {
     />
   );
 }
+
+

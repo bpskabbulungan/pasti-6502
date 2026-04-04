@@ -4,11 +4,12 @@ import "./globals.css";
 import "@/styles/theme-tokens.css";
 import AuthProvider from "@/components/auth/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from "@/components/theme-provider";
-import LoadingTransition from "@/components/loading-transition";
+import { ThemeProvider } from "@/components/theme/theme-provider";
+import LoadingTransition from "@/components/shared/loading-transition";
 import { Suspense } from "react";
-import SiteFooter from "@/components/site-footer";
-import AppLoadingScreen from "@/components/app-loading-screen";
+import SiteFooter from "@/components/shared/site-footer";
+import AppLoadingScreen from "@/components/shared/app-loading-screen";
+import { APP_NAME } from "@/constants/app";
 
 const poppins = Poppins({
   weight: ["100", "300", "400", "700", "900"],
@@ -28,7 +29,10 @@ export const metadata: Metadata = {
     apple: appIconPng,
     shortcut: appIconIco,
   },
-  title: "PASTI 6502 - Pelayanan Statistik Terpadu",
+  title: {
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
+  },
   description: "Pelayanan Statistik Terpadu dan Terintegrasi PST 6502",
 };
 
@@ -46,7 +50,7 @@ export default function RootLayout({
         <link rel="shortcut icon" href={appIconIco} />
       </head>
       <body className={`${poppins.variable} font-sans antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <AuthProvider>
             <Suspense fallback={<AppLoadingScreen />}>
               <LoadingTransition>
@@ -63,3 +67,4 @@ export default function RootLayout({
     </html>
   );
 }
+

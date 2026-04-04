@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiGuard } from "@/lib/api-guard";
-import { prepareSkdReminder } from "@api/modules/queues";
+import { prepareSkdReminder } from "@api/modules/queues/queue.actions";
 import type { ReminderResponse } from "@shared/types/reminder";
 
 export async function POST(

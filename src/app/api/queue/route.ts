@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiGuard } from "@/lib/api-guard";
 import { extractEtagMarker, toEtag } from "@/lib/http-cache";
 import { QueueStatus } from "@prisma/client";
-import { getQueues } from "@api/modules/queues";
+import { getQueues } from "@api/modules/queues/queue.service";
 import type { QueueListResponse } from "@shared/types/queue";
 
 export async function GET(req: NextRequest) {

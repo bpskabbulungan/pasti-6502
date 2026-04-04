@@ -6,8 +6,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import PageBackground from "@/components/page-background";
+import PageBackground from "@/components/shared/page-background";
 import { RefreshCcw, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { markNavigationPending } from "@/lib/navigation-pending";
 import { queuesApi } from "@/services/api/queues";
 import type { ErrorResponse } from "@shared/types/api";
 import type { QueueDetail } from "@shared/types/queue";
@@ -338,7 +339,14 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
             atau kembali ke buku tamu.
           </AlertDescription>
           <div className="mt-3">
-            <Button variant="outline" size="sm" onClick={() => router.push("/guest")}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                markNavigationPending();
+                router.push("/guest");
+              }}
+            >
               Kembali ke Buku Tamu
             </Button>
           </div>
@@ -347,3 +355,4 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
     </main>
   );
 }
+

@@ -4,7 +4,7 @@
   "packageManager": "bun@1.2.14",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "test": "tsx --test \"src/tests/**/*.test.ts\"",
@@ -93,7 +93,7 @@
     "@": "src",
     "@api": "src/api",
     "@shared": "src/shared",
-    "@modules": "src/modules",
+    "@features": "src/features",
     "@ui": "src/components/ui"
   }
 }
