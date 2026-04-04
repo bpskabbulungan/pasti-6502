@@ -109,7 +109,7 @@ function QueueTableRowComponent({
                 Sudah Diisi
               </Badge>
               <Button
-                variant="ghost"
+                variant="warning"
                 size="sm"
                 className="h-8 px-2 text-xs"
                 onClick={() => onMarkSkdFilled(queue, false)}
@@ -123,7 +123,7 @@ function QueueTableRowComponent({
                 Belum Diisi
               </Badge>
               <Button
-                variant="ghost"
+                variant="success"
                 size="sm"
                 className="h-8 px-2 text-xs"
                 onClick={() => onMarkSkdFilled(queue, true)}
@@ -167,7 +167,7 @@ function QueueTableRowComponent({
                 </Button>
                 <Button
                   size="sm"
-                  variant="destructive"
+                  variant="warning"
                   className="h-8 px-3 text-xs"
                   onClick={() => onOpenCancel(queue)}
                 >
@@ -177,7 +177,12 @@ function QueueTableRowComponent({
             )}
             {queue.status === "SERVING" &&
               (canComplete ? (
-                <Button size="sm" className="h-8 px-3 text-xs" onClick={() => onComplete(queue.id)}>
+                <Button
+                  size="sm"
+                  variant="success"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => onComplete(queue.id)}
+                >
                   Selesai
                 </Button>
               ) : (
@@ -243,7 +248,7 @@ function QueueTableRowComponent({
                 </Badge>
               )}
               <Button
-                variant="outline"
+                variant={queue.filledSKD ? "warning" : "success"}
                 size="sm"
                 className="h-8 px-3 text-xs"
                 onClick={() => onMarkSkdFilled(queue, !queue.filledSKD)}
@@ -285,7 +290,7 @@ function QueueTableRowComponent({
                   </Button>
                   <Button
                     size="sm"
-                    variant="destructive"
+                    variant="warning"
                     className="h-8 min-w-[120px] flex-1 text-xs"
                     onClick={() => onOpenCancel(queue)}
                   >
@@ -297,14 +302,15 @@ function QueueTableRowComponent({
                 canComplete ? (
                   <Button
                     size="sm"
+                    variant="success"
                     className="h-8 min-w-[120px] flex-1 text-xs"
                     onClick={() => onComplete(queue.id)}
                   >
-                    Tandai Selesai
+                    Selesai
                   </Button>
                 ) : (
                   <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    Sedang dilayani oleh {queue.admin?.name}
+                    Dilayani oleh {queue.admin?.name}
                   </div>
                 )
               ) : null}

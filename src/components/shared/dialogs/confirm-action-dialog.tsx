@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import type { VariantProps } from "class-variance-authority";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,7 @@ type ConfirmActionDialogProps = {
   description: string;
   confirmLabel: string;
   cancelLabel?: string;
-  confirmVariant?: "default" | "destructive";
+  confirmVariant?: VariantProps<typeof buttonVariants>["variant"];
   isProcessing?: boolean;
   onConfirm: () => void | Promise<void>;
   body?: ReactNode;

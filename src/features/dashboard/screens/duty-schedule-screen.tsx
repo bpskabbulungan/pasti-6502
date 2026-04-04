@@ -281,7 +281,12 @@ export default function DutySchedulePage() {
               <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               Refresh Data
             </Button>
-            <Button onClick={handleGenerateSchedule} disabled={loading || saving} className="w-full">
+            <Button
+              variant="success"
+              onClick={handleGenerateSchedule}
+              disabled={loading || saving}
+              className="w-full"
+            >
               <CalendarDays className="mr-2 h-4 w-4" />
               Generate Jadwal
             </Button>
@@ -408,7 +413,7 @@ export default function DutySchedulePage() {
               </div>
             )}
             <Button
-              variant="outline"
+              variant="warning"
               onClick={() => handleRunReminder(true)}
               disabled={saving}
               className="w-full sm:w-auto"
@@ -507,7 +512,7 @@ export default function DutySchedulePage() {
                 Placeholder: {settings?.availableTemplatePlaceholders?.join(", ")}
               </p>
             </div>
-            <Button onClick={handleSaveSettings} disabled={saving || loading}>
+            <Button variant="success" onClick={handleSaveSettings} disabled={saving || loading}>
               <Save className="mr-2 h-4 w-4" />
               Simpan Pengaturan
             </Button>
@@ -562,7 +567,7 @@ export default function DutySchedulePage() {
                   placeholder="Catatan tambahan"
                 />
               </div>
-              <Button onClick={handleAddDayOff} disabled={saving} className="md:col-span-2">
+              <Button variant="success" onClick={handleAddDayOff} disabled={saving} className="md:col-span-2">
                 <Plus className="mr-2 h-4 w-4" />
                 Tambah Hari Libur/Cuti
               </Button>
@@ -599,12 +604,12 @@ export default function DutySchedulePage() {
                         <TableCell>{item.type === "LEAVE" ? "Cuti" : "Libur"}</TableCell>
                         <TableCell className="text-right">
                           <Button
-                            variant="ghost"
+                            variant="destructive"
                             size="sm"
                             onClick={() => handleDeleteDayOff(item.id)}
                             disabled={saving}
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>
                       </TableRow>

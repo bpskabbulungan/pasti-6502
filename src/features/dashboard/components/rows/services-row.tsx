@@ -78,16 +78,16 @@ function ServicesTableRowComponent({
         <TableCell className="py-4 text-center">
           <div className="flex flex-wrap justify-center gap-2">
             <Button
-              variant="outline"
+              variant={isActive ? "warning" : "success"}
               size="sm"
               className="gap-2"
               onClick={() => onToggleStatus(service)}
               title={`${isActive ? "Nonaktifkan" : "Aktifkan"} layanan`}
             >
               {isActive ? (
-                <PowerOff className="h-4 w-4 text-red-500" />
+                <PowerOff className="h-4 w-4" />
               ) : (
-                <Power className="h-4 w-4 text-emerald-600" />
+                <Power className="h-4 w-4" />
               )}
               <span>{isActive ? "Nonaktifkan" : "Aktifkan"}</span>
             </Button>
@@ -128,15 +128,15 @@ function ServicesTableRowComponent({
             <div className="mt-3 text-xs text-secondary-color">Diperbarui {updatedRelative}</div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
-                variant="outline"
+                variant={isActive ? "warning" : "success"}
                 size="sm"
                 className="min-w-[115px] flex-1 gap-2 sm:flex-none"
                 onClick={() => onToggleStatus(service)}
               >
                 {isActive ? (
-                  <PowerOff className="h-4 w-4 text-red-500" />
+                  <PowerOff className="h-4 w-4" />
                 ) : (
-                  <Power className="h-4 w-4 text-emerald-600" />
+                  <Power className="h-4 w-4" />
                 )}
                 {isActive ? "Nonaktifkan" : "Aktifkan"}
               </Button>

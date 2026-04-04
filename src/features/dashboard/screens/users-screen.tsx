@@ -258,7 +258,7 @@ export default function UsersManagementPage() {
                 }}
               >
                 <DialogTrigger asChild>
-                  <Button className="flex w-full items-center gap-2 sm:w-auto">
+                  <Button variant="success" className="flex w-full items-center gap-2 sm:w-auto">
                     <UserPlus className="h-4 w-4" />
                     Tambah Petugas
                   </Button>
@@ -338,7 +338,7 @@ export default function UsersManagementPage() {
                     <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
                       Batal
                     </Button>
-                    <Button onClick={handleAddUser} disabled={isAddDisabled}>
+                    <Button variant="success" onClick={handleAddUser} disabled={isAddDisabled}>
                       Simpan Petugas
                     </Button>
                   </DialogFooter>
@@ -503,7 +503,7 @@ export default function UsersManagementPage() {
               description="Gunakan tombol tambah petugas atau reset filter pencarian."
               action={
                 <>
-                  <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
+                  <Button variant="success" onClick={() => setAddDialogOpen(true)} className="gap-2">
                     <UserPlus className="h-4 w-4" />
                     Tambah Petugas
                   </Button>
@@ -630,7 +630,7 @@ export default function UsersManagementPage() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Batal
             </Button>
-            <Button onClick={handleEditUser} disabled={isEditDisabled}>
+            <Button variant="success" onClick={handleEditUser} disabled={isEditDisabled}>
               Simpan Perubahan
             </Button>
           </DialogFooter>

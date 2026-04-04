@@ -216,8 +216,8 @@ export default function DashboardLayoutShell({
 								</div>
 							</div>
 							<Button
-								variant="outline"
-								className="w-full justify-start gap-2 border-sidebar-border bg-background/70 text-sidebar-foreground hover:bg-background"
+								variant="warning"
+								className="w-full justify-start gap-2"
 								onClick={() => setShowLogoutDialog(true)}
 								disabled={isSigningOut}
 							>
@@ -241,7 +241,7 @@ export default function DashboardLayoutShell({
 				title="Konfirmasi Logout"
 				description="Anda akan keluar dari dashboard. Pastikan pekerjaan sudah disimpan."
 				confirmLabel="Logout"
-				confirmVariant="destructive"
+				confirmVariant="warning"
 				isProcessing={isSigningOut}
 				onConfirm={confirmSignOut}
 			/>

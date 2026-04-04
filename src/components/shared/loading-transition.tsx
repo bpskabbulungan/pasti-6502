@@ -98,15 +98,14 @@ export default function LoadingTransition({ children }: { children: React.ReactN
     <>
       {children}
       {showIndicator ? (
-        <>
-          <div className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 animate-pulse bg-primary/80" />
-          <div className="pointer-events-none fixed bottom-4 right-4 z-50 rounded-xl border border-border/70 bg-background/95 px-3 py-2 shadow-lg backdrop-blur">
-            <div className="flex items-center gap-2 text-xs font-medium text-secondary-color">
-              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-background/45 px-4 backdrop-blur-sm">
+          <div className="rounded-xl border border-border/70 bg-background/95 px-4 py-3 shadow-lg">
+            <div className="flex items-center gap-2.5 text-sm font-medium text-secondary-color">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
               <span>Memuat halaman...</span>
             </div>
           </div>
-        </>
+        </div>
       ) : null}
     </>
   );

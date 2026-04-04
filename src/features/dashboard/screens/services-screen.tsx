@@ -260,7 +260,7 @@ export default function ServicesPage() {
                 }}
               >
                 <DialogTrigger asChild>
-                  <Button className="flex w-full items-center gap-2 sm:w-auto">
+                  <Button variant="success" className="flex w-full items-center gap-2 sm:w-auto">
                     <Wrench className="h-4 w-4" />
                     Tambah Layanan
                   </Button>
@@ -288,7 +288,7 @@ export default function ServicesPage() {
                     <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
                       Batal
                     </Button>
-                    <Button onClick={handleAddService} disabled={isAddDisabled}>
+                    <Button variant="success" onClick={handleAddService} disabled={isAddDisabled}>
                       Simpan Layanan
                     </Button>
                   </DialogFooter>
@@ -460,7 +460,7 @@ export default function ServicesPage() {
               }
               action={
                 <>
-                  <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
+                  <Button variant="success" onClick={() => setAddDialogOpen(true)} className="gap-2">
                     <Wrench className="h-4 w-4" />
                     Tambah Layanan
                   </Button>
@@ -560,7 +560,7 @@ export default function ServicesPage() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Batal
             </Button>
-            <Button onClick={handleEditService} disabled={isEditDisabled}>
+            <Button variant="success" onClick={handleEditService} disabled={isEditDisabled}>
               Simpan Perubahan
             </Button>
           </DialogFooter>

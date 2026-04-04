@@ -524,7 +524,7 @@ export default function QueueManagementPage({
         title="Konfirmasi Batalkan Antrean"
         description="Tindakan ini akan mengubah status antrean menjadi dibatalkan."
         confirmLabel="Ya, Batalkan"
-        confirmVariant="destructive"
+        confirmVariant="warning"
         isProcessing={isCancelingQueue}
         onConfirm={confirmCancelQueue}
         body={
