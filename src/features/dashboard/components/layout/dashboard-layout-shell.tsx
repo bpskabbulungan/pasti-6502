@@ -11,7 +11,7 @@ import NotificationsDropdown from "@/features/notifications/components/notificat
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/shared/dialogs/confirm-action-dialog";
-import { APP_NAME } from "@/constants/app";
+import { APP_NAME, APP_TAGLINE } from "@/constants/app";
 import {
 	dashboardAdminItems,
 	dashboardNavItems,
@@ -109,22 +109,24 @@ export default function DashboardLayoutShell({
 						<div className="mx-auto w-fit rounded-2xl border border-sidebar-border/75 bg-background/45 p-2.5 shadow-sm">
 							<Image
 								src="/antrean_light.png"
-								alt="Logo Antrean"
+								alt={`Logo ${APP_NAME}`}
 								width={72}
 								height={72}
 								className="mx-auto block dark:hidden"
 							/>
 							<Image
 								src="/antrean_dark.png"
-								alt="Logo Antrean"
+								alt={`Logo ${APP_NAME}`}
 								width={72}
 								height={72}
 								className="mx-auto hidden dark:block"
 							/>
 						</div>
 						<div className="mt-3 space-y-0.5 text-center">
-							<h1 className="text-sm font-semibold tracking-tight">Sistem Antrean</h1>
-							<p className="text-xs text-sidebar-foreground/80">Pelayanan Statistik Terpadu</p>
+							<h1 className="text-sm font-semibold tracking-tight">{APP_NAME}</h1>
+							<p className="text-[11px] leading-relaxed text-sidebar-foreground/80">
+								{APP_TAGLINE}
+							</p>
 							<p className="text-[11px] text-sidebar-foreground/65">BPS Kabupaten Bulungan</p>
 						</div>
 					</div>

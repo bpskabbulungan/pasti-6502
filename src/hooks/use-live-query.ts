@@ -9,15 +9,68 @@ type ApiError = {
   details?: unknown;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isApiError = (value: unknown): value is ApiError =>
+  isRecord(value) && typeof value.status === "number" && typeof value.message === "string";
+
+const normalizeLiveQueryError = (error: unknown): ApiError => {
+  if (isApiError(error)) {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return {
+      status: 0,
+      message: error.message || "Request failed",
+      details: { name: error.name },
+    };
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return {
+      status: 0,
+      message: error,
+    };
+  }
+
+  return {
+    status: 0,
+    message: "Request failed",
+    details: error,
+  };
+};
+
+async function readErrorDetails(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      return await response.json();
+    } catch {
+      // fall through and try text
+    }
+  }
+
+  try {
+    const text = await response.text();
+    return text ? { error: text } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 type LiveEnvelope<TData> = {
   data: TData;
   etag: string | null;
-  fetchedAt: string;
+  fetchedAt: string | null;
 };
 
 type UseLiveQueryOptions<TData> = {
   fallbackData?: TData;
   fallbackEtag?: string | null;
+  fallbackFetchedAt?: string | null;
   refreshInterval?: number;
   enabled?: boolean;
   onError?: (error: unknown) => void;
@@ -27,36 +80,37 @@ async function fetchLiveJson<TData>(
   url: string,
   previous?: LiveEnvelope<TData>
 ): Promise<LiveEnvelope<TData>> {
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: previous?.etag ? { "If-None-Match": previous.etag } : undefined,
-  });
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: previous?.etag ? { "If-None-Match": previous.etag } : undefined,
+    });
 
-  if (response.status === 304 && previous) {
-    return previous;
-  }
-
-  if (!response.ok) {
-    let details: unknown;
-    try {
-      details = await response.json();
-    } catch {
-      // ignore parse errors
+    if (response.status === 304 && previous) {
+      return previous;
     }
 
-    const error: ApiError = {
-      status: response.status,
-      message: response.statusText || "Request failed",
-      details,
-    };
-    throw error;
-  }
+    if (!response.ok) {
+      const details = await readErrorDetails(response);
+      const detailsError =
+        isRecord(details) && typeof details.error === "string" ? details.error : null;
 
-  return {
-    data: (await response.json()) as TData,
-    etag: response.headers.get("etag"),
-    fetchedAt: new Date().toISOString(),
-  };
+      const error: ApiError = {
+        status: response.status,
+        message: detailsError || response.statusText || "Request failed",
+        details,
+      };
+      throw error;
+    }
+
+    return {
+      data: (await response.json()) as TData,
+      etag: response.headers.get("etag"),
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    throw normalizeLiveQueryError(error);
+  }
 }
 
 export function useLiveQuery<TData>(
@@ -64,6 +118,7 @@ export function useLiveQuery<TData>(
   {
     fallbackData,
     fallbackEtag = null,
+    fallbackFetchedAt = null,
     refreshInterval = 30_000,
     enabled = true,
     onError,
@@ -77,9 +132,9 @@ export function useLiveQuery<TData>(
     return {
       data: fallbackData,
       etag: fallbackEtag,
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: fallbackFetchedAt,
     };
-  }, [fallbackData, fallbackEtag]);
+  }, [fallbackData, fallbackEtag, fallbackFetchedAt]);
 
   const previousRef = useRef<LiveEnvelope<TData> | undefined>(initialEnvelope);
   const previousUrlRef = useRef<string | null>(url);

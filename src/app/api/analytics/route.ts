@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const endDateParam = searchParams.get("endDate") || startDateParam;
     const clientHash =
       searchParams.get("hash") ?? extractEtagMarker(req.headers.get("if-none-match"));
-    const maxRangeDays = 31;
+    const maxRangeDays = 366;
 
     const parsedRange = parseDateRange(startDateParam, endDateParam, maxRangeDays);
     if (!parsedRange.ok) {

@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import PageBackground from "@/components/shared/page-background";
 import { ArrowRight, CalendarClock, ClipboardList, ListOrdered, QrCode } from "lucide-react";
+import { APP_NAME, APP_TAGLINE } from "@/constants/app";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -30,11 +31,11 @@ export default function Home() {
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-5">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Image src="/icon_pst.png" alt="PST" width={24} height={24} className="h-6 w-6" />
+              <Image src="/icon_pst.png" alt={APP_NAME} width={24} height={24} className="h-6 w-6" />
             </div>
             <div className="leading-tight">
-              <p className="text-base font-bold text-primary-color">PASTI 6502</p>
-              <p className="text-xs text-secondary-color">Pelayanan Statistik Terpadu</p>
+              <p className="text-base font-bold text-primary-color">{APP_NAME}</p>
+              <p className="text-xs text-secondary-color">{APP_TAGLINE}</p>
             </div>
           </Link>
           <div className="ml-auto flex items-center">
@@ -47,11 +48,11 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Image src="/icon_pst.png" alt="PST" width={32} height={32} className="h-8 w-8" />
+              <Image src="/icon_pst.png" alt={APP_NAME} width={32} height={32} className="h-8 w-8" />
             </div>
             <div>
-              <p className="text-lg font-bold text-primary-color">PASTI 6502</p>
-              <p className="text-sm text-secondary-color">Pelayanan Statistik Terpadu</p>
+              <p className="text-lg font-bold text-primary-color">{APP_NAME}</p>
+              <p className="text-sm text-secondary-color">{APP_TAGLINE}</p>
             </div>
           </Link>
           <div className="flex items-center justify-center gap-3 sm:justify-end">
@@ -85,7 +86,7 @@ export default function Home() {
               <h1
                 className={`${plusJakarta.className} w-full text-center text-3xl font-extrabold leading-tight text-primary-color sm:text-4xl lg:text-5xl`}
               >
-                PASTI 6502
+                {APP_NAME}
               </h1>
               <div className="mx-auto mt-4 w-full max-w-3xl space-y-3 text-base leading-relaxed text-secondary-color sm:mt-3 sm:text-lg">
                 <p>
@@ -116,7 +117,7 @@ export default function Home() {
                 <QrCode className="h-4 w-4" />
               </div>
               <div className="space-y-2">
-                <p className="font-semibold text-primary-color">Buku Tamu PST</p>
+                <p className="font-semibold text-primary-color">Buku Tamu PASTI 6502</p>
                 <p className="text-sm leading-relaxed text-secondary-color">
                   Pendaftaran digital dengan QR code untuk memudahkan pencatatan data pengunjung.
                 </p>
@@ -127,7 +128,7 @@ export default function Home() {
                 <ListOrdered className="h-4 w-4" />
               </div>
               <div className="space-y-2">
-                <p className="font-semibold text-primary-color">Antrean Pelayanan PST</p>
+                <p className="font-semibold text-primary-color">Antrean PASTI 6502</p>
                 <p className="text-sm leading-relaxed text-secondary-color">
                   Manajemen antrean digital untuk memastikan layanan berjalan tertib dan efisien.
                 </p>

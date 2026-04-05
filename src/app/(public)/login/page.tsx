@@ -35,7 +35,7 @@ export default async function LoginPage() {
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3 px-5">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Image src="/icon_pst.png" alt="PST" width={24} height={24} className="h-6 w-6" />
+              <Image src="/icon_pst.png" alt={APP_NAME} width={24} height={24} className="h-6 w-6" />
             </div>
             <div className="leading-tight">
               <p className="text-base font-bold text-primary-color">{APP_NAME}</p>
@@ -50,7 +50,7 @@ export default async function LoginPage() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Image src="/icon_pst.png" alt="PST" width={32} height={32} className="h-8 w-8" />
+              <Image src="/icon_pst.png" alt={APP_NAME} width={32} height={32} className="h-8 w-8" />
             </div>
             <div>
               <p className="text-lg font-bold text-primary-color">{APP_NAME}</p>
@@ -71,7 +71,7 @@ export default async function LoginPage() {
               <div className="relative space-y-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-background/75 px-3 py-1 text-xs font-semibold text-secondary-color">
                   <LockKeyhole className="h-3.5 w-3.5 text-primary" />
-                  Portal Internal PST
+                  Portal Internal PASTI 6502
                 </div>
                 <h1 className="text-2xl font-black tracking-tight text-primary-color sm:text-3xl">
                   Kelola layanan dan operasional dashboard dalam satu tempat.

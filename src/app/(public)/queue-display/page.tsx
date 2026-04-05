@@ -335,7 +335,7 @@ export default function QueueDisplayPage() {
               </div>
               <div>
                 <h1 className="text-2xl font-black leading-tight text-primary-color md:text-3xl lg:text-4xl">
-                  Informasi Antrean PST BPS Kabupaten Bulungan
+                  Informasi Antrean PASTI 6502 BPS Kabupaten Bulungan
                 </h1>
                 <p className="text-sm text-secondary-color md:text-base">
                   Nomor yang sedang dan akan dilayani secara real-time.

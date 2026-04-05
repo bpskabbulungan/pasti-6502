@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Pencil, Power, PowerOff, Trash2, Wrench } from "lucide-react";
+import { Pencil, Trash2, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -9,7 +9,6 @@ import type { ServiceSummary } from "@shared/types/service";
 
 type ServicesTableRowProps = {
   service: ServiceSummary;
-  onToggleStatus: (service: ServiceSummary) => void;
   onEdit: (service: ServiceSummary) => void;
   onDelete: (service: ServiceSummary) => void;
 };
@@ -37,7 +36,6 @@ const getStatusBadgeClass = (status: ServiceStatus) =>
 
 function ServicesTableRowComponent({
   service,
-  onToggleStatus,
   onEdit,
   onDelete,
 }: ServicesTableRowProps) {
@@ -78,31 +76,24 @@ function ServicesTableRowComponent({
         <TableCell className="py-4 text-center">
           <div className="flex flex-wrap justify-center gap-2">
             <Button
-              variant={isActive ? "warning" : "success"}
-              size="sm"
-              className="gap-2"
-              onClick={() => onToggleStatus(service)}
-              title={`${isActive ? "Nonaktifkan" : "Aktifkan"} layanan`}
+              variant="outline"
+              size="icon"
+              className="size-9"
+              onClick={() => onEdit(service)}
+              title="Edit layanan"
+              aria-label="Edit layanan"
             >
-              {isActive ? (
-                <PowerOff className="h-4 w-4" />
-              ) : (
-                <Power className="h-4 w-4" />
-              )}
-              <span>{isActive ? "Nonaktifkan" : "Aktifkan"}</span>
-            </Button>
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => onEdit(service)}>
               <Pencil className="h-4 w-4" />
-              Edit
             </Button>
             <Button
               variant="destructive"
-              size="sm"
-              className="gap-2"
+              size="icon"
+              className="size-9"
               onClick={() => onDelete(service)}
+              title="Hapus layanan"
+              aria-label="Hapus layanan"
             >
               <Trash2 className="h-4 w-4" />
-              Hapus
             </Button>
           </div>
         </TableCell>
@@ -113,50 +104,39 @@ function ServicesTableRowComponent({
           <div className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary-color">
-                <Wrench className="h-4 w-4" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary-color">
+                  <Wrench className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="break-words font-semibold text-primary-color">{service.name}</p>
+                  <div className="mt-1 text-xs text-secondary-color">{updatedDate}</div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="break-words font-semibold text-primary-color">{service.name}</p>
-                <div className="mt-1 text-xs text-secondary-color">{updatedDate}</div>
-              </div>
-            </div>
               <Badge variant="outline" className={getStatusBadgeClass(service.status)}>
                 {getStatusLabel(service.status)}
               </Badge>
             </div>
             <div className="mt-3 text-xs text-secondary-color">Diperbarui {updatedRelative}</div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                variant={isActive ? "warning" : "success"}
-                size="sm"
-                className="min-w-[115px] flex-1 gap-2 sm:flex-none"
-                onClick={() => onToggleStatus(service)}
-              >
-                {isActive ? (
-                  <PowerOff className="h-4 w-4" />
-                ) : (
-                  <Power className="h-4 w-4" />
-                )}
-                {isActive ? "Nonaktifkan" : "Aktifkan"}
-              </Button>
+            <div className="mt-4 flex items-center gap-2">
               <Button
                 variant="outline"
-                size="sm"
-                className="min-w-[115px] flex-1 gap-2 sm:flex-none"
+                size="icon"
+                className="size-9"
                 onClick={() => onEdit(service)}
+                title="Edit layanan"
+                aria-label="Edit layanan"
               >
                 <Pencil className="h-4 w-4" />
-                Edit
               </Button>
               <Button
                 variant="destructive"
-                size="sm"
-                className="min-w-[115px] flex-1 gap-2 sm:flex-none"
+                size="icon"
+                className="size-9"
                 onClick={() => onDelete(service)}
+                title="Hapus layanan"
+                aria-label="Hapus layanan"
               >
                 <Trash2 className="h-4 w-4" />
-                Hapus
               </Button>
             </div>
           </div>

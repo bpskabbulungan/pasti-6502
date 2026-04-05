@@ -121,7 +121,7 @@ export default function GuestQueuePage({
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl">Nomor Antrean Anda</CardTitle>
             <CardDescription>
-              Simpan detail ini dan tunjukkan ke petugas PST saat dipanggil.
+              Simpan detail ini dan tunjukkan ke petugas PASTI 6502 saat dipanggil.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

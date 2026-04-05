@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Format export tidak didukung" }, { status: 400 });
     }
 
-    const parsedRange = parseDateRange(startDateParam, endDateParam, 90);
+    const parsedRange = parseDateRange(startDateParam, endDateParam, 366);
     if (!parsedRange.ok) {
       return NextResponse.json({ error: parsedRange.error }, { status: parsedRange.status });
     }

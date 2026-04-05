@@ -9,6 +9,7 @@ import { ConfirmActionDialog } from "@/components/shared/dialogs/confirm-action-
 import { EmptyState } from "@/components/shared/feedback/empty-state";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
 import { PageContainer } from "@/components/shared/layout/page-container";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import {
   Card,
   CardContent,
@@ -69,6 +70,7 @@ type QueuePageProps = {
   initialStatus: QueueStatus;
   initialDateFilter: "today" | "all";
   initialPageData: QueueListResponse;
+  initialFetchedAt: string;
 };
 
 export default function QueueManagementPage({
@@ -76,6 +78,7 @@ export default function QueueManagementPage({
   initialStatus,
   initialDateFilter,
   initialPageData,
+  initialFetchedAt,
 }: QueuePageProps) {
   const searchParams = useSearchParams();
   const statusParam = searchParams.get("status");
@@ -110,6 +113,12 @@ export default function QueueManagementPage({
     limit: pageSize,
     offset,
   });
+  const isUsingInitialPageData =
+    currentPage === 1 &&
+    pageSize === 10 &&
+    statusFilter === initialStatus &&
+    dateFilter === initialDateFilter;
+
   const {
     data: queueData,
     isLoading,
@@ -117,21 +126,12 @@ export default function QueueManagementPage({
     lastFetchedAt,
     refresh,
   } = useLiveQuery<QueueListResponse>(queueUrl, {
-    fallbackData:
-      currentPage === 1 &&
-      pageSize === 10 &&
-      statusFilter === initialStatus &&
-      dateFilter === initialDateFilter
-        ? initialPageData
-        : undefined,
+    fallbackData: isUsingInitialPageData ? initialPageData : undefined,
     fallbackEtag:
-      currentPage === 1 &&
-      pageSize === 10 &&
-      statusFilter === initialStatus &&
-      dateFilter === initialDateFilter &&
-      initialPageData.hash
+      isUsingInitialPageData && initialPageData.hash
         ? `"${initialPageData.hash}"`
         : null,
+    fallbackFetchedAt: isUsingInitialPageData ? initialFetchedAt : null,
     refreshInterval: 30_000,
     onError: (error) => {
       console.error("Error fetching queues:", error);
@@ -362,36 +362,58 @@ export default function QueueManagementPage({
 
   return (
     <PageContainer>
-      <section className="dashboard-hero p-5 sm:p-6">
-        <div className="space-y-4">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <h1 className="text-2xl font-bold text-primary-color sm:text-3xl">Manajemen Antrean</h1>
-                <p className="max-w-xl text-sm text-secondary-color">
-                  Pantau antrean harian, ubah status layanan, dan lakukan tindak lanjut SKD dari satu
-                  halaman.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-                <span>Data per: {updatedLabel}</span>
-                <LiveStatusBadge
-                  isRefreshing={isRefreshing}
-                  hasFetched={Boolean(lastFetchedAt)}
-                  idleLabel="Auto refresh setiap 30 detik"
-                />
-              </div>
+      <DashboardPageHeader
+        title="Manajemen Antrean"
+        description="Halaman kelola status antrean sesuai layanan petugas PASTI 6502."
+        meta={
+          <>
+            <span>Data per: {updatedLabel}</span>
+            <LiveStatusBadge
+              isRefreshing={isRefreshing}
+              hasFetched={Boolean(lastFetchedAt)}
+              idleLabel="Auto refresh setiap 30 detik"
+            />
+          </>
+        }
+        chips={
+          <>
+            <div className="dashboard-chip">Status aktif: {statusLabel}</div>
+            <div className="dashboard-chip">
+              {dateFilter === "today" ? "Data hari ini" : "Semua tanggal"}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <div className="dashboard-chip">
-                Status aktif: {statusLabel}
-              </div>
-              <div className="dashboard-chip">
-                {dateFilter === "today" ? "Data hari ini" : "Semua tanggal"}
-              </div>
-            </div>
+          </>
+        }
+        actions={
+          <div className="dashboard-header-actions">
+            <Button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="dashboard-header-action"
+            >
+              {isRefreshing ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Memperbarui...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Perbarui Data
+                </>
+              )}
+            </Button>
           </div>
-
+        }
+      />
+      <Card className="border-border/80 bg-card/88">
+        <CardHeader className="gap-2">
+          <CardTitle className="text-xl font-semibold text-primary-color">Daftar Antrean</CardTitle>
+          <CardDescription>
+            Menampilkan antrean dengan status {statusLabel}{" "}
+            {dateFilter === "today" ? "hari ini." : "untuk semua tanggal."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div className="dashboard-filter-panel">
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <Select value={statusFilter} onValueChange={handleStatusChange}>
@@ -425,39 +447,11 @@ export default function QueueManagementPage({
                   <SelectItem value="50">50 / Halaman</SelectItem>
                 </SelectContent>
               </Select>
-              <Button
-                onClick={handleManualRefresh}
-                disabled={isRefreshing}
-                className="w-full sm:w-auto"
-              >
-                {isRefreshing ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Memperbarui...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Perbarui Data
-                  </>
-                )}
-              </Button>
             </div>
             <div className="mt-3 rounded-lg border border-border/70 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
               {showingLabel}
             </div>
           </div>
-        </div>
-      </section>
-      <Card className="border-border/80 bg-card/88">
-        <CardHeader className="gap-2">
-          <CardTitle className="text-xl font-semibold text-primary-color">Daftar Antrean</CardTitle>
-          <CardDescription>
-            Menampilkan antrean dengan status {statusLabel}{" "}
-            {dateFilter === "today" ? "hari ini." : "untuk semua tanggal."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
           {isLoading && queues.length === 0 ? (
             <div className="overflow-hidden rounded-xl border border-border/80 p-2">
               <TableSkeleton columns={9} rows={5} />
@@ -653,5 +647,3 @@ export default function QueueManagementPage({
     </PageContainer>
   );
 }
-
-

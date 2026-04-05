@@ -19,7 +19,7 @@ export default function GuestPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-secondary-color">
               Buku Tamu Digital
             </p>
-            <h1 className="text-3xl font-black text-primary-color md:text-4xl">Buku Tamu PST 6502</h1>
+            <h1 className="text-3xl font-black text-primary-color md:text-4xl">Buku Tamu PASTI 6502</h1>
             <p className="mx-auto max-w-2xl text-sm text-secondary-color md:text-base">
               Lengkapi data pengunjung untuk mendapatkan nomor antrean secara otomatis.
             </p>

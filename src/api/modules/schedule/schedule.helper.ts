@@ -11,7 +11,7 @@ const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_TIMEZONE = "Asia/Makassar";
 const DEFAULT_REMINDER_TEMPLATE =
 	"Assalamu'alaikum/selamat pagi {{nama_petugas}}.\n\n" +
-	"Pengingat jadwal PST {{hari}}, {{tanggal}}.\n" +
+	"Pengingat jadwal PASTI 6502 {{hari}}, {{tanggal}}.\n" +
 	"Anda dijadwalkan bertugas layanan {{layanan}} di {{lokasi}}.\n\n" +
 	"Mohon hadir tepat waktu. Terima kasih.";
 const AVAILABLE_TEMPLATE_PLACEHOLDERS = [
@@ -139,7 +139,7 @@ export const renderTemplate = (
 		.replaceAll("{{hari}}", getWeekdayLabel(params.scheduleDate))
 		.replaceAll("{{tanggal}}", formatDisplayDate(params.scheduleDate))
 		.replaceAll("{{tanggal_iso}}", toIsoDate(params.scheduleDate))
-		.replaceAll("{{layanan}}", "Pelayanan Statistik Terpadu")
+		.replaceAll("{{layanan}}", "Pelayanan Statistik Terpadu dan Terintegrasi")
 		.replaceAll("{{lokasi}}", "BPS Kabupaten Bulungan");
 };
 

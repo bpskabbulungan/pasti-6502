@@ -3,21 +3,25 @@
 import Link from "next/link";
 import type { Session } from "next-auth";
 import {
+  BarChart4,
   BookOpenCheck,
   CalendarClock,
   ClipboardList,
+  FileText,
   LayoutDashboard,
   ListChecks,
+  Printer,
   QrCode,
   RefreshCcw,
-  ShieldCheck,
   UserCog,
   Wrench,
-  BarChart4,
 } from "lucide-react";
+import { PageContainer } from "@/components/shared/layout/page-container";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Role } from "@/shared/constants/enums";
 
 const mainMenus = [
@@ -89,6 +93,64 @@ const adminMenus = [
   },
 ];
 
+const quickStartSteps = [
+  {
+    title: "Buka menu Antrean",
+    description: "Lihat daftar pengunjung yang menunggu dan siapa yang harus dipanggil lebih dulu.",
+  },
+  {
+    title: "Klik Layani saat pengunjung dipanggil",
+    description: "Status antrean berubah menjadi sedang diproses oleh petugas.",
+  },
+  {
+    title: "Tutup layanan dengan status yang sesuai",
+    description: "Pilih Selesai jika tuntas, atau Batalkan bila layanan tidak jadi diproses.",
+  },
+  {
+    title: "Kirim Pengingat SKD bila diperlukan",
+    description: "Gunakan aksi di baris antrean untuk kasus pengunjung yang belum mengisi SKD.",
+  },
+  {
+    title: "Cek rekap di Buku Tamu dan Analisis",
+    description: "Pastikan data harian tercatat, lalu export Excel/PDF jika dibutuhkan pelaporan.",
+  },
+];
+
+const importantNotes = [
+  "Sebagian halaman punya tombol Perbarui Data dan auto-refresh untuk meminimalkan data stale.",
+  "Di menu Antrean, gunakan filter Status dan Tanggal agar daftar kerja lebih fokus.",
+  "Menu admin (Pengguna, Layanan, QR, Jadwal) hanya muncul untuk role Admin.",
+  "Sebelum logout, pastikan antrean yang sedang dilayani sudah ditutup dengan status final.",
+];
+
+const dailyWorkflow = [
+  {
+    title: "Persiapan oleh Admin",
+    description:
+      "Pastikan layanan aktif, petugas tersedia, dan QR buku tamu siap digunakan di area layanan.",
+  },
+  {
+    title: "Pengunjung isi buku tamu",
+    description: "Pengunjung mengisi form melalui /guest, baik dari link langsung atau hasil scan QR.",
+  },
+  {
+    title: "Nomor antrean dibuat otomatis",
+    description: "Setelah submit, sistem membuat nomor antrean dan antrean muncul di dashboard petugas.",
+  },
+  {
+    title: "Petugas proses di menu Antrean",
+    description: "Alur standar: Layani -> (opsional) Batalkan -> Selesai.",
+  },
+  {
+    title: "Lanjutkan penanganan SKD",
+    description: "Jika SKD belum lengkap, kirim pengingat atau tandai status SKD dari tabel antrean.",
+  },
+  {
+    title: "Evaluasi operasional",
+    description: "Lihat rekap di Buku Tamu dan gunakan Analisis untuk review performa harian.",
+  },
+];
+
 type GuidePageProps = {
   currentUser: Session["user"];
 };
@@ -96,176 +158,197 @@ type GuidePageProps = {
 export default function GuidePage({ currentUser }: GuidePageProps) {
   const isAdmin = currentUser.role === Role.ADMIN;
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
-      <section className="dashboard-hero p-5 sm:p-6">
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary" className="bg-background/80">
-              Panduan Praktis
-            </Badge>
-            <Badge variant="outline">Bahasa santai</Badge>
+    <PageContainer maxWidth="6xl">
+      <DashboardPageHeader
+        title="Panduan Dashboard PASTI 6502"
+        description="Alur singkatnya: pengunjung isi buku tamu atau scan QR, sistem membuat nomor antrean, petugas proses di menu Antrean, lalu rekap dievaluasi dari Buku Tamu dan Analisis."
+        chips={
+          <>
+            <div className="dashboard-chip">Panduan Praktis</div>
+            <div className="dashboard-chip">Format Dokumen + Tab</div>
+          </>
+        }
+        actions={
+          <div className="dashboard-header-actions">
+            <Button
+              onClick={handlePrint}
+              variant="outline"
+              className="dashboard-header-action border-border/80 bg-background/80"
+            >
+              <Printer className="h-4 w-4" />
+              Cetak / Simpan PDF
+            </Button>
           </div>
-          <h1 className="text-2xl font-bold text-primary-color sm:text-3xl">
-            Panduan Dashboard PST
-          </h1>
-          <p className="max-w-3xl text-sm text-secondary-color md:text-base">
-            Biar gampang, ingat alurnya begini: pengunjung isi buku tamu atau scan QR, sistem bikin
-            nomor antrean, petugas proses di menu Antrean, lalu rekapnya dilihat di Buku Tamu dan
-            Analisis.
-          </p>
-        </div>
-      </section>
+        }
+      />
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <Card className="border-border/80 bg-card/88">
-          <CardHeader>
-            <CardTitle className="text-primary-color">Mulai Cepat (2 Menit)</CardTitle>
-            <CardDescription>Kalau baru pakai sistem, ikuti urutan ini dulu.</CardDescription>
+      <section className="mx-auto w-full max-w-5xl">
+        <Card className="border-border/80 bg-card/92 shadow-sm">
+          <CardHeader className="border-b border-border/70">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <CardTitle className="flex items-center gap-2 text-primary-color">
+                  <FileText className="h-5 w-5" />
+                  Panduan Operasional
+                </CardTitle>
+                <CardDescription>
+                  Dibuat seperti dokumen ringkas dengan tab supaya cepat dicari saat dipakai kerja.
+                </CardDescription>
+              </div>
+              <Badge variant={isAdmin ? "secondary" : "outline"}>
+                {isAdmin ? "Akses Anda: Admin" : "Akses Anda: Petugas"}
+              </Badge>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-secondary-color">
-            <p>
-              1. Buka <strong>Antrean</strong> untuk lihat siapa yang menunggu.
-            </p>
-            <p>
-              2. Klik <strong>Layani</strong> saat pengunjung dipanggil.
-            </p>
-            <p>
-              3. Setelah selesai, klik <strong>Selesai</strong> supaya status pindah ke riwayat.
-            </p>
-            <p>
-              4. Kalau perlu, kirim <strong>Pengingat SKD</strong> dari baris antrean.
-            </p>
-            <p>
-              5. Cek rekap di <strong>Buku Tamu</strong> dan export jika dibutuhkan.
-            </p>
+          <CardContent className="space-y-4 p-4 sm:p-6">
+            <Tabs defaultValue="quick-start" className="space-y-4">
+              <TabsList className="w-full justify-start overflow-x-auto bg-background/80">
+                <TabsTrigger value="quick-start" className="flex-none">
+                  Mulai Cepat
+                </TabsTrigger>
+                <TabsTrigger value="main-menu" className="flex-none">
+                  Menu Utama
+                </TabsTrigger>
+                <TabsTrigger value="admin-menu" className="flex-none">
+                  Menu Admin
+                </TabsTrigger>
+                <TabsTrigger value="workflow" className="flex-none">
+                  Alur Harian
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="quick-start" className="space-y-4">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card className="border-border/80 bg-card/88">
+                    <CardHeader>
+                      <CardTitle className="text-base text-primary-color">Mulai Cepat (2 Menit)</CardTitle>
+                      <CardDescription>Urutan dasar untuk operasional harian petugas.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ol className="space-y-3">
+                        {quickStartSteps.map((step, index) => (
+                          <li key={step.title} className="flex gap-3">
+                            <span className="mt-0.5 inline-flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                              {index + 1}
+                            </span>
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold text-primary-color">{step.title}</p>
+                              <p className="text-sm text-secondary-color">{step.description}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-border/80 bg-card/88">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base text-primary-color">
+                        <RefreshCcw className="h-4 w-4" />
+                        Catatan Penting
+                      </CardTitle>
+                      <CardDescription>Checklist kecil agar data tetap rapi dan aman.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2 text-sm text-secondary-color">
+                        {importantNotes.map((note) => (
+                          <li key={note} className="flex gap-2">
+                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                            <span>{note}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="main-menu" className="space-y-3">
+                <div className="grid gap-4 md:grid-cols-2">
+                  {mainMenus.map((menu) => {
+                    const Icon = menu.icon;
+                    return (
+                      <Card key={menu.href} className="border-border/80 bg-card/88">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="flex items-center gap-2 text-base text-primary-color">
+                            <Icon className="h-4 w-4" />
+                            {menu.title}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm text-secondary-color">
+                          <p>{menu.description}</p>
+                          <Button asChild variant="outline" size="sm" className="w-fit">
+                            <Link href={menu.href}>Buka {menu.title}</Link>
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="admin-menu" className="space-y-3">
+                <div className="grid gap-4 md:grid-cols-2">
+                  {adminMenus.map((menu) => {
+                    const Icon = menu.icon;
+                    return (
+                      <Card key={menu.href} className="border-border/80 bg-card/88">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="flex items-center gap-2 text-base text-primary-color">
+                            <Icon className="h-4 w-4" />
+                            {menu.title}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm text-secondary-color">
+                          <p>{menu.description}</p>
+                          {isAdmin ? (
+                            <Button asChild variant="outline" size="sm" className="w-fit">
+                              <Link href={menu.href}>Buka {menu.title}</Link>
+                            </Button>
+                          ) : (
+                            <Button variant="outline" size="sm" className="w-fit" disabled>
+                              Hanya untuk admin
+                            </Button>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="workflow">
+                <Card className="border-border/80 bg-card/88">
+                  <CardHeader>
+                    <CardTitle className="text-primary-color">Alur Kerja Harian (Ringkas)</CardTitle>
+                    <CardDescription>Flow ini mengikuti menu yang tersedia di sistem saat ini.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ol className="space-y-4">
+                      {dailyWorkflow.map((step, index) => (
+                        <li key={step.title} className="flex gap-3">
+                          <span className="mt-0.5 inline-flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                            {index + 1}
+                          </span>
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-primary-color">{step.title}</p>
+                            <p className="text-sm text-secondary-color">{step.description}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
-
-        <Card className="border-border/80 bg-card/88">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-primary-color">
-              <RefreshCcw className="h-4 w-4" />
-              Catatan Penting
-            </CardTitle>
-            <CardDescription>Supaya kerja harian tetap aman dan rapi.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-secondary-color">
-            <p>
-              - Hampir semua halaman punya tombol <strong>Perbarui Data</strong> dan auto-refresh.
-            </p>
-            <p>
-              - Di menu Antrean, gunakan filter <strong>Status</strong> dan <strong>Tanggal</strong>{" "}
-              agar daftar tidak campur.
-            </p>
-            <p>
-              - Menu admin (<strong>Pengguna, Layanan, QR, Jadwal</strong>) hanya muncul untuk role
-              Admin.
-            </p>
-            <p>
-              - Sebelum logout, pastikan antrean yang sedang dilayani sudah diproses sesuai kondisi
-              terakhir.
-            </p>
-          </CardContent>
-        </Card>
       </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold text-primary-color">Menu Utama</h2>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {mainMenus.map((menu) => {
-            const Icon = menu.icon;
-            return (
-              <Card key={menu.href} className="border-border/80 bg-card/88">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base text-primary-color">
-                    <Icon className="h-4 w-4" />
-                    {menu.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-secondary-color">
-                  <p>{menu.description}</p>
-                  <Button asChild variant="outline" size="sm" className="w-fit">
-                    <Link href={menu.href}>Buka {menu.title}</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <UserCog className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold text-primary-color">Menu Admin</h2>
-          <Badge variant={isAdmin ? "secondary" : "outline"}>
-            {isAdmin ? "Akses Anda: Admin" : "Akses Anda: Petugas"}
-          </Badge>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {adminMenus.map((menu) => {
-            const Icon = menu.icon;
-            return (
-              <Card key={menu.href} className="border-border/80 bg-card/88">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base text-primary-color">
-                    <Icon className="h-4 w-4" />
-                    {menu.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-secondary-color">
-                  <p>{menu.description}</p>
-                  {isAdmin ? (
-                    <Button asChild variant="outline" size="sm" className="w-fit">
-                      <Link href={menu.href}>Buka {menu.title}</Link>
-                    </Button>
-                  ) : (
-                    <Button variant="outline" size="sm" className="w-fit" disabled>
-                      Hanya untuk admin
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <Card className="border-border/80 bg-card/88">
-          <CardHeader>
-            <CardTitle className="text-primary-color">Alur Kerja Harian (Ringkas)</CardTitle>
-            <CardDescription>Flow ini sesuai menu yang ada di sistem saat ini.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-secondary-color">
-            <p>
-              1. Admin pastikan <strong>Layanan aktif</strong>, <strong>petugas tersedia</strong>,
-              dan QR buku tamu sudah siap ditempatkan di area layanan.
-            </p>
-            <p>
-              2. Pengunjung datang lalu isi form di <strong>/guest</strong> (bisa dari scan QR).
-            </p>
-            <p>
-              3. Sistem membuat nomor antrean otomatis, lalu antrean tampil di dashboard petugas.
-            </p>
-            <p>
-              4. Petugas proses di menu <strong>Antrean</strong>: Layani -&gt; (opsional) Batalkan
-              -&gt; Selesai.
-            </p>
-            <p>
-              5. Jika SKD belum diisi, kirim pengingat dari tabel antrean atau tandai status SKD.
-            </p>
-            <p>
-              6. Lihat rekap di <strong>Buku Tamu</strong>, lalu gunakan <strong>Analisis</strong>{" "}
-              untuk evaluasi performa (admin).
-            </p>
-          </CardContent>
-        </Card>
-      </section>
-    </div>
+    </PageContainer>
   );
 }

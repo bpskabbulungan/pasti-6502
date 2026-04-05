@@ -14,7 +14,10 @@ import {
 	getStatusFilterLabel,
 } from "./view-model";
 
-export function useGuestbookPageController(initialData: GuestbookListResponse) {
+export function useGuestbookPageController(
+	initialData: GuestbookListResponse,
+	initialFetchedAt: string
+) {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -46,6 +49,13 @@ export function useGuestbookPageController(initialData: GuestbookListResponse) {
 		limit: pageSize,
 		offset,
 	});
+	const isUsingInitialData =
+		currentPage === 1 &&
+		pageSize === 10 &&
+		statusFilter === "ALL" &&
+		purposeFilter === "ALL" &&
+		dateFilter === "today" &&
+		!debouncedSearch;
 
 	const {
 		data: guestbookData,
@@ -54,25 +64,9 @@ export function useGuestbookPageController(initialData: GuestbookListResponse) {
 		lastFetchedAt,
 		refresh,
 	} = useLiveQuery<GuestbookListResponse>(guestbookUrl, {
-		fallbackData:
-			currentPage === 1 &&
-			pageSize === 10 &&
-			statusFilter === "ALL" &&
-			purposeFilter === "ALL" &&
-			dateFilter === "today" &&
-			!debouncedSearch
-				? initialData
-				: undefined,
-		fallbackEtag:
-			currentPage === 1 &&
-			pageSize === 10 &&
-			statusFilter === "ALL" &&
-			purposeFilter === "ALL" &&
-			dateFilter === "today" &&
-			!debouncedSearch &&
-			initialData.hash
-				? `"${initialData.hash}"`
-				: null,
+		fallbackData: isUsingInitialData ? initialData : undefined,
+		fallbackEtag: isUsingInitialData && initialData.hash ? `"${initialData.hash}"` : null,
+		fallbackFetchedAt: isUsingInitialData ? initialFetchedAt : null,
 		refreshInterval: 60_000,
 		onError: (error) => {
 			console.error("Error fetching guestbook:", error);

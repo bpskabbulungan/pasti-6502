@@ -5,7 +5,15 @@ import { getDashboardStats } from "@api/modules/dashboard";
 export default async function Page() {
   const user = await requireDashboardUser();
   const initialStats = await getDashboardStats();
-  return <DashboardPage currentUser={user} initialStats={initialStats} />;
+  const initialFetchedAt = new Date().toISOString();
+
+  return (
+    <DashboardPage
+      currentUser={user}
+      initialStats={initialStats}
+      initialFetchedAt={initialFetchedAt}
+    />
+  );
 }
 
 

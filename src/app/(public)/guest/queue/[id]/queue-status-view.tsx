@@ -334,7 +334,7 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
           <CheckCircle2 className="h-4 w-4 text-primary" />
           <AlertTitle>Butuh bantuan?</AlertTitle>
           <AlertDescription className="text-sm">
-            Tunjukkan kode antrean kepada petugas PST untuk verifikasi. Jika halaman ini tidak
+            Tunjukkan kode antrean kepada petugas PASTI 6502 untuk verifikasi. Jika halaman ini tidak
             diperbarui, tekan <strong>Muat ulang</strong>
             atau kembali ke buku tamu.
           </AlertDescription>

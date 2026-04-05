@@ -702,7 +702,7 @@ export async function runDutyReminder(dateParam?: string | null, force = false) 
     await prisma.notification.create({
       data: {
         type: "DUTY_REMINDER_SENT",
-        title: "Pengingat Jadwal PST",
+        title: "Pengingat Jadwal PASTI 6502",
         message: `Pengingat jadwal ${formatDisplayDate(scheduleDate)} terkirim ke ${
           schedule.staff.name
         }`,
@@ -720,7 +720,7 @@ export async function runDutyReminder(dateParam?: string | null, force = false) 
   await prisma.notification.create({
     data: {
       type: "DUTY_REMINDER_FAILED",
-      title: "Pengingat Jadwal PST Gagal",
+      title: "Pengingat Jadwal PASTI 6502 Gagal",
       message: `Pengingat jadwal ${formatDisplayDate(scheduleDate)} gagal dikirim ke ${
         schedule.staff.name
       }: ${sendResult.message}`,

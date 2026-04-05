@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Download, QrCode, ScanLine } from "lucide-react";
 
 import { PageContainer } from "@/components/shared/layout/page-container";
-import { Badge } from "@/components/ui/badge";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import QRCodeSkeleton from "@/features/dashboard/components/skeletons/qr-code-skeleton";
@@ -107,31 +107,35 @@ export default function QRCodePage() {
 
   return (
     <PageContainer maxWidth="6xl">
-      <section className="dashboard-hero p-5 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-primary-color sm:text-3xl">QR Code Buku Tamu</h1>
-            <p className="max-w-2xl text-sm text-secondary-color">
-              Gunakan QR statis ini di area layanan agar pengunjung langsung mengisi buku tamu digital.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                <ScanLine className="h-3.5 w-3.5" />
-                Akses cepat /guest
-              </Badge>
-              {qrTargetUrl ? (
-                <Badge variant="outline" className="max-w-full border-border/80 bg-background/75 text-secondary-color">
-                  {qrTargetUrl}
-                </Badge>
-              ) : null}
+      <DashboardPageHeader
+        title="QR Code Buku Tamu"
+        description="Gunakan QR statis ini di area layanan agar pengunjung langsung mengisi buku tamu digital."
+        chips={
+          <>
+            <div className="dashboard-chip">
+              <ScanLine className="h-3.5 w-3.5" />
+              Akses cepat /guest
             </div>
+            {qrTargetUrl ? (
+              <div className="dashboard-chip max-w-full" title={qrTargetUrl}>
+                <span className="truncate">{qrTargetUrl}</span>
+              </div>
+            ) : null}
+          </>
+        }
+        actions={
+          <div className="dashboard-header-actions">
+            <Button
+              onClick={handleDownload}
+              disabled={!qrImage}
+              className="dashboard-header-action"
+            >
+              <Download className="h-4 w-4" />
+              Unduh QR Code
+            </Button>
           </div>
-          <Button onClick={handleDownload} disabled={!qrImage} className="w-full gap-2 sm:w-auto">
-            <Download className="h-4 w-4" />
-            Unduh QR Code
-          </Button>
-        </div>
-      </section>
+        }
+      />
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,360px)_1fr]">
         <Card className="border-border/80 bg-card/88">
@@ -149,7 +153,7 @@ export default function QRCodePage() {
               {qrImage ? (
                 <Image
                   src={qrImage}
-                  alt="QR Code Buku Tamu PST BPS Bulungan"
+                  alt="QR Code Buku Tamu PASTI 6502 BPS Bulungan"
                   width={320}
                   height={320}
                   priority
@@ -191,7 +195,7 @@ export default function QRCodePage() {
             </CardHeader>
             <CardContent>
               <ol className="ml-2 list-inside list-decimal space-y-2 text-sm text-secondary-color">
-                <li>Pengunjung memindai QR di area PST</li>
+                <li>Pengunjung memindai QR di area PASTI 6502</li>
                 <li>Mengisi buku tamu digital dari ponsel</li>
                 <li>Menerima nomor antrean otomatis</li>
                 <li>Petugas memproses antrean hingga selesai</li>

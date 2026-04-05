@@ -13,9 +13,33 @@ export type AnalyticsQueueTypeDistribution = {
 };
 
 export type AnalyticsOfficerPerformance = {
+  officerId: string;
   officerName: string;
   completedCount: number;
   averageServiceTime: number;
+  averageWaitTime: number;
+};
+
+export type AnalyticsOfficerServiceFrequency = {
+  serviceName: string;
+  count: number;
+  percentage: number;
+};
+
+export type AnalyticsOfficerTopService = {
+  serviceName: string;
+  count: number;
+  percentage: number;
+};
+
+export type AnalyticsOfficerDetail = {
+  officerId: string;
+  officerName: string;
+  totalHandled: number;
+  averageWaitTime: number;
+  averageServiceTime: number;
+  serviceBreakdown: AnalyticsOfficerServiceFrequency[];
+  topService: AnalyticsOfficerTopService | null;
 };
 
 export type AnalyticsTimeAnalysis = {
@@ -30,6 +54,32 @@ export type AnalyticsDailyTrend = {
   canceled: number;
 };
 
+export type AnalyticsInsight = {
+  mostPopularService: {
+    serviceName: string;
+    count: number;
+    percentage: number;
+  } | null;
+  mostActiveOfficer: {
+    officerId: string;
+    officerName: string;
+    completedCount: number;
+  } | null;
+  onlineVsOffline: {
+    online: number;
+    offline: number;
+    onlinePercentage: number;
+    offlinePercentage: number;
+  };
+  averageServicesPerOfficer: number;
+};
+
+export type AnalyticsSelectedPeriod = {
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+};
+
 export type AnalyticsSummary = {
   summary: {
     totalVisitors: number;
@@ -41,6 +91,9 @@ export type AnalyticsSummary = {
   serviceDistribution: AnalyticsServiceDistribution[];
   queueTypeDistribution: AnalyticsQueueTypeDistribution[];
   officerPerformance: AnalyticsOfficerPerformance[];
+  officerDetails: AnalyticsOfficerDetail[];
+  insights: AnalyticsInsight;
+  selectedPeriod: AnalyticsSelectedPeriod;
   timeAnalysis: AnalyticsTimeAnalysis[];
   dailyTrends: AnalyticsDailyTrend[];
   hash?: string;

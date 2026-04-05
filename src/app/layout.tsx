@@ -9,7 +9,7 @@ import LoadingTransition from "@/components/shared/loading-transition";
 import { Suspense } from "react";
 import SiteFooter from "@/components/shared/site-footer";
 import AppLoadingScreen from "@/components/shared/app-loading-screen";
-import { APP_NAME } from "@/constants/app";
+import { APP_NAME, APP_TAGLINE } from "@/constants/app";
 
 const poppins = Poppins({
   weight: ["100", "300", "400", "700", "900"],
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     default: APP_NAME,
     template: `%s | ${APP_NAME}`,
   },
-  description: "Pelayanan Statistik Terpadu dan Terintegrasi PST 6502",
+  description: `${APP_NAME} - ${APP_TAGLINE}`,
 };
 
 export default function RootLayout({

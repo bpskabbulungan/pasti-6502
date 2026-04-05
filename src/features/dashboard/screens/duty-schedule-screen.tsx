@@ -47,9 +47,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
 import { markNavigationPending } from "@/lib/navigation-pending";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 
 const WORK_DAY_OPTIONS = [
   { value: 1, label: "Senin" },
@@ -248,38 +250,35 @@ export default function DutySchedulePage() {
 
   return (
     <div className="dashboard-page pb-6">
-      <section className="dashboard-hero p-5 md:p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold text-primary-color sm:text-3xl">Jadwal Petugas</h1>
-              <p className="max-w-2xl text-sm text-secondary-color">
-                Penugasan otomatis, pengingat WhatsApp Fonnte, serta pemantauan log layanan petugas
-                harian.
-              </p>
+      <DashboardPageHeader
+        title="Jadwal Petugas"
+        description="Penugasan otomatis, pengingat WhatsApp Fonnte, serta pemantauan log layanan petugas harian."
+        chips={
+          <>
+            <div className="dashboard-chip">{activeStaffCount} petugas terdaftar</div>
+            <div className="dashboard-chip">
+              {summary?.isWorkingDay ? "Hari kerja aktif" : "Non-hari kerja"}
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-              <Badge variant="secondary" className="bg-background/70 text-secondary-color">
-                {activeStaffCount} petugas terdaftar
-              </Badge>
-              <Badge variant="secondary" className="bg-background/70 text-secondary-color">
-                {summary?.isWorkingDay ? "Hari kerja aktif" : "Non-hari kerja"}
-              </Badge>
-              <Badge variant="secondary" className="bg-background/70 text-secondary-color">
-                {loading ? "Memuat data..." : "Data siap diproses"}
-              </Badge>
-            </div>
-          </div>
-          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto">
+            <div className="dashboard-chip">{loading ? "Memuat data..." : "Data siap diproses"}</div>
+          </>
+        }
+        actionsClassName="xl:w-auto"
+        actions={
+          <div className="grid w-full gap-2 sm:grid-cols-2">
             <Input
               type="date"
               value={selectedDate}
               onChange={(event) => setSelectedDate(event.target.value)}
               className="h-9 w-full min-w-[180px]"
             />
-            <Button variant="outline" onClick={() => loadData()} disabled={loading || saving} className="w-full">
+            <Button
+              variant="outline"
+              onClick={() => loadData()}
+              disabled={loading || saving}
+              className="w-full"
+            >
               <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh Data
+              Perbarui Data
             </Button>
             <Button
               variant="success"
@@ -290,13 +289,17 @@ export default function DutySchedulePage() {
               <CalendarDays className="mr-2 h-4 w-4" />
               Generate Jadwal
             </Button>
-            <Button onClick={() => handleRunReminder(false)} disabled={loading || saving} className="w-full">
+            <Button
+              onClick={() => handleRunReminder(false)}
+              disabled={loading || saving}
+              className="w-full"
+            >
               <MessageSquareText className="mr-2 h-4 w-4" />
               Kirim Pengingat
             </Button>
           </div>
-        </div>
-      </section>
+        }
+      />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="bg-card/88">
@@ -350,446 +353,469 @@ export default function DutySchedulePage() {
         </Card>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="space-y-2">
-            <CardTitle className="flex items-center gap-2">
-              <Clock3 className="h-5 w-5" />
-              Ringkasan Tanggal {selectedDate}
-            </CardTitle>
-            <CardDescription>
-              Status jadwal petugas, detail hari kerja, dan hasil reminder untuk tanggal yang
-              dipilih.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-md border border-border/70 bg-background/40 p-3">
-                <p className="text-xs text-secondary-color">Tanggal terpilih</p>
-                <p className="font-medium text-primary-color">
-                  {summary?.dateLabel || "Memuat ringkasan..."}
-                </p>
-              </div>
-              <div className="rounded-md border border-border/70 bg-background/40 p-3">
-                <p className="text-xs text-secondary-color">Petugas terjadwal</p>
-                <p className="font-medium text-primary-color">
-                  {summary?.schedule?.staff?.name || "-"}
-                </p>
-              </div>
-            </div>
-            {summary?.isWorkingDay ? (
-              <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-700">
-                <CheckCircle2 className="mt-0.5 h-4 w-4" />
-                <div>
-                  <p className="font-medium">Hari kerja aktif</p>
-                  <p>
-                    {summary.schedule
-                      ? `Petugas bertugas: ${summary.schedule.staff.name}`
-                      : "Belum ada petugas terjadwal untuk tanggal ini."}
-                  </p>
+      <Tabs defaultValue="ringkasan" className="space-y-4">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="ringkasan">Ringkasan</TabsTrigger>
+          <TabsTrigger value="pengaturan">Pengaturan</TabsTrigger>
+          <TabsTrigger value="petugas">Petugas & Reminder</TabsTrigger>
+          <TabsTrigger value="riwayat">Riwayat</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="ringkasan" className="space-y-6">
+          <section className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader className="space-y-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Clock3 className="h-5 w-5" />
+                  Ringkasan Tanggal {selectedDate}
+                </CardTitle>
+                <CardDescription>
+                  Status jadwal petugas, detail hari kerja, dan hasil reminder untuk tanggal yang
+                  dipilih.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-md border border-border/70 bg-background/40 p-3">
+                    <p className="text-xs text-secondary-color">Tanggal terpilih</p>
+                    <p className="font-medium text-primary-color">
+                      {summary?.dateLabel || "Memuat ringkasan..."}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background/40 p-3">
+                    <p className="text-xs text-secondary-color">Petugas terjadwal</p>
+                    <p className="font-medium text-primary-color">
+                      {summary?.schedule?.staff?.name || "-"}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-amber-700">
-                <ShieldAlert className="mt-0.5 h-4 w-4" />
-                <div>
-                  <p className="font-medium">Bukan hari kerja</p>
-                  <p>{summary?.reason || "Tanggal tidak termasuk hari kerja aktif."}</p>
-                </div>
-              </div>
-            )}
-            {summary?.schedule?.reminderLogs?.[0] && (
-              <div className="rounded-md border border-border/70 bg-muted/40 p-3 text-xs">
-                <p className="font-medium">Status reminder terakhir</p>
-                <p>
-                  {summary.schedule.reminderLogs[0].success ? "Berhasil" : "Gagal"} pada{" "}
-                  {formatDateTime(summary.schedule.reminderLogs[0].createdAt)}
-                </p>
-                {summary.schedule.reminderLogs[0].errorMessage && (
-                  <p className="text-destructive">
-                    {summary.schedule.reminderLogs[0].errorMessage}
-                  </p>
+                {summary?.isWorkingDay ? (
+                  <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-700">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4" />
+                    <div>
+                      <p className="font-medium">Hari kerja aktif</p>
+                      <p>
+                        {summary.schedule
+                          ? `Petugas bertugas: ${summary.schedule.staff.name}`
+                          : "Belum ada petugas terjadwal untuk tanggal ini."}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-amber-700">
+                    <ShieldAlert className="mt-0.5 h-4 w-4" />
+                    <div>
+                      <p className="font-medium">Bukan hari kerja</p>
+                      <p>{summary?.reason || "Tanggal tidak termasuk hari kerja aktif."}</p>
+                    </div>
+                  </div>
                 )}
-              </div>
-            )}
-            <Button
-              variant="warning"
-              onClick={() => handleRunReminder(true)}
-              disabled={saving}
-              className="w-full sm:w-auto"
-            >
-              Paksa Kirim Ulang Reminder
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="space-y-2">
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Sumber Petugas
-            </CardTitle>
-            <CardDescription>
-              Data petugas jadwal diambil otomatis dari manajemen pengguna.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-secondary-color">
-              Petugas jadwal PST diambil otomatis dari daftar pengguna dengan role `PETUGAS` (menu
-              Kelola Pengguna).
-            </p>
-            <p className="text-sm text-secondary-color">
-              Untuk reminder WhatsApp, pastikan nomor telepon petugas sudah diisi di data pengguna.
-            </p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                markNavigationPending();
-                router.push("/dashboard/users");
-              }}
-              className="w-full sm:w-auto"
-            >
-              Buka Kelola Pengguna
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="space-y-2">
-            <CardTitle>Pengaturan Hari Kerja & Reminder</CardTitle>
-            <CardDescription>
-              Atur hari kerja aktif, penugasan otomatis, dan template reminder.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {WORK_DAY_OPTIONS.map((day) => (
-                <label
-                  key={day.value}
-                  className="flex items-center justify-between rounded-md border border-border/70 bg-background/40 px-3 py-2 text-sm"
+                {summary?.schedule?.reminderLogs?.[0] && (
+                  <div className="rounded-md border border-border/70 bg-muted/40 p-3 text-xs">
+                    <p className="font-medium">Status reminder terakhir</p>
+                    <p>
+                      {summary.schedule.reminderLogs[0].success ? "Berhasil" : "Gagal"} pada{" "}
+                      {formatDateTime(summary.schedule.reminderLogs[0].createdAt)}
+                    </p>
+                    {summary.schedule.reminderLogs[0].errorMessage && (
+                      <p className="text-destructive">
+                        {summary.schedule.reminderLogs[0].errorMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <Button
+                  variant="warning"
+                  onClick={() => handleRunReminder(true)}
+                  disabled={saving}
+                  className="w-full sm:w-auto"
                 >
-                  <span>{day.label}</span>
-                  <Switch
-                    checked={Boolean(settings?.workDays?.includes(day.value))}
-                    onCheckedChange={(checked) => handleToggleWorkDay(day.value, checked)}
+                  Paksa Kirim Ulang Reminder
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="space-y-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Sumber Petugas
+                </CardTitle>
+                <CardDescription>
+                  Data petugas jadwal diambil otomatis dari manajemen pengguna.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-secondary-color">
+                  Petugas jadwal PASTI 6502 diambil otomatis dari daftar pengguna dengan role `PETUGAS`
+                  (menu Kelola Pengguna).
+                </p>
+                <p className="text-sm text-secondary-color">
+                  Untuk reminder WhatsApp, pastikan nomor telepon petugas sudah diisi di data
+                  pengguna.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    markNavigationPending();
+                    router.push("/dashboard/users");
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  Buka Kelola Pengguna
+                </Button>
+              </CardContent>
+            </Card>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="pengaturan" className="space-y-6">
+          <section className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="space-y-2">
+                <CardTitle>Pengaturan Hari Kerja & Reminder</CardTitle>
+                <CardDescription>
+                  Atur hari kerja aktif, penugasan otomatis, dan template reminder.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {WORK_DAY_OPTIONS.map((day) => (
+                    <label
+                      key={day.value}
+                      className="flex items-center justify-between rounded-md border border-border/70 bg-background/40 px-3 py-2 text-sm"
+                    >
+                      <span>{day.label}</span>
+                      <Switch
+                        checked={Boolean(settings?.workDays?.includes(day.value))}
+                        onCheckedChange={(checked) => handleToggleWorkDay(day.value, checked)}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="space-y-3 rounded-md border border-border/70 bg-background/40 p-3">
+                  <label className="flex items-center justify-between text-sm">
+                    <span>Penugasan otomatis</span>
+                    <Switch
+                      checked={Boolean(settings?.autoAssignEnabled)}
+                      onCheckedChange={(checked) =>
+                        settings && setSettings({ ...settings, autoAssignEnabled: checked })
+                      }
+                    />
+                  </label>
+                  <label className="flex items-center justify-between text-sm">
+                    <span>Reminder otomatis aktif</span>
+                    <Switch
+                      checked={Boolean(settings?.reminderEnabled)}
+                      onCheckedChange={(checked) =>
+                        settings && setSettings({ ...settings, reminderEnabled: checked })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="space-y-2">
+                  <Label>Template Chat Fonnte</Label>
+                  <Textarea
+                    rows={6}
+                    value={settings?.reminderTemplate || ""}
+                    onChange={(event) =>
+                      settings && setSettings({ ...settings, reminderTemplate: event.target.value })
+                    }
+                    placeholder="Isi template chat reminder..."
                   />
-                </label>
-              ))}
-            </div>
-            <div className="space-y-3 rounded-md border border-border/70 bg-background/40 p-3">
-              <label className="flex items-center justify-between text-sm">
-                <span>Penugasan otomatis</span>
-                <Switch
-                  checked={Boolean(settings?.autoAssignEnabled)}
-                  onCheckedChange={(checked) =>
-                    settings && setSettings({ ...settings, autoAssignEnabled: checked })
-                  }
-                />
-              </label>
-              <label className="flex items-center justify-between text-sm">
-                <span>Reminder otomatis aktif</span>
-                <Switch
-                  checked={Boolean(settings?.reminderEnabled)}
-                  onCheckedChange={(checked) =>
-                    settings && setSettings({ ...settings, reminderEnabled: checked })
-                  }
-                />
-              </label>
-            </div>
-            <div className="space-y-2">
-              <Label>Template Chat Fonnte</Label>
-              <Textarea
-                rows={6}
-                value={settings?.reminderTemplate || ""}
-                onChange={(event) =>
-                  settings && setSettings({ ...settings, reminderTemplate: event.target.value })
-                }
-                placeholder="Isi template chat reminder..."
-              />
-              <p className="text-xs text-secondary-color">
-                Placeholder: {settings?.availableTemplatePlaceholders?.join(", ")}
-              </p>
-            </div>
-            <Button variant="success" onClick={handleSaveSettings} disabled={saving || loading}>
-              <Save className="mr-2 h-4 w-4" />
-              Simpan Pengaturan
-            </Button>
-          </CardContent>
-        </Card>
+                  <p className="text-xs text-secondary-color">
+                    Placeholder: {settings?.availableTemplatePlaceholders?.join(", ")}
+                  </p>
+                </div>
+                <Button variant="success" onClick={handleSaveSettings} disabled={saving || loading}>
+                  <Save className="mr-2 h-4 w-4" />
+                  Simpan Pengaturan
+                </Button>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="space-y-2">
-            <CardTitle>Hari Libur / Cuti</CardTitle>
-            <CardDescription>
-              Tambahkan hari khusus agar tidak masuk jadwal rotasi petugas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Tanggal</Label>
-                <Input
-                  type="date"
-                  value={dayOffDate}
-                  onChange={(event) => setDayOffDate(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Nama</Label>
-                <Input
-                  value={dayOffName}
-                  onChange={(event) => setDayOffName(event.target.value)}
-                  placeholder="Contoh: Libur Nasional"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Tipe</Label>
-                <Select
-                  value={dayOffType}
-                  onValueChange={(value) => setDayOffType(value as "HOLIDAY" | "LEAVE")}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="HOLIDAY">Libur</SelectItem>
-                    <SelectItem value="LEAVE">Cuti</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Catatan (opsional)</Label>
-                <Input
-                  value={dayOffNote}
-                  onChange={(event) => setDayOffNote(event.target.value)}
-                  placeholder="Catatan tambahan"
-                />
-              </div>
-              <Button variant="success" onClick={handleAddDayOff} disabled={saving} className="md:col-span-2">
-                <Plus className="mr-2 h-4 w-4" />
-                Tambah Hari Libur/Cuti
-              </Button>
-            </div>
+            <Card>
+              <CardHeader className="space-y-2">
+                <CardTitle>Hari Libur / Cuti</CardTitle>
+                <CardDescription>
+                  Tambahkan hari khusus agar tidak masuk jadwal rotasi petugas.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Tanggal</Label>
+                    <Input
+                      type="date"
+                      value={dayOffDate}
+                      onChange={(event) => setDayOffDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nama</Label>
+                    <Input
+                      value={dayOffName}
+                      onChange={(event) => setDayOffName(event.target.value)}
+                      placeholder="Contoh: Libur Nasional"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipe</Label>
+                    <Select
+                      value={dayOffType}
+                      onValueChange={(value) => setDayOffType(value as "HOLIDAY" | "LEAVE")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="HOLIDAY">Libur</SelectItem>
+                        <SelectItem value="LEAVE">Cuti</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Catatan (opsional)</Label>
+                    <Input
+                      value={dayOffNote}
+                      onChange={(event) => setDayOffNote(event.target.value)}
+                      placeholder="Catatan tambahan"
+                    />
+                  </div>
+                  <Button
+                    variant="success"
+                    onClick={handleAddDayOff}
+                    disabled={saving}
+                    className="md:col-span-2"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Tambah Hari Libur/Cuti
+                  </Button>
+                </div>
 
-            <div className="max-h-64 overflow-auto rounded-md border border-border/70">
-              <Table className="min-w-[520px]">
+                <div className="max-h-64 overflow-auto rounded-md border border-border/70">
+                  <Table className="min-w-[520px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tanggal</TableHead>
+                        <TableHead>Nama</TableHead>
+                        <TableHead>Tipe</TableHead>
+                        <TableHead className="text-right">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground">
+                            Memuat daftar hari libur/cuti...
+                          </TableCell>
+                        </TableRow>
+                      ) : dayOffs.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground">
+                            Belum ada hari libur/cuti.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        dayOffs.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell>{formatDate(item.date)}</TableCell>
+                            <TableCell>{item.name}</TableCell>
+                            <TableCell>{item.type === "LEAVE" ? "Cuti" : "Libur"}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteDayOff(item.id)}
+                                disabled={saving}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="petugas" className="space-y-6">
+          <section className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="space-y-2">
+                <CardTitle>Daftar Petugas</CardTitle>
+                <CardDescription>Daftar petugas yang menjadi sumber rotasi jadwal.</CardDescription>
+              </CardHeader>
+              <CardContent className="max-h-80 overflow-auto">
+                <Table className="min-w-[520px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nama</TableHead>
+                      <TableHead>Username</TableHead>
+                      <TableHead>WhatsApp</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-muted-foreground">
+                          Memuat daftar petugas...
+                        </TableCell>
+                      </TableRow>
+                    ) : staff.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-muted-foreground">
+                          Belum ada petugas.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      staff.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell>{member.name}</TableCell>
+                          <TableCell>@{member.username}</TableCell>
+                          <TableCell>{member.phone || "-"}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="space-y-2">
+                <CardTitle>Log Reminder WhatsApp</CardTitle>
+                <CardDescription>Status pengiriman reminder terbaru ke petugas.</CardDescription>
+              </CardHeader>
+              <CardContent className="max-h-80 overflow-auto">
+                <Table className="min-w-[640px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Petugas</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Waktu</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground">
+                          Memuat log reminder...
+                        </TableCell>
+                      </TableRow>
+                    ) : reminderLogs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground">
+                          Belum ada log reminder.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reminderLogs.slice(0, 30).map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell>{formatDate(log.reminderDate)}</TableCell>
+                          <TableCell className="break-words">{log.staff?.name || "-"}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                log.success
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                                  : "border-destructive/30 bg-destructive/10 text-destructive"
+                              }
+                            >
+                              {log.success ? "Berhasil" : "Gagal"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1 text-xs">
+                              <p>{formatDateTime(log.createdAt)}</p>
+                              {log.errorMessage && (
+                                <p className="flex items-start gap-1 break-words text-destructive">
+                                  <AlertCircle className="h-3.5 w-3.5" />
+                                  {log.errorMessage}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="riwayat">
+          <Card>
+            <CardHeader className="space-y-2">
+              <CardTitle>Riwayat Penugasan Harian</CardTitle>
+              <CardDescription>
+                Daftar histori jadwal lengkap beserta status reminder terbaru.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-auto">
+              <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tanggal</TableHead>
-                    <TableHead>Nama</TableHead>
-                    <TableHead>Tipe</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
+                    <TableHead>Petugas Bertugas</TableHead>
+                    <TableHead>Siklus</TableHead>
+                    <TableHead>Status Reminder</TableHead>
+                    <TableHead>Dibuat</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        Memuat daftar hari libur/cuti...
+                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                        Memuat riwayat jadwal...
                       </TableCell>
                     </TableRow>
-                  ) : dayOffs.length === 0 ? (
+                  ) : schedules.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        Belum ada hari libur/cuti.
+                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                        Belum ada jadwal tercatat.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    dayOffs.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{formatDate(item.date)}</TableCell>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>{item.type === "LEAVE" ? "Cuti" : "Libur"}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteDayOff(item.id)}
-                            disabled={saving}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                    schedules.map((schedule) => (
+                      <TableRow key={schedule.id}>
+                        <TableCell>{formatDate(schedule.scheduleDate)}</TableCell>
+                        <TableCell className="break-words">{schedule.staff.name}</TableCell>
+                        <TableCell>{schedule.cycleId.slice(0, 8)}</TableCell>
+                        <TableCell>
+                          {schedule.reminderLogs?.[0] ? (
+                            <Badge
+                              variant="outline"
+                              className={
+                                schedule.reminderLogs[0].success
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                                  : "border-destructive/30 bg-destructive/10 text-destructive"
+                              }
+                            >
+                              {schedule.reminderLogs[0].success ? "Berhasil" : "Gagal"}
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Belum dikirim</Badge>
+                          )}
                         </TableCell>
+                        <TableCell>{formatDateTime(schedule.createdAt)}</TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
               </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="space-y-2">
-            <CardTitle>Daftar Petugas</CardTitle>
-            <CardDescription>Daftar petugas yang menjadi sumber rotasi jadwal.</CardDescription>
-          </CardHeader>
-          <CardContent className="max-h-80 overflow-auto">
-            <Table className="min-w-[520px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nama</TableHead>
-                  <TableHead>Username</TableHead>
-                  <TableHead>WhatsApp</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground">
-                      Memuat daftar petugas...
-                    </TableCell>
-                  </TableRow>
-                ) : staff.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground">
-                      Belum ada petugas.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  staff.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell>{member.name}</TableCell>
-                      <TableCell>@{member.username}</TableCell>
-                      <TableCell>{member.phone || "-"}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="space-y-2">
-            <CardTitle>Log Reminder WhatsApp</CardTitle>
-            <CardDescription>Status pengiriman reminder terbaru ke petugas.</CardDescription>
-          </CardHeader>
-          <CardContent className="max-h-80 overflow-auto">
-            <Table className="min-w-[640px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead>Petugas</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Waktu</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      Memuat log reminder...
-                    </TableCell>
-                  </TableRow>
-                ) : reminderLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      Belum ada log reminder.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  reminderLogs.slice(0, 30).map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell>{formatDate(log.reminderDate)}</TableCell>
-                        <TableCell className="break-words">{log.staff?.name || "-"}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            log.success
-                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-                              : "border-destructive/30 bg-destructive/10 text-destructive"
-                          }
-                        >
-                          {log.success ? "Berhasil" : "Gagal"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1 text-xs">
-                          <p>{formatDateTime(log.createdAt)}</p>
-                          {log.errorMessage && (
-                            <p className="flex items-start gap-1 break-words text-destructive">
-                              <AlertCircle className="h-3.5 w-3.5" />
-                              {log.errorMessage}
-                            </p>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader className="space-y-2">
-          <CardTitle>Riwayat Penugasan Harian</CardTitle>
-          <CardDescription>
-            Daftar histori jadwal lengkap beserta status reminder terbaru.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-auto">
-          <Table className="min-w-[760px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tanggal</TableHead>
-                <TableHead>Petugas Bertugas</TableHead>
-                <TableHead>Siklus</TableHead>
-                <TableHead>Status Reminder</TableHead>
-                <TableHead>Dibuat</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    Memuat riwayat jadwal...
-                  </TableCell>
-                </TableRow>
-              ) : schedules.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    Belum ada jadwal tercatat.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                schedules.map((schedule) => (
-                    <TableRow key={schedule.id}>
-                      <TableCell>{formatDate(schedule.scheduleDate)}</TableCell>
-                      <TableCell className="break-words">{schedule.staff.name}</TableCell>
-                    <TableCell>{schedule.cycleId.slice(0, 8)}</TableCell>
-                    <TableCell>
-                      {schedule.reminderLogs?.[0] ? (
-                        <Badge
-                          variant="outline"
-                          className={
-                            schedule.reminderLogs[0].success
-                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-                              : "border-destructive/30 bg-destructive/10 text-destructive"
-                          }
-                        >
-                          {schedule.reminderLogs[0].success ? "Berhasil" : "Gagal"}
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">Belum dikirim</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{formatDateTime(schedule.createdAt)}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

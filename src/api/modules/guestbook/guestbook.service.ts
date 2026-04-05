@@ -239,7 +239,7 @@ const buildPdfBuffer = async (rows: GuestbookExportRow[]) => {
     doc.on("error", reject);
   });
 
-  doc.fontSize(16).fillColor("#111827").text("Laporan Buku Tamu PST");
+  doc.fontSize(16).fillColor("#111827").text("Laporan Buku Tamu PASTI 6502");
   doc
     .fontSize(9)
     .fillColor("#6B7280")

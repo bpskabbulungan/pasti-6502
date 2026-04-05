@@ -7,6 +7,7 @@ import { ConfirmActionDialog } from "@/components/shared/dialogs/confirm-action-
 import { EmptyState } from "@/components/shared/feedback/empty-state";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
 import { PageContainer } from "@/components/shared/layout/page-container";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -210,94 +211,73 @@ export default function ServicesPage() {
     }
   };
 
-  const handleToggleServiceStatus = useCallback(
-    async (service: ServiceSummary) => {
-      try {
-        const nextStatus =
-          service.status === ServiceStatus.ACTIVE ? ServiceStatus.INACTIVE : ServiceStatus.ACTIVE;
-        await servicesApi.update(service.id, { status: nextStatus });
-        toast.success(
-          `Layanan ${nextStatus === ServiceStatus.ACTIVE ? "diaktifkan" : "dinonaktifkan"}`
-        );
-        fetchServices();
-      } catch (error) {
-        console.error("Error toggling service status:", error);
-        toast.error(getErrorMessage(error, "Terjadi kesalahan saat mengubah status layanan"));
-      }
-    },
-    [fetchServices]
-  );
-
   return (
     <PageContainer>
-      <section className="dashboard-hero p-5 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <h1 className="text-primary-color text-2xl font-bold leading-tight sm:text-3xl">
-                Kelola Layanan
-              </h1>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-              <span>Terakhir diperbarui: {lastFetchedLabel}</span>
-              <LiveStatusBadge isRefreshing={isRefreshing} hasFetched={hasFetched} />
-            </div>
-            <div className="flex w-full flex-wrap gap-3 lg:w-auto lg:justify-start">
-              <Button
-                variant="outline"
-                className="w-full gap-2 border-border sm:w-auto"
-                onClick={() => fetchServices()}
-                disabled={loading}
-              >
-                <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                {loading ? "Memperbarui..." : "Muat ulang data"}
-              </Button>
-              <Dialog
-                open={addDialogOpen}
-                onOpenChange={(open) => {
-                  setAddDialogOpen(open);
-                  if (!open) resetFormFields();
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button variant="success" className="flex w-full items-center gap-2 sm:w-auto">
-                    <Wrench className="h-4 w-4" />
-                    Tambah Layanan
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>Tambah Layanan Baru</DialogTitle>
-                    <DialogDescription>
-                      Lengkapi nama layanan yang ingin ditambahkan.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="service-name">Nama Layanan</Label>
-                      <Input
-                        id="service-name"
-                        value={serviceName}
-                        onChange={(e) => setServiceName(e.target.value)}
-                        placeholder="Masukkan nama layanan"
-                        autoFocus
-                      />
-                    </div>
+      <DashboardPageHeader
+        title="Kelola Layanan"
+        description="Pengelolaan layanan aktif/nonaktif beserta pembaruan cepat."
+        meta={
+          <>
+            <span>Terakhir diperbarui: {lastFetchedLabel}</span>
+            <LiveStatusBadge isRefreshing={isRefreshing} hasFetched={hasFetched} />
+          </>
+        }
+        actions={
+          <div className="dashboard-header-actions">
+            <Button
+              variant="outline"
+              className="dashboard-header-action border-border"
+              onClick={() => fetchServices()}
+              disabled={loading}
+            >
+              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Memperbarui..." : "Perbarui Data"}
+            </Button>
+            <Dialog
+              open={addDialogOpen}
+              onOpenChange={(open) => {
+                setAddDialogOpen(open);
+                if (!open) resetFormFields();
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button variant="success" className="dashboard-header-action">
+                  <Wrench className="h-4 w-4" />
+                  Tambah Layanan
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Tambah Layanan Baru</DialogTitle>
+                  <DialogDescription>
+                    Lengkapi nama layanan yang ingin ditambahkan.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="service-name">Nama Layanan</Label>
+                    <Input
+                      id="service-name"
+                      value={serviceName}
+                      onChange={(e) => setServiceName(e.target.value)}
+                      placeholder="Masukkan nama layanan"
+                      autoFocus
+                    />
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                      Batal
-                    </Button>
-                    <Button variant="success" onClick={handleAddService} disabled={isAddDisabled}>
-                      Simpan Layanan
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+                    Batal
+                  </Button>
+                  <Button variant="success" onClick={handleAddService} disabled={isAddDisabled}>
+                    Simpan Layanan
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
-        </div>
-      </section>
+        }
+      />
 
       <section className="grid gap-3 sm:grid-cols-3">
         <Card className="border-border/80 bg-card/88">
@@ -495,7 +475,6 @@ export default function ServicesPage() {
                       <ServicesTableRow
                         key={service.id}
                         service={service}
-                        onToggleStatus={handleToggleServiceStatus}
                         onEdit={openEditDialog}
                         onDelete={openDeleteDialog}
                       />

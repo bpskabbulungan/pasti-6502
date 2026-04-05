@@ -1,266 +1,26 @@
-import { createHash } from "crypto";
-import { format } from "date-fns";
 import PDFDocument from "pdfkit";
 import * as XLSX from "xlsx";
 import prisma from "@api/infrastructure/database/prisma";
 import { Prisma } from "@prisma/client";
 import { formatDisplayDate, formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
-import { addDaysInTimeZone, parseDateOnlyInTimeZone } from "@shared/utils/date-boundary";
-import type { AnalyticsExportRow } from "@shared/types/analytics";
+import { getAnalyticsSummary } from "./analytics-summary.service";
+import type { AnalyticsExportRow, AnalyticsSummary } from "@shared/types/analytics";
 
 type DateRange = {
   startDate: Date;
   endDate: Date;
 };
 
+type ExportFormat = "xlsx" | "pdf";
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
 const MAX_ANALYTICS_EXPORT_ROWS = (() => {
   const parsed = Number.parseInt(process.env.ANALYTICS_EXPORT_MAX_ROWS ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10000;
 })();
 
-const hashPayload = (payload: unknown) =>
-  createHash("sha256").update(JSON.stringify(payload)).digest("hex");
-
-const parseDateRange = (
-  startDateParam: string,
-  endDateParam: string,
-  maxRangeDays: number
-): { ok: true; range: DateRange } | { ok: false; status: number; error: string } => {
-  const startDate = parseDateOnlyInTimeZone(startDateParam);
-  const endDateStart = parseDateOnlyInTimeZone(endDateParam);
-  if (!startDate || !endDateStart) {
-    return {
-      ok: false,
-      status: 400,
-      error: "Tanggal tidak valid, gunakan format YYYY-MM-DD",
-    };
-  }
-
-  const endDate = addDaysInTimeZone(endDateStart, 1);
-  const diffDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
-  if (diffDays <= 0) {
-    return {
-      ok: false,
-      status: 400,
-      error: "Rentang tanggal tidak valid. Pastikan tanggal akhir tidak lebih kecil dari tanggal awal.",
-    };
-  }
-
-  if (diffDays > maxRangeDays) {
-    return {
-      ok: false,
-      status: 400,
-      error: `Rentang tanggal terlalu besar. Maksimal ${maxRangeDays} hari.`,
-    };
-  }
-
-  return { ok: true, range: { startDate, endDate } };
-};
-
-export async function getAnalyticsSummary(
-  startDate: Date,
-  endDate: Date,
-  clientHash?: string | null
-) {
-  const toNumber = (value: unknown) => {
-    if (typeof value === "bigint") {
-      return Number(value);
-    }
-    if (value === null || typeof value === "undefined") {
-      return 0;
-    }
-    return Number(value);
-  };
-
-  const [summaryRows, serviceRows, queueTypeRows, officerRows, timeRows, dailyRows] =
-    await Promise.all([
-      prisma.$queryRaw<
-        Array<{
-          totalVisitors: bigint | number;
-          completedServices: bigint | number;
-          canceledServices: bigint | number;
-          averageWaitTimeMinutes: number | null;
-          averageServiceTimeMinutes: number | null;
-          dataLastUpdatedAt: Date | null;
-        }>
-      >(Prisma.sql`
-				SELECT
-					COUNT(*) AS totalVisitors,
-					COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completedServices,
-					COALESCE(SUM(CASE WHEN status = 'CANCELED' THEN 1 ELSE 0 END), 0) AS canceledServices,
-					ROUND(COALESCE(AVG(CASE
-						WHEN startTime IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, createdAt, startTime)
-						ELSE NULL
-					END), 0)) AS averageWaitTimeMinutes,
-					ROUND(COALESCE(AVG(CASE
-						WHEN status = 'COMPLETED' AND startTime IS NOT NULL AND endTime IS NOT NULL
-							THEN TIMESTAMPDIFF(MINUTE, startTime, endTime)
-						ELSE NULL
-					END), 0)) AS averageServiceTimeMinutes,
-					MAX(updatedAt) AS dataLastUpdatedAt
-				FROM \`Queue\`
-				WHERE queueDate >= ${startDate} AND queueDate < ${endDate}
-			`),
-      prisma.$queryRaw<Array<{ name: string; count: bigint | number }>>(Prisma.sql`
-				SELECT s.name AS name, COUNT(*) AS count
-				FROM \`Queue\` q
-				INNER JOIN \`Service\` s ON s.id = q.serviceId
-				WHERE q.queueDate >= ${startDate} AND q.queueDate < ${endDate}
-				GROUP BY q.serviceId, s.name
-				ORDER BY count DESC, s.name ASC
-			`),
-      prisma.$queryRaw<Array<{ queueType: string; count: bigint | number }>>(Prisma.sql`
-				SELECT queueType, COUNT(*) AS count
-				FROM \`Queue\`
-				WHERE queueDate >= ${startDate} AND queueDate < ${endDate}
-				GROUP BY queueType
-				ORDER BY count DESC
-			`),
-      prisma.$queryRaw<
-        Array<{
-          officerName: string;
-          completedCount: bigint | number;
-          averageServiceTime: number | null;
-        }>
-      >(Prisma.sql`
-				SELECT
-					u.name AS officerName,
-					COALESCE(SUM(CASE WHEN q.status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completedCount,
-					ROUND(COALESCE(AVG(CASE
-						WHEN q.status = 'COMPLETED' AND q.startTime IS NOT NULL AND q.endTime IS NOT NULL
-							THEN TIMESTAMPDIFF(MINUTE, q.startTime, q.endTime)
-						ELSE NULL
-					END), 0)) AS averageServiceTime
-				FROM \`Queue\` q
-				INNER JOIN \`User\` u ON u.id = q.adminId
-				WHERE q.queueDate >= ${startDate}
-					AND q.queueDate < ${endDate}
-					AND q.adminId IS NOT NULL
-				GROUP BY q.adminId, u.name
-				HAVING completedCount > 0
-				ORDER BY completedCount DESC, officerName ASC
-			`),
-      prisma.$queryRaw<Array<{ hourOfDay: number; count: bigint | number }>>(Prisma.sql`
-				SELECT HOUR(createdAt) AS hourOfDay, COUNT(*) AS count
-				FROM \`Queue\`
-				WHERE queueDate >= ${startDate} AND queueDate < ${endDate}
-				GROUP BY HOUR(createdAt)
-				ORDER BY hourOfDay ASC
-			`),
-      prisma.$queryRaw<
-        Array<{
-          date: Date | string;
-          waiting: bigint | number;
-          completed: bigint | number;
-          canceled: bigint | number;
-        }>
-      >(Prisma.sql`
-				SELECT
-					DATE(queueDate) AS date,
-					COALESCE(SUM(CASE WHEN status IN ('WAITING', 'SERVING') THEN 1 ELSE 0 END), 0) AS waiting,
-					COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completed,
-					COALESCE(SUM(CASE WHEN status = 'CANCELED' THEN 1 ELSE 0 END), 0) AS canceled
-				FROM \`Queue\`
-				WHERE queueDate >= ${startDate} AND queueDate < ${endDate}
-				GROUP BY DATE(queueDate)
-				ORDER BY DATE(queueDate) ASC
-			`),
-    ]);
-
-  const summaryRow = summaryRows[0] ?? {
-    totalVisitors: 0,
-    completedServices: 0,
-    canceledServices: 0,
-    averageWaitTimeMinutes: 0,
-    averageServiceTimeMinutes: 0,
-    dataLastUpdatedAt: null,
-  };
-  const totalVisitors = toNumber(summaryRow.totalVisitors);
-  const completedServices = toNumber(summaryRow.completedServices);
-  const canceledServices = toNumber(summaryRow.canceledServices);
-  const dataLastUpdatedAt = summaryRow.dataLastUpdatedAt?.toISOString();
-  const hash = hashPayload({
-    range: {
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    },
-    summary: {
-      totalVisitors,
-      completedServices,
-      canceledServices,
-    },
-    dataLastUpdatedAt,
-  });
-  const hasChanges = !clientHash || clientHash !== hash;
-
-  if (!hasChanges) {
-    return {
-      summary: {
-        totalVisitors,
-        completedServices,
-        canceledServices,
-        averageWaitTimeMinutes: 0,
-        averageServiceTimeMinutes: 0,
-      },
-      serviceDistribution: [],
-      queueTypeDistribution: [],
-      officerPerformance: [],
-      timeAnalysis: [],
-      dailyTrends: [],
-      dataLastUpdatedAt,
-      hash,
-      hasChanges,
-    };
-  }
-
-  return {
-    summary: {
-      totalVisitors,
-      completedServices,
-      canceledServices,
-      averageWaitTimeMinutes: toNumber(summaryRow.averageWaitTimeMinutes),
-      averageServiceTimeMinutes: toNumber(summaryRow.averageServiceTimeMinutes),
-    },
-    serviceDistribution: serviceRows.map((row) => {
-      const count = toNumber(row.count);
-      return {
-        name: row.name,
-        count,
-        percentage: totalVisitors > 0 ? Math.round((count / totalVisitors) * 100) : 0,
-      };
-    }),
-    queueTypeDistribution: queueTypeRows.map((row) => {
-      const count = toNumber(row.count);
-      return {
-        name: row.queueType === "ONLINE" ? "Online" : "Offline",
-        count,
-        percentage: totalVisitors > 0 ? Math.round((count / totalVisitors) * 100) : 0,
-      };
-    }),
-    officerPerformance: officerRows.map((row) => ({
-      officerName: row.officerName,
-      completedCount: toNumber(row.completedCount),
-      averageServiceTime: toNumber(row.averageServiceTime),
-    })),
-    timeAnalysis: timeRows.map((row) => ({
-      hourOfDay: toNumber(row.hourOfDay),
-      count: toNumber(row.count),
-    })),
-    dailyTrends: dailyRows.map((row) => ({
-      date: format(new Date(row.date), "yyyy-MM-dd"),
-      waiting: toNumber(row.waiting),
-      completed: toNumber(row.completed),
-      canceled: toNumber(row.canceled),
-    })),
-    dataLastUpdatedAt,
-    hash,
-    hasChanges,
-  };
-}
-
-type ExportFormat = "xlsx" | "pdf";
-
-const EXPORT_COLUMNS: Array<{ key: keyof AnalyticsExportRow; label: string }> = [
+const EXPORT_DETAIL_COLUMNS: Array<{ key: keyof AnalyticsExportRow; label: string }> = [
   { key: "queueNumber", label: "Nomor Antrean" },
   { key: "serviceType", label: "Layanan" },
   { key: "visitorName", label: "Nama Pengunjung" },
@@ -274,7 +34,7 @@ const EXPORT_COLUMNS: Array<{ key: keyof AnalyticsExportRow; label: string }> = 
   { key: "serviceTimeMinutes", label: "Durasi Layanan (m)" },
 ];
 
-const PDF_COLUMNS: Array<{
+const PDF_DETAIL_COLUMNS: Array<{
   key: keyof AnalyticsExportRow;
   label: string;
   width: number;
@@ -293,12 +53,80 @@ const PDF_COLUMNS: Array<{
   { key: "serviceTimeMinutes", label: "Layanan", width: 55, align: "right" },
 ];
 
-const buildPdfBuffer = async (rows: AnalyticsExportRow[], range: DateRange) => {
+const toPeriodLabels = (range: DateRange) => ({
+  startDateLabel: formatDisplayDate(range.startDate),
+  endDateLabel: formatDisplayDate(new Date(range.endDate.getTime() - ONE_DAY_MS)),
+});
+
+const toOfficerDistributionLabel = (serviceBreakdown: AnalyticsSummary["officerDetails"][number]["serviceBreakdown"]) => {
+  if (serviceBreakdown.length === 0) {
+    return "-";
+  }
+
+  return serviceBreakdown.map((item) => `${item.serviceName}: ${item.count}`).join("; ");
+};
+
+const buildSummarySheetRows = (analytics: AnalyticsSummary, range: DateRange) => {
+  const { startDateLabel, endDateLabel } = toPeriodLabels(range);
+
+  return [
+    ["Laporan", "Analitik Antrean"],
+    ["Periode", `${startDateLabel} - ${endDateLabel}`],
+    ["Diekspor", formatDisplayDateTimeWithSeconds(new Date())],
+    ["", ""],
+    ["Ringkasan Total", ""],
+    ["Total Pengunjung", analytics.summary.totalVisitors],
+    ["Layanan Selesai", analytics.summary.completedServices],
+    ["Layanan Dibatalkan", analytics.summary.canceledServices],
+    ["Rata-rata Waktu Tunggu (menit)", analytics.summary.averageWaitTimeMinutes],
+    ["Rata-rata Durasi Layanan (menit)", analytics.summary.averageServiceTimeMinutes],
+    ["", ""],
+    ["Insight", ""],
+    ["Layanan Paling Populer", analytics.insights.mostPopularService?.serviceName ?? "-"],
+    ["Jumlah Layanan Populer", analytics.insights.mostPopularService?.count ?? 0],
+    ["Petugas Paling Aktif", analytics.insights.mostActiveOfficer?.officerName ?? "-"],
+    ["Jumlah Layanan Petugas Aktif", analytics.insights.mostActiveOfficer?.completedCount ?? 0],
+    [
+      "Perbandingan Online vs Offline",
+      `${analytics.insights.onlineVsOffline.online} (${analytics.insights.onlineVsOffline.onlinePercentage}%) vs ${analytics.insights.onlineVsOffline.offline} (${analytics.insights.onlineVsOffline.offlinePercentage}%)`,
+    ],
+    ["Rata-rata Layanan per Petugas", analytics.insights.averageServicesPerOfficer],
+  ];
+};
+
+const buildOfficerSheetRows = (analytics: AnalyticsSummary) => {
+  const header = [
+    "Nama Petugas",
+    "Jumlah Layanan",
+    "Top Service",
+    "Frekuensi Layanan",
+    "Rata-rata Waktu Tunggu (m)",
+    "Rata-rata Durasi Layanan (m)",
+  ];
+
+  const rows = analytics.officerDetails.map((officer) => [
+    officer.officerName,
+    officer.totalHandled,
+    officer.topService ? `${officer.topService.serviceName} (${officer.topService.count})` : "-",
+    toOfficerDistributionLabel(officer.serviceBreakdown),
+    officer.averageWaitTime,
+    officer.averageServiceTime,
+  ]);
+
+  return [header, ...rows];
+};
+
+const buildPdfBuffer = async (
+  rows: AnalyticsExportRow[],
+  range: DateRange,
+  analytics: AnalyticsSummary
+) => {
   const doc = new PDFDocument({
     size: "A4",
-    layout: "landscape",
+    layout: "portrait",
     margin: 36,
   });
+
   const chunks: Buffer[] = [];
   const done = new Promise<Buffer>((resolve, reject) => {
     doc.on("data", (chunk) => chunks.push(chunk as Buffer));
@@ -306,74 +134,139 @@ const buildPdfBuffer = async (rows: AnalyticsExportRow[], range: DateRange) => {
     doc.on("error", reject);
   });
 
-  const startLabel = formatDisplayDate(range.startDate);
-  const endLabel = formatDisplayDate(new Date(range.endDate.getTime() - 24 * 60 * 60 * 1000));
+  const { startDateLabel, endDateLabel } = toPeriodLabels(range);
 
   doc.fontSize(16).fillColor("#111827").text("Laporan Analitik Antrean");
   doc
     .fontSize(9)
     .fillColor("#6B7280")
-    .text(`Periode: ${startLabel} - ${endLabel}`)
-    .text(`Diekspor: ${formatDisplayDateTimeWithSeconds(new Date())}`);
-  doc.moveDown(0.8);
+    .text(`Periode: ${startDateLabel} - ${endDateLabel}`)
+    .text(`Diekspor: ${formatDisplayDateTimeWithSeconds(new Date())}`)
+    .moveDown(0.8);
 
-  const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const baseWidth = PDF_COLUMNS.reduce((sum, col) => sum + col.width, 0);
-  const scale = baseWidth > pageWidth ? pageWidth / baseWidth : 1;
-  const columns = PDF_COLUMNS.map((col) => ({
-    ...col,
-    width: Math.floor(col.width * scale),
-  }));
+  doc.font("Helvetica-Bold").fontSize(11).fillColor("#111827").text("Ringkasan Total");
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .text(`Total pengunjung: ${analytics.summary.totalVisitors}`)
+    .text(`Layanan selesai: ${analytics.summary.completedServices}`)
+    .text(`Layanan dibatalkan: ${analytics.summary.canceledServices}`)
+    .text(`Rata-rata waktu tunggu: ${analytics.summary.averageWaitTimeMinutes} menit`)
+    .text(`Rata-rata durasi layanan: ${analytics.summary.averageServiceTimeMinutes} menit`)
+    .moveDown(0.7);
 
-  const rowHeight = 18;
-  const startX = doc.page.margins.left;
-  let y = doc.y;
+  doc.font("Helvetica-Bold").fontSize(11).fillColor("#111827").text("Insight");
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .text(
+      `Layanan paling populer: ${analytics.insights.mostPopularService ? `${analytics.insights.mostPopularService.serviceName} (${analytics.insights.mostPopularService.count})` : "-"}`
+    )
+    .text(
+      `Petugas paling aktif: ${analytics.insights.mostActiveOfficer ? `${analytics.insights.mostActiveOfficer.officerName} (${analytics.insights.mostActiveOfficer.completedCount})` : "-"}`
+    )
+    .text(
+      `Perbandingan online vs offline: ${analytics.insights.onlineVsOffline.online} (${analytics.insights.onlineVsOffline.onlinePercentage}%) vs ${analytics.insights.onlineVsOffline.offline} (${analytics.insights.onlineVsOffline.offlinePercentage}%)`
+    )
+    .text(`Rata-rata layanan per petugas: ${analytics.insights.averageServicesPerOfficer}`)
+    .moveDown(0.7);
 
-  const drawHeader = () => {
-    doc.font("Helvetica-Bold").fontSize(8).fillColor("#111827");
-    let x = startX;
-    columns.forEach((col) => {
-      doc.text(col.label, x, y + 3, {
-        width: col.width - 4,
-        align: col.align ?? "left",
-        ellipsis: true,
-      });
-      x += col.width;
+  doc.font("Helvetica-Bold").fontSize(11).fillColor("#111827").text("Ringkasan Per Petugas");
+
+  if (analytics.officerDetails.length === 0) {
+    doc.font("Helvetica").fontSize(10).fillColor("#374151").text("Tidak ada data petugas.").moveDown(0.8);
+  } else {
+    analytics.officerDetails.forEach((officer, index) => {
+      const topServiceLabel = officer.topService
+        ? `${officer.topService.serviceName} (${officer.topService.count})`
+        : "-";
+      const frequencies = toOfficerDistributionLabel(officer.serviceBreakdown);
+
+      doc
+        .font("Helvetica")
+        .fontSize(9.5)
+        .fillColor("#111827")
+        .text(
+          `${index + 1}. ${officer.officerName} | Total: ${officer.totalHandled} | Top service: ${topServiceLabel}`
+        )
+        .fillColor("#4B5563")
+        .text(`   Frekuensi: ${frequencies}`)
+        .text(
+          `   Rata-rata tunggu: ${officer.averageWaitTime} menit, rata-rata layanan: ${officer.averageServiceTime} menit`
+        )
+        .moveDown(0.2);
     });
-    y += rowHeight;
+  }
+
+  if (rows.length > 0) {
+    doc.addPage({ size: "A4", layout: "landscape", margin: 36 });
+
+    doc.font("Helvetica-Bold").fontSize(11).fillColor("#111827").text("Lampiran Detail Antrean");
     doc
-      .moveTo(startX, y - 2)
-      .lineTo(startX + pageWidth, y - 2)
-      .strokeColor("#E5E7EB")
-      .stroke();
-    doc.font("Helvetica").fontSize(8).fillColor("#111827");
-  };
+      .font("Helvetica")
+      .fontSize(9)
+      .fillColor("#6B7280")
+      .text(`Jumlah baris: ${rows.length}`)
+      .moveDown(0.6);
 
-  const ensureSpace = () => {
-    if (y + rowHeight > doc.page.height - doc.page.margins.bottom) {
-      doc.addPage({ size: "A4", layout: "landscape", margin: 36 });
-      y = doc.page.margins.top;
-      drawHeader();
-    }
-  };
+    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const baseWidth = PDF_DETAIL_COLUMNS.reduce((sum, col) => sum + col.width, 0);
+    const scale = baseWidth > pageWidth ? pageWidth / baseWidth : 1;
+    const columns = PDF_DETAIL_COLUMNS.map((col) => ({
+      ...col,
+      width: Math.floor(col.width * scale),
+    }));
 
-  drawHeader();
+    const rowHeight = 18;
+    const startX = doc.page.margins.left;
+    let y = doc.y;
 
-  rows.forEach((row) => {
-    ensureSpace();
-    let x = startX;
-    columns.forEach((col) => {
-      const value = row[col.key];
-      const text = value === null || value === undefined ? "" : String(value);
-      doc.text(text, x, y + 3, {
-        width: col.width - 4,
-        align: col.align ?? "left",
-        ellipsis: true,
+    const drawHeader = () => {
+      doc.font("Helvetica-Bold").fontSize(8).fillColor("#111827");
+      let x = startX;
+      columns.forEach((col) => {
+        doc.text(col.label, x, y + 3, {
+          width: col.width - 4,
+          align: col.align ?? "left",
+          ellipsis: true,
+        });
+        x += col.width;
       });
-      x += col.width;
+      y += rowHeight;
+      doc
+        .moveTo(startX, y - 2)
+        .lineTo(startX + pageWidth, y - 2)
+        .strokeColor("#E5E7EB")
+        .stroke();
+      doc.font("Helvetica").fontSize(8).fillColor("#111827");
+    };
+
+    const ensureSpace = () => {
+      if (y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage({ size: "A4", layout: "landscape", margin: 36 });
+        y = doc.page.margins.top;
+        drawHeader();
+      }
+    };
+
+    drawHeader();
+
+    rows.forEach((row) => {
+      ensureSpace();
+      let x = startX;
+      columns.forEach((col) => {
+        const value = row[col.key];
+        const text = value === null || value === undefined ? "" : String(value);
+        doc.text(text, x, y + 3, {
+          width: col.width - 4,
+          align: col.align ?? "left",
+          ellipsis: true,
+        });
+        x += col.width;
+      });
+      y += rowHeight;
     });
-    y += rowHeight;
-  });
+  }
 
   doc.end();
   return done;
@@ -426,6 +319,8 @@ export async function exportAnalytics(range: DateRange, exportFormat: ExportForm
       error: `Jumlah data export melebihi batas (${MAX_ANALYTICS_EXPORT_ROWS} baris). Persempit rentang tanggal.`,
     };
   }
+
+  const analyticsSummary = await getAnalyticsSummary(range.startDate, range.endDate);
 
   const makeRow = (queue: QueueWithRelations): AnalyticsExportRow => ({
     queueNumber: queue.queueNumber,
@@ -493,18 +388,27 @@ export async function exportAnalytics(range: DateRange, exportFormat: ExportForm
     return rows;
   };
 
+  const detailRows = await collectRows();
+
   if (exportFormat === "xlsx") {
-    const rows = await collectRows();
-    const headerRow = EXPORT_COLUMNS.map((column) => column.label);
-    const dataRows = rows.map((row) =>
-      EXPORT_COLUMNS.map((column) => {
+    const workbook = XLSX.utils.book_new();
+
+    const summaryWorksheet = XLSX.utils.aoa_to_sheet(buildSummarySheetRows(analyticsSummary, range));
+    const officerWorksheet = XLSX.utils.aoa_to_sheet(buildOfficerSheetRows(analyticsSummary));
+
+    const detailHeader = EXPORT_DETAIL_COLUMNS.map((column) => column.label);
+    const detailDataRows = detailRows.map((row) =>
+      EXPORT_DETAIL_COLUMNS.map((column) => {
         const value = row[column.key];
         return value === null || value === undefined ? "" : value;
       })
     );
-    const worksheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Analytics");
+    const detailWorksheet = XLSX.utils.aoa_to_sheet([detailHeader, ...detailDataRows]);
+
+    XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Ringkasan");
+    XLSX.utils.book_append_sheet(workbook, officerWorksheet, "Per Petugas");
+    XLSX.utils.book_append_sheet(workbook, detailWorksheet, "Detail Antrean");
+
     const body = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
 
     return {
@@ -517,8 +421,7 @@ export async function exportAnalytics(range: DateRange, exportFormat: ExportForm
     };
   }
 
-  const rows = await collectRows();
-  const body = await buildPdfBuffer(rows, range);
+  const body = await buildPdfBuffer(detailRows, range, analyticsSummary);
   return {
     ok: true as const,
     format: "pdf" as const,
@@ -528,5 +431,3 @@ export async function exportAnalytics(range: DateRange, exportFormat: ExportForm
     },
   };
 }
-
-export { parseDateRange };

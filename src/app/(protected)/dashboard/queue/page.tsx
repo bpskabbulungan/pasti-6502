@@ -41,6 +41,7 @@ export default async function Page({ searchParams }: PageProps) {
     limit: "10",
     offset: "0",
   });
+  const initialFetchedAt = new Date().toISOString();
 
   return (
     <QueuePage
@@ -48,6 +49,7 @@ export default async function Page({ searchParams }: PageProps) {
       initialStatus={initialStatus}
       initialDateFilter={initialDateFilter}
       initialPageData={initialPageData}
+      initialFetchedAt={initialFetchedAt}
     />
   );
 }

@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  CheckCircle2,
   Clock3,
   FileSpreadsheet,
   FileText,
@@ -16,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/feedback/empty-state";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
 import { PageContainer } from "@/components/shared/layout/page-container";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import {
   Card,
   CardContent,
@@ -52,9 +52,10 @@ import type { PurposeFilter, StatusFilter } from "@/features/dashboard/screens/g
 
 type GuestbookPageProps = {
   initialData: GuestbookListResponse;
+  initialFetchedAt: string;
 };
 
-export default function GuestbookPage({ initialData }: GuestbookPageProps) {
+export default function GuestbookPage({ initialData, initialFetchedAt }: GuestbookPageProps) {
   const {
     searchTerm,
     setSearchTerm,
@@ -90,7 +91,7 @@ export default function GuestbookPage({ initialData }: GuestbookPageProps) {
     openDetail,
     handleDetailOpenChange,
     resetFilters,
-  } = useGuestbookPageController(initialData);
+  } = useGuestbookPageController(initialData, initialFetchedAt);
 
   const summaryCards = [
     {
@@ -100,22 +101,6 @@ export default function GuestbookPage({ initialData }: GuestbookPageProps) {
       icon: Users,
       iconBg: "bg-primary/10",
       iconClassName: "text-primary",
-    },
-    {
-      title: "Sedang Dilayani",
-      value: summaryData.serving,
-      description: "Pengunjung yang sedang diproses",
-      icon: Clock3,
-      iconBg: "bg-sky-500/10",
-      iconClassName: "text-sky-600",
-    },
-    {
-      title: "Selesai",
-      value: summaryData.completed,
-      description: "Layanan yang sudah selesai",
-      icon: CheckCircle2,
-      iconBg: "bg-emerald-500/10",
-      iconClassName: "text-emerald-600",
     },
     {
       title: "Belum Isi SKD",
@@ -129,38 +114,31 @@ export default function GuestbookPage({ initialData }: GuestbookPageProps) {
 
   return (
     <PageContainer>
-      <section className="dashboard-hero p-5 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold text-primary-color sm:text-3xl">Buku Tamu PST</h1>
-              <p className="max-w-xl text-secondary-color">
-                Rekapitulasi kunjungan pengunjung yang sudah dilayani atau selesai.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-              <span>Terakhir diperbarui: {lastFetchedLabel}</span>
-              <LiveStatusBadge isRefreshing={isRefreshing} hasFetched={hasFetched} />
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                variant="outline"
-                className="w-full gap-2 border-border sm:w-auto"
-                onClick={() => void refresh()}
-                disabled={isRefreshing}
-              >
-                <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                {isRefreshing ? "Memperbarui..." : "Muat ulang data"}
-              </Button>
-              <Badge variant="outline" className="border-border/70 bg-background/80">
-                Filter: {dateFilter === "today" ? "Hari ini" : "Semua tanggal"}
-              </Badge>
-            </div>
+      <DashboardPageHeader
+        title="Buku Tamu PASTI 6502"
+        description="Rekapitulasi kunjungan pengunjung yang sudah dilayani atau selesai."
+        meta={
+          <>
+            <span>Terakhir diperbarui: {lastFetchedLabel}</span>
+            <LiveStatusBadge isRefreshing={isRefreshing} hasFetched={hasFetched} />
+          </>
+        }
+        actions={
+          <div className="dashboard-header-actions">
+            <Button
+              variant="outline"
+              className="dashboard-header-action border-border"
+              onClick={() => void refresh()}
+              disabled={isRefreshing}
+            >
+              <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              {isRefreshing ? "Memperbarui..." : "Perbarui Data"}
+            </Button>
           </div>
-        </div>
-      </section>
+        }
+      />
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2">
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (

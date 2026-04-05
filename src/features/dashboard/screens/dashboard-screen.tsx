@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Role } from "@/shared/constants/enums";
 import Link from "next/link";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import { CheckCircle, Clock3, Hourglass, RefreshCcw, Settings, Users, XCircle } from "lucide-react";
 import DashboardSkeleton from "@/features/dashboard/components/skeletons/dashboard-skeleton";
 import { useLiveQuery } from "@/hooks/use-live-query";
@@ -18,6 +20,7 @@ type DashboardStats = DashboardStatsResponse;
 type DashboardPageProps = {
   currentUser: Session["user"];
   initialStats: DashboardStats;
+  initialFetchedAt: string;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -34,7 +37,11 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return message || fallback;
 };
 
-export default function DashboardPage({ currentUser, initialStats }: DashboardPageProps) {
+export default function DashboardPage({
+  currentUser,
+  initialStats,
+  initialFetchedAt,
+}: DashboardPageProps) {
   const {
     data: stats,
     isLoading,
@@ -44,6 +51,7 @@ export default function DashboardPage({ currentUser, initialStats }: DashboardPa
   } = useLiveQuery<DashboardStats>(dashboardApi.statsUrl(), {
     fallbackData: initialStats,
     fallbackEtag: initialStats.hash ? `"${initialStats.hash}"` : null,
+    fallbackFetchedAt: initialFetchedAt,
     refreshInterval: 30_000,
     onError: (error) => {
       console.error("Error fetching stats:", error);
@@ -145,34 +153,29 @@ export default function DashboardPage({ currentUser, initialStats }: DashboardPa
 
   return (
     <div className="dashboard-page">
-      <section className="dashboard-hero p-5 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold text-primary-color sm:text-3xl">Dashboard</h1>
-              <p className="max-w-xl text-sm text-secondary-color">
-                Statistik antrean harian dan ringkasan performa layanan.
-              </p>
+      <DashboardPageHeader
+        title="Dashboard"
+        description="Statistik antrean harian dan ringkasan performa layanan."
+        meta={
+          <>
+            <div className="flex items-center gap-2">
+              <Clock3 className="h-4 w-4" />
+              <span>Data per: {updatedLabel}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs text-secondary-color">
-              <div className="flex items-center gap-2">
-                <Clock3 className="h-4 w-4" />
-                <span>Data per: {updatedLabel}</span>
-              </div>
-              <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-2 py-1 text-[11px] font-medium">
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${isRefreshing ? "bg-primary animate-pulse" : "bg-emerald-500"}`}
-                />
-                {isRefreshing ? "Memperbarui data..." : "Auto refresh setiap 30 detik"}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+            <LiveStatusBadge
+              isRefreshing={isRefreshing}
+              hasFetched={Boolean(lastFetchedAt)}
+              idleLabel="Auto refresh setiap 30 detik"
+            />
+          </>
+        }
+        actions={
+          <div className="dashboard-header-actions">
             {currentUser.role === Role.PETUGAS && (
               <Button
                 asChild
                 variant="outline"
-                className="border-border/80 bg-background/75 text-primary-color"
+                className="dashboard-header-action border-border/80 bg-background/75 text-primary-color"
               >
                 <Link href="/dashboard/ui-showcase">UI Showcase</Link>
               </Button>
@@ -180,15 +183,15 @@ export default function DashboardPage({ currentUser, initialStats }: DashboardPa
             <Button
               onClick={() => void refresh()}
               disabled={isRefreshing}
-              className="flex items-center gap-2"
+              className="dashboard-header-action"
               aria-label="Perbarui data statistik"
             >
               <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
               <span>{isRefreshing ? "Memperbarui..." : "Perbarui Data"}</span>
             </Button>
           </div>
-        </div>
-      </section>
+        }
+      />
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {metricCards.map((card) => {

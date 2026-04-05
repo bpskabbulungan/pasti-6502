@@ -9,8 +9,9 @@ export default async function Page() {
     limit: "10",
     offset: "0",
   });
+  const initialFetchedAt = new Date().toISOString();
 
-  return <GuestbookPage initialData={initialData} />;
+  return <GuestbookPage initialData={initialData} initialFetchedAt={initialFetchedAt} />;
 }
 
 

@@ -6,6 +6,7 @@ import { ConfirmActionDialog } from "@/components/shared/dialogs/confirm-action-
 import { EmptyState } from "@/components/shared/feedback/empty-state";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
 import { PageContainer } from "@/components/shared/layout/page-container";
+import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -228,126 +229,121 @@ export default function UsersManagementPage() {
 
   return (
     <PageContainer>
-      <div className="dashboard-hero p-5 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <h1 className="text-primary-color text-2xl font-bold leading-tight sm:text-3xl">
-                Kelola Pengguna
-              </h1>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-              <span>Terakhir diperbarui: {lastFetchedLabel}</span>
-              <LiveStatusBadge isRefreshing={isRefreshing} hasFetched={hasFetched} />
-            </div>
-            <div className="flex w-full flex-wrap justify-start gap-3">
-              <Button
-                variant="outline"
-                className="w-full gap-2 border-border sm:w-auto"
-                onClick={() => fetchUsers()}
-                disabled={loading}
-              >
-                <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                {loading ? "Memperbarui..." : "Muat ulang data"}
-              </Button>
-              <Dialog
-                open={addDialogOpen}
-                onOpenChange={(open) => {
-                  setAddDialogOpen(open);
-                  if (!open) resetFormFields();
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button variant="success" className="flex w-full items-center gap-2 sm:w-auto">
-                    <UserPlus className="h-4 w-4" />
-                    Tambah Petugas
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>Tambah Petugas Baru</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Nama Lengkap</Label>
-                        <Input
-                          id="name"
-                          value={newName}
-                          onChange={(e) => setNewName(e.target.value)}
-                          placeholder="Masukkan nama lengkap"
-                          autoFocus
-                          autoComplete="name"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="username">Username</Label>
-                        <Input
-                          id="username"
-                          value={newUsername}
-                          onChange={(e) => setNewUsername(e.target.value)}
-                          placeholder="contoh: adminpst"
-                          autoComplete="username"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="password">Password</Label>
-                        <Input
-                          id="password"
-                          type="password"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          placeholder="Minimal 8 karakter"
-                          autoComplete="new-password"
-                          minLength={8}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="confirmPassword">Konfirmasi Password</Label>
-                        <Input
-                          id="confirmPassword"
-                          type="password"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          placeholder="Ulangi password"
-                          autoComplete="new-password"
-                          minLength={8}
-                          aria-invalid={passwordMismatch}
-                        />
-                        {passwordMismatch && (
-                          <p className="text-xs text-destructive">
-                            Password dan konfirmasi tidak sama.
-                          </p>
-                        )}
-                      </div>
+      <DashboardPageHeader
+        title="Kelola Pengguna"
+        description="Pengelolaan akun admin dan petugas layanan."
+        meta={
+          <>
+            <span>Terakhir diperbarui: {lastFetchedLabel}</span>
+            <LiveStatusBadge isRefreshing={isRefreshing} hasFetched={hasFetched} />
+          </>
+        }
+        actions={
+          <div className="dashboard-header-actions">
+            <Button
+              variant="outline"
+              className="dashboard-header-action border-border"
+              onClick={() => fetchUsers()}
+              disabled={loading}
+            >
+              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Memperbarui..." : "Perbarui Data"}
+            </Button>
+            <Dialog
+              open={addDialogOpen}
+              onOpenChange={(open) => {
+                setAddDialogOpen(open);
+                if (!open) resetFormFields();
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button variant="success" className="dashboard-header-action">
+                  <UserPlus className="h-4 w-4" />
+                  Tambah Petugas
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Tambah Petugas Baru</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Nama Lengkap</Label>
+                      <Input
+                        id="name"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Masukkan nama lengkap"
+                        autoFocus
+                        autoComplete="name"
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone">No. WhatsApp (opsional)</Label>
+                      <Label htmlFor="username">Username</Label>
                       <Input
-                        id="phone"
-                        value={newPhone}
-                        onChange={(e) => setNewPhone(e.target.value)}
-                        placeholder="08xxxxxxxxxx"
-                        autoComplete="tel"
+                        id="username"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                        placeholder="contoh: adminpst"
+                        autoComplete="username"
                       />
                     </div>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                      Batal
-                    </Button>
-                    <Button variant="success" onClick={handleAddUser} disabled={isAddDisabled}>
-                      Simpan Petugas
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Minimal 8 karakter"
+                        autoComplete="new-password"
+                        minLength={8}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPassword">Konfirmasi Password</Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Ulangi password"
+                        autoComplete="new-password"
+                        minLength={8}
+                        aria-invalid={passwordMismatch}
+                      />
+                      {passwordMismatch && (
+                        <p className="text-xs text-destructive">Password dan konfirmasi tidak sama.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">No. WhatsApp (opsional)</Label>
+                    <Input
+                      id="phone"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      placeholder="08xxxxxxxxxx"
+                      autoComplete="tel"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+                    Batal
+                  </Button>
+                  <Button variant="success" onClick={handleAddUser} disabled={isAddDisabled}>
+                    Simpan Petugas
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
-        </div>
-      </div>
+        }
+      />
       <section className="grid gap-3 sm:grid-cols-3">
         <Card className="border-border/80 bg-card/88">
           <CardHeader className="pb-2">
