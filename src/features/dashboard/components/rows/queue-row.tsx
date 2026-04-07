@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { ExternalLink, ListChecks, XCircle } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -10,6 +10,7 @@ type QueueTableRowProps = {
   rowNumber: number;
   queue: QueueDetail;
   onServe: (queueId: string) => void;
+  onComplete: (queue: QueueDetail) => void;
   onOpenCancel: (queue: QueueDetail) => void;
 };
 
@@ -45,6 +46,8 @@ const queueStatusClass = {
 const actionButtonTone = {
   serve:
     "border-emerald-300/90 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:ring-emerald-300/60 dark:border-emerald-500/40 dark:bg-emerald-500/14 dark:text-emerald-200 dark:hover:bg-emerald-500/22",
+  complete:
+    "border-sky-300/90 bg-sky-50 text-sky-700 hover:bg-sky-100 focus-visible:ring-sky-300/60 dark:border-sky-500/40 dark:bg-sky-500/14 dark:text-sky-200 dark:hover:bg-sky-500/22",
   cancel:
     "border-rose-300/90 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:ring-rose-300/60 dark:border-rose-500/40 dark:bg-rose-500/14 dark:text-rose-200 dark:hover:bg-rose-500/22",
 } as const;
@@ -53,6 +56,7 @@ function QueueTableRowComponent({
   rowNumber,
   queue,
   onServe,
+  onComplete,
   onOpenCancel,
 }: QueueTableRowProps) {
   const queueCode = formatServiceQueueCode(queue.service.name, queue.queueNumber);
@@ -97,36 +101,44 @@ function QueueTableRowComponent({
                 <Button
                   size="sm"
                   variant="outline"
-                  className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.serve}`}
+                  className={`h-8 shadow-none ${actionButtonTone.serve}`}
                   onClick={() => onServe(queue.id)}
-                  aria-label="Layani antrean"
-                  title="Layani antrean"
+                  aria-label="Layani"
                 >
-                  <ListChecks className="h-3.5 w-3.5" />
+                  Layani
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
+                  className={`h-8 shadow-none ${actionButtonTone.cancel}`}
                   onClick={() => onOpenCancel(queue)}
-                  aria-label="Batalkan antrean"
-                  title="Batalkan antrean"
+                  aria-label="Batalkan"
                 >
-                  <XCircle className="h-3.5 w-3.5" />
+                  Batalkan
                 </Button>
               </>
             )}
             {queue.status === "SERVING" ? (
-              <Button
-                size="sm"
-                variant="outline"
-                className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
-                onClick={() => onOpenCancel(queue)}
-                aria-label="Batalkan antrean"
-                title="Batalkan antrean"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`h-8 shadow-none ${actionButtonTone.complete}`}
+                  onClick={() => onComplete(queue)}
+                  aria-label="Selesaikan"
+                >
+                  Selesaikan
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`h-8 shadow-none ${actionButtonTone.cancel}`}
+                  onClick={() => onOpenCancel(queue)}
+                  aria-label="Batalkan"
+                >
+                  Batalkan
+                </Button>
+              </>
             ) : null}
             {queue.status !== "WAITING" && queue.status !== "SERVING" ? (
               <span className="text-xs text-muted-foreground">-</span>
@@ -195,36 +207,44 @@ function QueueTableRowComponent({
                   <Button
                     size="sm"
                     variant="outline"
-                    className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.serve}`}
+                    className={`h-8 shadow-none ${actionButtonTone.serve}`}
                     onClick={() => onServe(queue.id)}
-                    aria-label="Layani antrean"
-                    title="Layani antrean"
+                    aria-label="Layani"
                   >
-                    <ListChecks className="h-3.5 w-3.5" />
+                    Layani
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
+                    className={`h-8 shadow-none ${actionButtonTone.cancel}`}
                     onClick={() => onOpenCancel(queue)}
-                    aria-label="Batalkan antrean"
-                    title="Batalkan antrean"
+                    aria-label="Batalkan"
                   >
-                    <XCircle className="h-3.5 w-3.5" />
+                    Batalkan
                   </Button>
                 </>
               ) : null}
               {queue.status === "SERVING" ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
-                  onClick={() => onOpenCancel(queue)}
-                  aria-label="Batalkan antrean"
-                  title="Batalkan antrean"
-                >
-                  <XCircle className="h-3.5 w-3.5" />
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`h-8 shadow-none ${actionButtonTone.complete}`}
+                    onClick={() => onComplete(queue)}
+                    aria-label="Selesaikan"
+                  >
+                    Selesaikan
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`h-8 shadow-none ${actionButtonTone.cancel}`}
+                    onClick={() => onOpenCancel(queue)}
+                    aria-label="Batalkan"
+                  >
+                    Batalkan
+                  </Button>
+                </>
               ) : null}
             </div>
           </div>

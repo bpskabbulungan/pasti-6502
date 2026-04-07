@@ -3,12 +3,10 @@ import type {
 	PurposeFilter,
 	SortByFilter,
 	SortOrderFilter,
-	StatusFilter,
 } from "./schema";
 import { getFilenameFromContentDisposition } from "./helper";
 
 type ExportParams = {
-	statusFilter: StatusFilter;
 	purposeFilter: PurposeFilter;
 	dateFilter: DateFilter;
 	year?: number;
@@ -23,9 +21,6 @@ type ExportParams = {
 
 export async function exportGuestbookData(params: ExportParams) {
 	const query = new URLSearchParams();
-	if (params.statusFilter !== "ALL") {
-		query.set("status", params.statusFilter);
-	}
 	if (params.purposeFilter !== "ALL") {
 		query.set("purpose", params.purposeFilter);
 	}

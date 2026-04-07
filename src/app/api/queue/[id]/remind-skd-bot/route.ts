@@ -18,7 +18,8 @@ export async function POST(
 		}
 
 		const { id } = await params;
-		const { message } = await req.json();
+		const payload = (await req.json().catch(() => ({}))) as { message?: unknown };
+		const message = typeof payload.message === "string" ? payload.message : undefined;
 
 		const result = await triggerSkdReminderBot(id, message);
 

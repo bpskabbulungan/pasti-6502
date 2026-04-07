@@ -5,7 +5,6 @@ import type {
 	PurposeFilter,
 	SortByFilter,
 	SortOrderFilter,
-	StatusFilter,
 } from "./schema";
 
 export const genderLabels: Record<Gender, string> = {
@@ -49,27 +48,10 @@ export const purposeOptions: Array<{ value: Purpose; label: string; accent: stri
 	},
 ];
 
-export const statusLabels: Record<QueueStatus, string> = {
-	WAITING: "Menunggu",
-	SERVING: "Sedang Dilayani",
-	COMPLETED: "Selesai",
-	CANCELED: "Dibatalkan",
-};
-
-export const statusBadgeClass: Record<QueueStatus, string> = {
-	WAITING: "border-amber-500/30 bg-amber-500/10 text-amber-700",
-	SERVING: "border-sky-500/30 bg-sky-500/10 text-sky-700",
-	COMPLETED: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
-	CANCELED: "border-red-500/30 bg-red-500/10 text-red-700",
-};
-
 export const getPurposeFilterLabel = (purposeFilter: PurposeFilter) =>
 	purposeFilter === "ALL"
 		? "Semua keperluan"
 		: (purposeOptions.find((option) => option.value === purposeFilter)?.label ?? "Keperluan");
-
-export const getStatusFilterLabel = (statusFilter: StatusFilter) =>
-	statusFilter === "ALL" ? "Semua status" : statusLabels[statusFilter];
 
 export const dateFilterLabels: Record<DateFilter, string> = {
 	today: "Hari ini",
@@ -113,6 +95,8 @@ export const sortOptions: Array<{
 }> = [
 	{ value: "createdAt.desc", label: "Tanggal datang terbaru" },
 	{ value: "createdAt.asc", label: "Tanggal datang terlama" },
+	{ value: "queueNumber.asc", label: "Nomor antrean terkecil" },
+	{ value: "queueNumber.desc", label: "Nomor antrean terbesar" },
 	{ value: "fullName.asc", label: "Nama A-Z" },
 	{ value: "fullName.desc", label: "Nama Z-A" },
 	{ value: "serviceName.asc", label: "Layanan A-Z" },
@@ -155,12 +139,6 @@ export const buildFallbackSummary = (
 			acc.total += 1;
 			acc.skdPending += entry.filledSKD ? 0 : 1;
 			switch (entry.status) {
-				case QueueStatus.WAITING:
-					acc.waiting += 1;
-					break;
-				case QueueStatus.SERVING:
-					acc.serving += 1;
-					break;
 				case QueueStatus.COMPLETED:
 					acc.completed += 1;
 					break;
@@ -174,8 +152,6 @@ export const buildFallbackSummary = (
 		},
 		{
 			total: 0,
-			waiting: 0,
-			serving: 0,
 			completed: 0,
 			canceled: 0,
 			skdPending: 0,

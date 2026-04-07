@@ -6,6 +6,9 @@ import {
   AlertTriangle,
   BellRing,
   Clock3,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   FileSpreadsheet,
   FileText,
   Loader2,
@@ -27,7 +30,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -37,11 +47,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import GuestbookTableRow from "@/features/dashboard/components/rows/guestbook-row";
 import TableSkeleton from "@/features/dashboard/components/skeletons/table-skeleton";
 import { queuesApi } from "@/services/api/queues";
-import { QueueStatus } from "@/shared/constants/enums";
 import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
 import { useGuestbookPageController } from "@/features/dashboard/screens/guestbook-state/controller";
 import {
@@ -52,13 +61,12 @@ import {
   educationLabels,
   genderLabels,
   purposeOptions,
-  statusBadgeClass,
-  statusLabels,
 } from "@/features/dashboard/screens/guestbook-state/view-model";
 import type {
   DateFilter,
   PurposeFilter,
-  StatusFilter,
+  SortByFilter,
+  SortOrderFilter,
 } from "@/features/dashboard/screens/guestbook-state/schema";
 
 type GuestbookPageProps = {
@@ -67,13 +75,17 @@ type GuestbookPageProps = {
 };
 
 export default function GuestbookPage({ initialData, initialFetchedAt }: GuestbookPageProps) {
-  const [remindingEntryId, setRemindingEntryId] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewEntry, setPreviewEntry] = useState<GuestbookEntry | null>(null);
+  const [previewMessage, setPreviewMessage] = useState("");
+  const [previewWhatsAppUrl, setPreviewWhatsAppUrl] = useState<string | null>(null);
+  const [previewPhone, setPreviewPhone] = useState<string>("");
+  const [isPreparingPreview, setIsPreparingPreview] = useState(false);
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
 
   const {
     searchTerm,
     setSearchTerm,
-    statusFilter,
-    setStatusFilter,
     purposeFilter,
     setPurposeFilter,
     dateFilter,
@@ -87,9 +99,11 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     setFilterQuarter,
     filterSemester,
     setFilterSemester,
-    sortValue,
+    sortBy,
+    sortOrder,
     sortLabel,
-    setSortValue,
+    toggleColumnSort,
+    getColumnSortOrder,
     yearOptions,
     monthOptions,
     quarterOptions,
@@ -113,7 +127,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     lastFetchedLabel,
     showingLabel,
     purposeFilterLabel,
-    statusFilterLabel,
     hasActiveFilters,
     debouncedSearch,
     refresh,
@@ -125,16 +138,22 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
 
   const summaryCards = [
     {
-      title: "Total Buku Tamu",
+      title: "Total Catatan",
       value: summaryData.total,
-      description: "Seluruh kunjungan pada filter aktif.",
+      description: "Semua catatan layanan final pada filter aktif.",
       valueClassName: "text-primary-color",
     },
     {
       title: "Selesai Dilayani",
       value: summaryData.completed,
-      description: "Kunjungan yang proses pelayanannya sudah selesai.",
+      description: "Layanan yang selesai diproses petugas.",
       valueClassName: "text-emerald-600",
+    },
+    {
+      title: "Dibatalkan",
+      value: summaryData.canceled,
+      description: "Layanan yang dibatalkan dan tetap tercatat.",
+      valueClassName: "text-rose-600",
     },
     {
       title: "Belum Isi SKD",
@@ -148,9 +167,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     : null;
   const selectedCompletedAtLabel = selectedEntry?.endTime
     ? formatGuestbookDateTime(selectedEntry.endTime)
-    : selectedEntry?.status === QueueStatus.SERVING
-      ? "Belum selesai"
-      : "-";
+    : "-";
   const selectedSkdClass = selectedEntry?.filledSKD
     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
     : "border-red-500/30 bg-red-500/10 text-red-700";
@@ -158,41 +175,126 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
   const selectedTrackingIsUrl = selectedTrackingLink
     ? /^https?:\/\//i.test(selectedTrackingLink)
     : false;
-  const isDefaultSort = sortValue === "createdAt.desc";
+  const isDefaultSort = sortBy === "createdAt" && sortOrder === "desc";
 
-  const handleSendSkdReminder = async (entry: GuestbookEntry) => {
+  const getSortIcon = (order: SortOrderFilter | null) => {
+    if (!order) {
+      return <ArrowUpDown className="h-3.5 w-3.5 text-secondary-color/70" />;
+    }
+    if (order === "asc") {
+      return <ArrowUp className="h-3.5 w-3.5 text-primary-color" />;
+    }
+    return <ArrowDown className="h-3.5 w-3.5 text-primary-color" />;
+  };
+
+  const renderSortableHeader = (
+    label: string,
+    column: SortByFilter,
+    extraClassName?: string
+  ) => {
+    const activeOrder = getColumnSortOrder(column);
+    return (
+      <TableHead className={extraClassName}>
+        <button
+          type="button"
+          onClick={() => toggleColumnSort(column)}
+          className="mx-auto inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-center text-sm font-semibold text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          aria-label={`Urutkan kolom ${label}`}
+          title={`Urutkan ${label}`}
+        >
+          <span>{label}</span>
+          {getSortIcon(activeOrder)}
+        </button>
+      </TableHead>
+    );
+  };
+
+  const resetPreviewState = () => {
+    setPreviewEntry(null);
+    setPreviewMessage("");
+    setPreviewWhatsAppUrl(null);
+    setPreviewPhone("");
+  };
+
+  const handlePreviewOpenChange = (open: boolean) => {
+    setPreviewOpen(open);
+    if (!open) {
+      resetPreviewState();
+    }
+  };
+
+  const handleOpenSkdPreview = async (entry: GuestbookEntry) => {
     if (entry.filledSKD) {
       toast.info("SKD sudah diisi, pengingat tidak diperlukan.");
       return;
     }
 
     try {
-      setRemindingEntryId(entry.id);
+      setPreviewEntry(entry);
+      setPreviewOpen(true);
+      setIsPreparingPreview(true);
+
+      const previewResponse = await queuesApi.previewSkdReminder(entry.id);
+      const previewData = previewResponse.data ?? {};
+      const previewMessageValue =
+        typeof previewData.message === "string" ? previewData.message : "";
+
+      if (!previewMessageValue.trim()) {
+        throw new Error("Template pesan pengingat tidak tersedia.");
+      }
+
+      const previewPhoneValue =
+        typeof previewData.phone === "string" ? previewData.phone : entry.phone;
+      const previewWhatsappUrl =
+        typeof previewData.whatsappUrl === "string" ? previewData.whatsappUrl : null;
+
+      setPreviewMessage(previewMessageValue);
+      setPreviewPhone(previewPhoneValue);
+      setPreviewWhatsAppUrl(previewWhatsappUrl);
+    } catch (error) {
+      console.error("Error preparing SKD reminder preview:", error);
+      handlePreviewOpenChange(false);
+      toast.error(getGuestbookErrorMessage(error, "Gagal menyiapkan preview pesan"));
+    } finally {
+      setIsPreparingPreview(false);
+    }
+  };
+
+  const handleConfirmSendSkdReminder = async () => {
+    if (!previewEntry) return;
+    if (!previewMessage.trim()) {
+      toast.error("Template pesan kosong, tidak bisa dikirim.");
+      return;
+    }
+
+    try {
+      setIsSendingReminder(true);
       try {
-        await queuesApi.remindSkdBot(entry.id);
+        await queuesApi.remindSkdBot(previewEntry.id, previewMessage);
         toast.success("Pengingat SKD berhasil dikirim.");
-        return;
       } catch (botError) {
         console.warn("Bot reminder failed, falling back to manual WhatsApp link:", botError);
+
+        const fallbackResponse = await queuesApi.remindSkd(previewEntry.id, previewMessage);
+        const whatsappUrl =
+          typeof fallbackResponse.data?.whatsappUrl === "string"
+            ? fallbackResponse.data.whatsappUrl
+            : previewWhatsAppUrl;
+
+        if (whatsappUrl) {
+          window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+          toast.success("Bot tidak tersedia, pengingat dibuka via WhatsApp.");
+        } else {
+          toast.success("Pengingat SKD berhasil disiapkan.");
+        }
       }
 
-      const fallbackResponse = await queuesApi.remindSkd(entry.id);
-      const whatsappUrl =
-        typeof fallbackResponse.data?.whatsappUrl === "string"
-          ? fallbackResponse.data.whatsappUrl
-          : null;
-
-      if (whatsappUrl) {
-        window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-        toast.success("Bot tidak tersedia, pengingat dibuka via WhatsApp.");
-      } else {
-        toast.success("Pengingat SKD berhasil disiapkan.");
-      }
+      handlePreviewOpenChange(false);
     } catch (error) {
       console.error("Error sending SKD reminder:", error);
       toast.error(getGuestbookErrorMessage(error, "Gagal mengirim pengingat SKD"));
     } finally {
-      setRemindingEntryId((current) => (current === entry.id ? null : current));
+      setIsSendingReminder(false);
     }
   };
 
@@ -200,7 +302,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     <PageContainer>
       <DashboardPageHeader
         title="Buku Tamu PST 6502"
-        description="Rekapitulasi kunjungan pengunjung yang sudah dilayani atau selesai."
+        description="Catatan akhir layanan pengunjung dengan status selesai atau dibatalkan."
         meta={
           <>
             <span>Terakhir diperbarui: {lastFetchedLabel}</span>
@@ -222,7 +324,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
         }
       />
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {summaryCards.map((card) => {
           return (
             <Card key={card.title} className="border-border/80 bg-card shadow-none">
@@ -246,7 +348,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
             Daftar Buku Tamu
           </CardTitle>
           <CardDescription className="text-secondary-color">
-            Pantau data pengunjung yang sudah dilayani/selesai beserta detail layanan.
+            Daftar catatan akhir layanan beserta detail pengunjung dan layanan.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -376,19 +478,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                     </SelectContent>
                   </Select>
                 ) : null}
-                <Select value={sortValue} onValueChange={setSortValue}>
-                  <SelectTrigger className="w-full sm:w-[220px]">
-                    <SelectValue placeholder="Urutkan data" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="createdAt.desc">Tanggal datang terbaru</SelectItem>
-                    <SelectItem value="createdAt.asc">Tanggal datang terlama</SelectItem>
-                    <SelectItem value="fullName.asc">Nama A-Z</SelectItem>
-                    <SelectItem value="fullName.desc">Nama Z-A</SelectItem>
-                    <SelectItem value="serviceName.asc">Layanan A-Z</SelectItem>
-                    <SelectItem value="serviceName.desc">Layanan Z-A</SelectItem>
-                  </SelectContent>
-                </Select>
                 <Select
                   value={pageSize.toString()}
                   onValueChange={(value) => setPageSize(Number(value))}
@@ -441,31 +530,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Tabs
-                value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value as StatusFilter)}
-              >
-                <TabsList className="w-full border border-border/70 bg-background/80 sm:w-auto">
-                  <TabsTrigger value="ALL">
-                    Semua
-                    <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                      {summaryData.total}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value={QueueStatus.SERVING}>
-                    Sedang Dilayani
-                    <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                      {summaryData.serving}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value={QueueStatus.COMPLETED}>
-                    Selesai
-                    <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                      {summaryData.completed}
-                    </span>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
               <div className="flex items-center gap-2 text-xs text-secondary-color">
                 <Clock3 className="h-4 w-4" />
                 <span>{showingLabel}</span>
@@ -474,11 +538,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
 
             {hasActiveFilters && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-                {statusFilter !== "ALL" && (
-                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                    Status: {statusFilterLabel}
-                  </Badge>
-                )}
                 {purposeFilter !== "ALL" && (
                   <Badge variant="secondary" className="bg-background/80 text-secondary-color">
                     Keperluan: {purposeFilterLabel}
@@ -537,12 +596,12 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                   <TableHeader className="hidden bg-muted/35 md:table-header-group">
                     <TableRow>
                       <TableHead className="w-20 text-center">No</TableHead>
-                      <TableHead className="text-center">Pengunjung</TableHead>
-                      <TableHead className="text-center">Layanan</TableHead>
-                      <TableHead className="text-center">Tanggal Datang</TableHead>
+                      {renderSortableHeader("Pengunjung", "fullName", "text-center")}
+                      {renderSortableHeader("Nomor Antrean", "queueNumber", "text-center")}
+                      {renderSortableHeader("Layanan", "serviceName", "text-center")}
+                      {renderSortableHeader("Tanggal Datang", "createdAt", "text-center")}
                       <TableHead className="text-center">Petugas</TableHead>
                       <TableHead className="text-center">Monitoring SKD</TableHead>
-                      <TableHead className="text-center">Status Layanan</TableHead>
                       <TableHead className="w-[140px] text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -552,11 +611,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                         key={entry.id}
                         rowNumber={(currentPage - 1) * pageSize + index + 1}
                         entry={entry}
-                        statusLabels={statusLabels}
-                        statusBadgeClass={statusBadgeClass}
                         onViewDetail={openDetail}
-                        onSendReminder={handleSendSkdReminder}
-                        isReminding={remindingEntryId === entry.id}
                       />
                     ))}
                   </TableBody>
@@ -605,26 +660,23 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                     <p className="mt-1 text-xs text-secondary-color">No. WA: {selectedEntry.phone}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className={statusBadgeClass[selectedEntry.status]}>
-                      {statusLabels[selectedEntry.status]}
-                    </Badge>
-                    <Badge variant="outline">
-                      {selectedEntry.queueType === "ONLINE" ? "Online" : "Offline"}
+                    <Badge variant="outline" className={selectedSkdClass}>
+                      SKD: {selectedEntry.filledSKD ? "Sudah" : "Belum"}
                     </Badge>
                     {!selectedEntry.filledSKD ? (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => void handleSendSkdReminder(selectedEntry)}
-                        disabled={remindingEntryId === selectedEntry.id}
+                        onClick={() => void handleOpenSkdPreview(selectedEntry)}
+                        disabled={isPreparingPreview || isSendingReminder}
                         className="h-8 gap-1.5 border-border/80"
                       >
-                        {remindingEntryId === selectedEntry.id ? (
+                        {isPreparingPreview ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
                           <BellRing className="h-3.5 w-3.5" />
                         )}
-                        Pengingat SKD
+                        Kirim Pengingat SKD
                       </Button>
                     ) : null}
                   </div>
@@ -667,10 +719,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                         {selectedEntry.filledSKD ? "Sudah" : "Belum"}
                       </Badge>
                     </dd>
-                  </div>
-                  <div className="rounded-md bg-muted/20 px-3 py-2">
-                    <dt className="text-xs text-secondary-color">Jenis antrean</dt>
-                    <dd>{selectedEntry.queueType === "ONLINE" ? "Online" : "Offline"}</dd>
                   </div>
                 </dl>
               </div>
@@ -772,6 +820,55 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
               Detail pengunjung tidak ditemukan.
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewOpen} onOpenChange={handlePreviewOpenChange}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Preview Pesan</DialogTitle>
+            <DialogDescription>
+              Periksa template pesan sebelum mengirim pengingat SKD ke pengunjung.
+            </DialogDescription>
+          </DialogHeader>
+          {previewEntry ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                <p>
+                  Penerima: <strong>{previewEntry.fullName}</strong>
+                </p>
+                <p>
+                  Nomor WA: <strong>{previewPhone || previewEntry.phone}</strong>
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-primary-color">Isi pesan</p>
+                <Textarea
+                  value={previewMessage}
+                  readOnly
+                  className="min-h-44 resize-none bg-background/80"
+                />
+              </div>
+              {previewWhatsAppUrl ? (
+                <p className="text-xs text-secondary-color">
+                  Fallback WhatsApp link sudah disiapkan jika bot tidak tersedia.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => handlePreviewOpenChange(false)}>
+              Tutup
+            </Button>
+            <Button
+              onClick={() => void handleConfirmSendSkdReminder()}
+              disabled={isPreparingPreview || isSendingReminder || !previewEntry || !previewMessage}
+              className="gap-2"
+            >
+              {isSendingReminder ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Kirim Pengingat SKD
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageContainer>

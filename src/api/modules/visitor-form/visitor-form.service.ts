@@ -106,7 +106,6 @@ export async function submitVisitorForm(body: unknown) {
     purpose,
     serviceId,
     tempUuid,
-    queueType,
   } = parsed.data;
 
   const sanitized = {
@@ -122,7 +121,6 @@ export async function submitVisitorForm(body: unknown) {
     purpose,
     serviceId: serviceId.trim(),
     tempUuid: tempUuid.trim(),
-    queueType,
   };
 
   const tempVisitorLink = await prisma.tempVisitorLink.findUnique({
@@ -164,7 +162,7 @@ export async function submitVisitorForm(body: unknown) {
         queueNumber: nextQueueNumber,
         queueDate,
         status: QueueStatus.WAITING,
-        queueType: sanitized.queueType === "ONLINE" ? QueueType.ONLINE : QueueType.OFFLINE,
+        queueType: QueueType.ONLINE,
         visitorId: visitor.id,
         serviceId: sanitized.serviceId,
         tempUuid: sanitized.tempUuid,
@@ -187,9 +185,7 @@ export async function submitVisitorForm(body: unknown) {
         title: "Antrean Baru",
         message: `Antrean baru #${queue.queueNumber}-${formatQueueDate(
           new Date(queue.createdAt)
-        )} (${queue.queueType === "ONLINE" ? "Online" : "Offline"}) dari ${
-          visitor.name
-        } untuk layanan ${queue.service.name}`,
+        )} dari ${visitor.name} untuk layanan ${queue.service.name}`,
         isRead: false,
       },
     });

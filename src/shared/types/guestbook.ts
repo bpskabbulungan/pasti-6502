@@ -33,8 +33,6 @@ export type GuestbookEntry = {
 
 export type GuestbookSummary = {
   total: number;
-  waiting: number;
-  serving: number;
   completed: number;
   canceled: number;
   skdPending: number;
@@ -54,14 +52,14 @@ export type GuestbookListResponse = {
 };
 
 export type GuestbookListParams = {
-  status?: QueueStatus | "ALL";
+  status?: Extract<QueueStatus, "COMPLETED" | "CANCELED"> | "ALL";
   purpose?: Purpose | "ALL";
   dateFilter?: "today" | "all" | "year" | "month" | "quarter" | "semester";
   year?: number;
   month?: number;
   quarter?: number;
   semester?: number;
-  sortBy?: "createdAt" | "fullName" | "serviceName";
+  sortBy?: "createdAt" | "fullName" | "serviceName" | "queueNumber";
   sortOrder?: "asc" | "desc";
   search?: string;
   limit?: number;

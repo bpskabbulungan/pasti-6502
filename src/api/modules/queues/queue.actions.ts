@@ -16,6 +16,85 @@ const formatQueueDate = (date: Date): string => {
 	return `${day}${month}`;
 };
 
+const formatQueueLabel = (queueNumber: number, createdAt: Date) =>
+	`#${queueNumber}-${formatQueueDate(new Date(createdAt))}`;
+
+const buildDefaultSkdReminderMessage = (visitorName: string) => {
+	const skdLink =
+		process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
+	return `Halo ${visitorName}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: ${skdLink}`;
+};
+
+const normalizeWhatsappPhoneNumber = (phoneNumber: string) => {
+	let normalizedPhoneNumber = phoneNumber.replace(/\s+/g, "");
+	if (normalizedPhoneNumber.startsWith("+62")) {
+		normalizedPhoneNumber = normalizedPhoneNumber.substring(1);
+	} else if (normalizedPhoneNumber.startsWith("0")) {
+		normalizedPhoneNumber = "62" + normalizedPhoneNumber.substring(1);
+	} else if (!normalizedPhoneNumber.startsWith("62")) {
+		normalizedPhoneNumber = "62" + normalizedPhoneNumber;
+	}
+	return normalizedPhoneNumber;
+};
+
+const queueDetailInclude = {
+	visitor: {
+		select: {
+			name: true,
+			phone: true,
+			institution: true,
+		},
+	},
+	service: {
+		select: {
+			name: true,
+		},
+	},
+	admin: {
+		select: {
+			name: true,
+		},
+	},
+	dutyStaff: {
+		select: {
+			name: true,
+		},
+	},
+} satisfies Prisma.QueueInclude;
+
+const loadQueueDetail = (tx: Prisma.TransactionClient, queueId: string) =>
+	tx.queue.findUnique({
+		where: { id: queueId },
+		include: queueDetailInclude,
+	});
+
+const createSkdReminderPreview = ({
+	visitorName,
+	visitorPhone,
+	message,
+}: {
+	visitorName: string;
+	visitorPhone: string;
+	message?: string;
+}) => {
+	const reminderMessage =
+		message?.trim() && message.trim().length > 0
+			? message.trim()
+			: buildDefaultSkdReminderMessage(visitorName);
+	const phoneNumber = normalizeWhatsappPhoneNumber(visitorPhone);
+	const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(
+		reminderMessage
+	)}`;
+
+	return {
+		whatsappUrl,
+		visitorName,
+		phone: visitorPhone,
+		phoneNumber,
+		message: reminderMessage,
+	};
+};
+
 const createNotificationAsync = (data: Prisma.NotificationUncheckedCreateInput) => {
 	void prisma.notification.create({ data }).catch((error) => {
 		console.error("Failed to persist notification", error);
@@ -140,33 +219,7 @@ export async function serveQueue(queueId: string, adminId: string) {
 			return getQueueTransitionConflictResult();
 		}
 
-		const updatedQueue = await tx.queue.findUnique({
-			where: { id: queueId },
-			include: {
-				visitor: {
-					select: {
-						name: true,
-						phone: true,
-						institution: true,
-					},
-				},
-				service: {
-					select: {
-						name: true,
-					},
-				},
-				admin: {
-					select: {
-						name: true,
-					},
-				},
-				dutyStaff: {
-					select: {
-						name: true,
-					},
-				},
-			},
-		});
+		const updatedQueue = await loadQueueDetail(tx, queueId);
 
 		if (!updatedQueue) {
 			return { ok: false as const, status: 404, error: "Queue not found" };
@@ -182,11 +235,10 @@ export async function serveQueue(queueId: string, adminId: string) {
 	createNotificationAsync({
 		type: "QUEUE_SERVING",
 		title: "Antrean Sedang Dilayani",
-		message: `Antrean #${transitionResult.queue.queueNumber}-${formatQueueDate(
-			new Date(transitionResult.queue.createdAt)
-		)} (${
-			transitionResult.queue.queueType === "ONLINE" ? "Online" : "Offline"
-		}) sedang dilayani oleh ${adminUser.name}`,
+		message: `Antrean ${formatQueueLabel(
+			transitionResult.queue.queueNumber,
+			transitionResult.queue.createdAt
+		)} sedang dilayani oleh ${adminUser.name}`,
 		isRead: false,
 	});
 
@@ -241,33 +293,7 @@ export async function completeQueue(queueId: string, userId: string, role: Role)
 			return getQueueTransitionConflictResult();
 		}
 
-		const updatedQueue = await tx.queue.findUnique({
-			where: { id: queueId },
-			include: {
-				visitor: {
-					select: {
-						name: true,
-						phone: true,
-						institution: true,
-					},
-				},
-				service: {
-					select: {
-						name: true,
-					},
-				},
-				admin: {
-					select: {
-						name: true,
-					},
-				},
-				dutyStaff: {
-					select: {
-						name: true,
-					},
-				},
-			},
-		});
+		const updatedQueue = await loadQueueDetail(tx, queueId);
 
 		if (!updatedQueue) {
 			return { ok: false as const, status: 404, error: "Queue not found" };
@@ -283,30 +309,7 @@ export async function completeQueue(queueId: string, userId: string, role: Role)
 					lt: dayEnd,
 				},
 			},
-			include: {
-				visitor: {
-					select: {
-						name: true,
-						phone: true,
-						institution: true,
-					},
-				},
-				service: {
-					select: {
-						name: true,
-					},
-				},
-				admin: {
-					select: {
-						name: true,
-					},
-				},
-				dutyStaff: {
-					select: {
-						name: true,
-					},
-				},
-			},
+			include: queueDetailInclude,
 			orderBy: {
 				queueNumber: "asc",
 			},
@@ -322,11 +325,10 @@ export async function completeQueue(queueId: string, userId: string, role: Role)
 	createNotificationAsync({
 		type: "QUEUE_COMPLETED",
 		title: "Antrean Selesai",
-		message: `Antrean #${transitionResult.queue.queueNumber}-${formatQueueDate(
-			new Date(transitionResult.queue.createdAt)
-		)} (${
-			transitionResult.queue.queueType === "ONLINE" ? "Online" : "Offline"
-		}) telah selesai dilayani untuk ${transitionResult.queue.service.name}`,
+		message: `Antrean ${formatQueueLabel(
+			transitionResult.queue.queueNumber,
+			transitionResult.queue.createdAt
+		)} telah selesai dilayani untuk ${transitionResult.queue.service.name}`,
 		isRead: false,
 		userId,
 	});
@@ -392,33 +394,7 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 			return getQueueTransitionConflictResult();
 		}
 
-		const updatedQueue = await tx.queue.findUnique({
-			where: { id: queueId },
-			include: {
-				visitor: {
-					select: {
-						name: true,
-						phone: true,
-						institution: true,
-					},
-				},
-				service: {
-					select: {
-						name: true,
-					},
-				},
-				admin: {
-					select: {
-						name: true,
-					},
-				},
-				dutyStaff: {
-					select: {
-						name: true,
-					},
-				},
-			},
-		});
+		const updatedQueue = await loadQueueDetail(tx, queueId);
 
 		if (!updatedQueue) {
 			return { ok: false as const, status: 404, error: "Queue not found" };
@@ -434,11 +410,10 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 	createNotificationAsync({
 		type: "QUEUE_CANCELED",
 		title: "Antrean Dibatalkan",
-		message: `Antrean #${transitionResult.queue.queueNumber}-${formatQueueDate(
-			new Date(transitionResult.queue.createdAt)
-		)} (${
-			transitionResult.queue.queueType === "ONLINE" ? "Online" : "Offline"
-		}) untuk layanan ${transitionResult.queue.service.name} telah dibatalkan`,
+		message: `Antrean ${formatQueueLabel(
+			transitionResult.queue.queueNumber,
+			transitionResult.queue.createdAt
+		)} untuk layanan ${transitionResult.queue.service.name} telah dibatalkan`,
 		isRead: false,
 		userId,
 	});
@@ -456,11 +431,6 @@ export async function prepareSkdReminder(queueId: string, message?: string) {
 					phone: true,
 				},
 			},
-			service: {
-				select: {
-					name: true,
-				},
-			},
 		},
 	});
 
@@ -468,31 +438,23 @@ export async function prepareSkdReminder(queueId: string, message?: string) {
 		return { ok: false as const, status: 404, error: "Queue not found" };
 	}
 
-	let phoneNumber = queue.visitor.phone.replace(/\s+/g, "");
-	if (phoneNumber.startsWith("+62")) {
-		phoneNumber = phoneNumber.substring(1);
-	} else if (phoneNumber.startsWith("0")) {
-		phoneNumber = "62" + phoneNumber.substring(1);
-	} else if (!phoneNumber.startsWith("62")) {
-		phoneNumber = "62" + phoneNumber;
+	if (queue.filledSKD) {
+		return {
+			ok: false as const,
+			status: 400,
+			error: "SKD sudah diisi, pengingat tidak diperlukan",
+		};
 	}
 
-	const skdLink =
-		process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
-	const defaultMessage = `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: ${skdLink}`;
-	const reminderMessage = message || defaultMessage;
-
-	const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(
-		reminderMessage
-	)}`;
+	const preview = createSkdReminderPreview({
+		visitorName: queue.visitor.name,
+		visitorPhone: queue.visitor.phone,
+		message,
+	});
 
 	return {
 		ok: true as const,
-		data: {
-			whatsappUrl,
-			visitorName: queue.visitor.name,
-			phone: queue.visitor.phone,
-		},
+		data: preview,
 	};
 }
 
@@ -556,10 +518,10 @@ export async function triggerSkdReminderBot(queueId: string, message?: string) {
 		};
 	}
 
-	const skdLink =
-		process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
-	const defaultMessage = `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: ${skdLink}`;
-	const reminderMessage = message || defaultMessage;
+	const reminderMessage =
+		message?.trim() && message.trim().length > 0
+			? message.trim()
+			: buildDefaultSkdReminderMessage(queue.visitor.name);
 
 	const result = await sendWhatsAppBotReminder(queue.visitor.phone, reminderMessage);
 

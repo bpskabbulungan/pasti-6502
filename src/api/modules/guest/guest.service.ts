@@ -263,7 +263,7 @@ export async function processGuestSubmission(body: unknown) {
         queueNumber: nextQueueNumber,
         queueDate,
         status: QueueStatus.WAITING,
-        queueType: QueueType.OFFLINE,
+        queueType: QueueType.ONLINE,
         visitorId: visitor.id,
         guestId: guest.id,
         serviceId: selectedService.id,

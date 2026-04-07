@@ -76,8 +76,11 @@ export default function QueueManagementPage({
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [queueToCancel, setQueueToCancel] = useState<Queue | null>(null);
+  const [queueToComplete, setQueueToComplete] = useState<Queue | null>(null);
   const [isCancelingQueue, setIsCancelingQueue] = useState(false);
+  const [isCompletingQueue, setIsCompletingQueue] = useState(false);
 
   useEffect(() => {
     const nextStatus = parseStatusParam(statusParam) ?? "WAITING";
@@ -153,9 +156,30 @@ export default function QueueManagementPage({
     }
   };
 
+  const handleCompleteQueue = async (queueId: string) => {
+    try {
+      setIsCompletingQueue(true);
+      await queuesApi.complete(queueId);
+      toast.success("Antrean telah selesai dilayani");
+      setShowCompleteDialog(false);
+      setQueueToComplete(null);
+      await refresh();
+    } catch (error) {
+      console.error("Error completing queue:", error);
+      toast.error("Terjadi kesalahan saat menyelesaikan antrean");
+    } finally {
+      setIsCompletingQueue(false);
+    }
+  };
+
   const openCancelDialog = useCallback((queue: Queue) => {
     setQueueToCancel(queue);
     setShowCancelDialog(true);
+  }, []);
+
+  const openCompleteDialog = useCallback((queue: Queue) => {
+    setQueueToComplete(queue);
+    setShowCompleteDialog(true);
   }, []);
 
   const getTableColumns = () => (
@@ -168,7 +192,7 @@ export default function QueueManagementPage({
       <TableHead className="text-center">Tanggal</TableHead>
       <TableHead className="text-center">Petugas</TableHead>
       <TableHead className="text-center">Tracking</TableHead>
-      <TableHead className="w-[190px] text-center">Aksi</TableHead>
+      <TableHead className="w-[240px] text-center">Aksi</TableHead>
     </>
   );
 
@@ -236,9 +260,21 @@ export default function QueueManagementPage({
     }
   };
 
+  const handleCompleteDialogChange = (open: boolean) => {
+    setShowCompleteDialog(open);
+    if (!open) {
+      setQueueToComplete(null);
+    }
+  };
+
   const confirmCancelQueue = async () => {
     if (!queueToCancel) return;
     await handleCancelQueue(queueToCancel.id);
+  };
+
+  const confirmCompleteQueue = async () => {
+    if (!queueToComplete) return;
+    await handleCompleteQueue(queueToComplete.id);
   };
 
   return (
@@ -352,6 +388,7 @@ export default function QueueManagementPage({
                       rowNumber={offset + index + 1}
                       queue={queue}
                       onServe={handleServeQueue}
+                      onComplete={openCompleteDialog}
                       onOpenCancel={openCancelDialog}
                     />
                   ))}
@@ -394,7 +431,7 @@ export default function QueueManagementPage({
         open={showCancelDialog}
         onOpenChange={handleCancelDialogChange}
         title="Konfirmasi Batalkan Antrean"
-        description="Tindakan ini akan mengubah status antrean menjadi dibatalkan."
+        description="Tindakan ini akan mengubah status antrean menjadi dibatalkan dan tetap tercatat di buku tamu."
         confirmLabel="Ya, Batalkan"
         confirmVariant="warning"
         isProcessing={isCancelingQueue}
@@ -410,6 +447,31 @@ export default function QueueManagementPage({
               </p>
               <p>
                 Layanan: <strong>{queueToCancel.service.name}</strong>
+              </p>
+            </>
+          ) : null
+        }
+      />
+      <ConfirmActionDialog
+        open={showCompleteDialog}
+        onOpenChange={handleCompleteDialogChange}
+        title="Konfirmasi Selesaikan Antrean"
+        description="Tindakan ini akan mengubah status antrean menjadi selesai dilayani dan dicatat di buku tamu."
+        confirmLabel="Ya, Selesaikan"
+        confirmVariant="success"
+        isProcessing={isCompletingQueue}
+        onConfirm={confirmCompleteQueue}
+        body={
+          queueToComplete ? (
+            <>
+              <p>
+                Pengunjung: <strong>{queueToComplete.visitor.name}</strong>
+              </p>
+              <p>
+                Nomor antrean: <strong>{queueToComplete.queueNumber}</strong>
+              </p>
+              <p>
+                Layanan: <strong>{queueToComplete.service.name}</strong>
               </p>
             </>
           ) : null

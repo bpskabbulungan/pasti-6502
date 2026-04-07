@@ -13,7 +13,7 @@ import {
 import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
 type DateFilter = "today" | "all" | "year" | "month" | "quarter" | "semester";
-type GuestbookSortBy = "createdAt" | "fullName" | "serviceName";
+type GuestbookSortBy = "createdAt" | "fullName" | "serviceName" | "queueNumber";
 type GuestbookSortOrder = "asc" | "desc";
 type ExportFormat = "xlsx" | "pdf";
 
@@ -57,7 +57,7 @@ type GuestbookExportRow = {
   waktu: string;
 };
 
-const ALLOWED_STATUSES: QueueStatus[] = [QueueStatus.SERVING, QueueStatus.COMPLETED];
+const ALLOWED_STATUSES: QueueStatus[] = [QueueStatus.COMPLETED, QueueStatus.CANCELED];
 
 const statusLabels: Record<QueueStatus, string> = {
   WAITING: "Menunggu",
@@ -171,7 +171,12 @@ const parsePurpose = (value?: string | null) => {
 
 const parseSortBy = (value?: string | null): GuestbookSortBy => {
   if (!value) return "createdAt";
-  if (value === "createdAt" || value === "fullName" || value === "serviceName") {
+  if (
+    value === "createdAt" ||
+    value === "fullName" ||
+    value === "serviceName" ||
+    value === "queueNumber"
+  ) {
     return value;
   }
   return "createdAt";
@@ -287,14 +292,18 @@ const buildOrderBy = ({
   sortOrder: GuestbookSortOrder;
 }): Prisma.QueueOrderByWithRelationInput[] => {
   if (sortBy === "fullName") {
-    return [{ guest: { fullName: sortOrder } }, { createdAt: "desc" }];
+    return [{ guest: { fullName: sortOrder } }, { createdAt: "desc" }, { id: "asc" }];
   }
 
   if (sortBy === "serviceName") {
-    return [{ service: { name: sortOrder } }, { createdAt: "desc" }];
+    return [{ service: { name: sortOrder } }, { createdAt: "desc" }, { id: "asc" }];
   }
 
-  return [{ createdAt: sortOrder }];
+  if (sortBy === "queueNumber") {
+    return [{ queueNumber: sortOrder }, { createdAt: "desc" }, { id: "asc" }];
+  }
+
+  return [{ createdAt: sortOrder }, { id: sortOrder }];
 };
 
 const buildGuestbookBaseWhere = ({
@@ -560,20 +569,12 @@ export async function getGuestbookEntries({
   ]);
 
   const statusSummary = {
-    waiting: 0,
-    serving: 0,
     completed: 0,
     canceled: 0,
   };
 
   statusGroups.forEach((group) => {
     switch (group.status) {
-      case QueueStatus.WAITING:
-        statusSummary.waiting = group._count._all;
-        break;
-      case QueueStatus.SERVING:
-        statusSummary.serving = group._count._all;
-        break;
       case QueueStatus.COMPLETED:
         statusSummary.completed = group._count._all;
         break;
@@ -595,8 +596,6 @@ export async function getGuestbookEntries({
     },
     summary: {
       total: summaryTotal,
-      waiting: statusSummary.waiting,
-      serving: statusSummary.serving,
       completed: statusSummary.completed,
       canceled: statusSummary.canceled,
       skdPending: skdPendingCount,
@@ -622,8 +621,6 @@ export async function getGuestbookEntries({
 
   const summary = {
     total: summaryTotal,
-    waiting: statusSummary.waiting,
-    serving: statusSummary.serving,
     completed: statusSummary.completed,
     canceled: statusSummary.canceled,
     skdPending: skdPendingCount,
