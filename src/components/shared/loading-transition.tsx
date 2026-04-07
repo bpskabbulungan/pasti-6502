@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { NAVIGATION_PENDING_EVENT } from "@/lib/navigation-pending";
+import AppLoadingScreen from "@/components/shared/app-loading-screen";
 
 export default function LoadingTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -98,13 +99,8 @@ export default function LoadingTransition({ children }: { children: React.ReactN
     <>
       {children}
       {showIndicator ? (
-        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-background/45 px-4 backdrop-blur-sm">
-          <div className="rounded-xl border border-border/70 bg-background/95 px-4 py-3 shadow-lg">
-            <div className="flex items-center gap-2.5 text-sm font-medium text-secondary-color">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
-              <span>Memuat halaman...</span>
-            </div>
-          </div>
+        <div className="pointer-events-none fixed inset-0 z-[60] bg-background/45 backdrop-blur-sm">
+          <AppLoadingScreen fullScreen={false} centerInViewport />
         </div>
       ) : null}
     </>

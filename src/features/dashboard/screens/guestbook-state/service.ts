@@ -1,10 +1,22 @@
-import type { DateFilter, PurposeFilter, StatusFilter } from "./schema";
+import type {
+	DateFilter,
+	PurposeFilter,
+	SortByFilter,
+	SortOrderFilter,
+	StatusFilter,
+} from "./schema";
 import { getFilenameFromContentDisposition } from "./helper";
 
 type ExportParams = {
 	statusFilter: StatusFilter;
 	purposeFilter: PurposeFilter;
 	dateFilter: DateFilter;
+	year?: number;
+	month?: number;
+	quarter?: number;
+	semester?: number;
+	sortBy: SortByFilter;
+	sortOrder: SortOrderFilter;
 	search?: string;
 	format: "xlsx" | "pdf";
 };
@@ -20,6 +32,20 @@ export async function exportGuestbookData(params: ExportParams) {
 	if (params.search) {
 		query.set("search", params.search);
 	}
+	if (typeof params.year === "number") {
+		query.set("year", String(params.year));
+	}
+	if (typeof params.month === "number") {
+		query.set("month", String(params.month));
+	}
+	if (typeof params.quarter === "number") {
+		query.set("quarter", String(params.quarter));
+	}
+	if (typeof params.semester === "number") {
+		query.set("semester", String(params.semester));
+	}
+	query.set("sortBy", params.sortBy);
+	query.set("sortOrder", params.sortOrder);
 	query.set("dateFilter", params.dateFilter);
 	query.set("format", params.format);
 

@@ -102,6 +102,21 @@ export async function getQueueDisplay(params: {
 					name: true,
 				},
 			},
+			dutyStaff: {
+				select: {
+					name: true,
+				},
+			},
+			visitor: {
+				select: {
+					name: true,
+				},
+			},
+			guest: {
+				select: {
+					fullName: true,
+				},
+			},
 		},
 		orderBy: {
 			queueNumber: "asc",
@@ -114,6 +129,26 @@ export async function getQueueDisplay(params: {
 			service: {
 				select: {
 					name: true,
+				},
+			},
+			admin: {
+				select: {
+					name: true,
+				},
+			},
+			dutyStaff: {
+				select: {
+					name: true,
+				},
+			},
+			visitor: {
+				select: {
+					name: true,
+				},
+			},
+			guest: {
+				select: {
+					fullName: true,
 				},
 			},
 		},

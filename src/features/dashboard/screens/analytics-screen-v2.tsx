@@ -15,6 +15,7 @@ import { id as localeId } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import AppLoader from "@/components/shared/app-loader";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
 import { PageContainer } from "@/components/shared/layout/page-container";
 import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
@@ -43,7 +44,6 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
-  Loader2,
   PieChart,
   RefreshCcw,
   Timer,
@@ -759,7 +759,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
         {showFilterLoadingOverlay && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center rounded-xl bg-background/55 pt-8 backdrop-blur-[1px]">
             <Badge variant="secondary" className="gap-2 bg-background/90 px-3 py-1 text-primary-color">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <AppLoader size="xs" className="text-primary-color" />
               Memuat ulang data berdasarkan filter...
             </Badge>
           </div>

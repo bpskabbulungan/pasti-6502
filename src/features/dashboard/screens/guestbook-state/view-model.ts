@@ -1,6 +1,12 @@
 import { Gender, LastEducation, Purpose, QueueStatus } from "@/shared/constants/enums";
 import type { GuestbookEntry, GuestbookSummary } from "@shared/types/guestbook";
-import type { PurposeFilter, StatusFilter } from "./schema";
+import type {
+	DateFilter,
+	PurposeFilter,
+	SortByFilter,
+	SortOrderFilter,
+	StatusFilter,
+} from "./schema";
 
 export const genderLabels: Record<Gender, string> = {
 	[Gender.MALE]: "Laki-Laki",
@@ -64,6 +70,81 @@ export const getPurposeFilterLabel = (purposeFilter: PurposeFilter) =>
 
 export const getStatusFilterLabel = (statusFilter: StatusFilter) =>
 	statusFilter === "ALL" ? "Semua status" : statusLabels[statusFilter];
+
+export const dateFilterLabels: Record<DateFilter, string> = {
+	today: "Hari ini",
+	all: "Semua tanggal",
+	year: "Tahunan",
+	month: "Bulanan",
+	quarter: "Triwulan",
+	semester: "Semester",
+};
+
+export const monthOptions = [
+	{ value: 1, label: "Januari" },
+	{ value: 2, label: "Februari" },
+	{ value: 3, label: "Maret" },
+	{ value: 4, label: "April" },
+	{ value: 5, label: "Mei" },
+	{ value: 6, label: "Juni" },
+	{ value: 7, label: "Juli" },
+	{ value: 8, label: "Agustus" },
+	{ value: 9, label: "September" },
+	{ value: 10, label: "Oktober" },
+	{ value: 11, label: "November" },
+	{ value: 12, label: "Desember" },
+] as const;
+
+export const quarterOptions = [
+	{ value: 1, label: "Triwulan I" },
+	{ value: 2, label: "Triwulan II" },
+	{ value: 3, label: "Triwulan III" },
+	{ value: 4, label: "Triwulan IV" },
+] as const;
+
+export const semesterOptions = [
+	{ value: 1, label: "Semester I" },
+	{ value: 2, label: "Semester II" },
+] as const;
+
+export const sortOptions: Array<{
+	value: `${SortByFilter}.${SortOrderFilter}`;
+	label: string;
+}> = [
+	{ value: "createdAt.desc", label: "Tanggal datang terbaru" },
+	{ value: "createdAt.asc", label: "Tanggal datang terlama" },
+	{ value: "fullName.asc", label: "Nama A-Z" },
+	{ value: "fullName.desc", label: "Nama Z-A" },
+	{ value: "serviceName.asc", label: "Layanan A-Z" },
+	{ value: "serviceName.desc", label: "Layanan Z-A" },
+];
+
+export const getDateFilterLabel = ({
+	dateFilter,
+	year,
+	month,
+	quarter,
+	semester,
+}: {
+	dateFilter: DateFilter;
+	year: number;
+	month: number;
+	quarter: number;
+	semester: number;
+}) => {
+	switch (dateFilter) {
+		case "year":
+			return `Tahun ${year}`;
+		case "month":
+			return `${monthOptions.find((option) => option.value === month)?.label ?? "Bulan"} ${year}`;
+		case "quarter":
+			return `${quarterOptions.find((option) => option.value === quarter)?.label ?? "Triwulan"} ${year}`;
+		case "semester":
+			return `${semesterOptions.find((option) => option.value === semester)?.label ?? "Semester"} ${year}`;
+		default:
+			return dateFilterLabels[dateFilter];
+	}
+};
 
 export const buildFallbackSummary = (
 	entries: GuestbookEntry[],

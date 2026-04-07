@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   AlertTriangle,
+  BellRing,
   Clock3,
   FileSpreadsheet,
   FileText,
+  Loader2,
   RefreshCcw,
   Search,
-  Users,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -37,10 +40,14 @@ import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import GuestbookTableRow from "@/features/dashboard/components/rows/guestbook-row";
 import TableSkeleton from "@/features/dashboard/components/skeletons/table-skeleton";
+import { queuesApi } from "@/services/api/queues";
 import { QueueStatus } from "@/shared/constants/enums";
-import type { GuestbookListResponse } from "@shared/types/guestbook";
+import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
 import { useGuestbookPageController } from "@/features/dashboard/screens/guestbook-state/controller";
-import { formatGuestbookDateTime } from "@/features/dashboard/screens/guestbook-state/helper";
+import {
+  formatGuestbookDateTime,
+  getGuestbookErrorMessage,
+} from "@/features/dashboard/screens/guestbook-state/helper";
 import {
   educationLabels,
   genderLabels,
@@ -48,7 +55,11 @@ import {
   statusBadgeClass,
   statusLabels,
 } from "@/features/dashboard/screens/guestbook-state/view-model";
-import type { PurposeFilter, StatusFilter } from "@/features/dashboard/screens/guestbook-state/schema";
+import type {
+  DateFilter,
+  PurposeFilter,
+  StatusFilter,
+} from "@/features/dashboard/screens/guestbook-state/schema";
 
 type GuestbookPageProps = {
   initialData: GuestbookListResponse;
@@ -56,6 +67,8 @@ type GuestbookPageProps = {
 };
 
 export default function GuestbookPage({ initialData, initialFetchedAt }: GuestbookPageProps) {
+  const [remindingEntryId, setRemindingEntryId] = useState<string | null>(null);
+
   const {
     searchTerm,
     setSearchTerm,
@@ -65,6 +78,23 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     setPurposeFilter,
     dateFilter,
     setDateFilter,
+    dateFilterLabel,
+    filterYear,
+    setFilterYear,
+    filterMonth,
+    setFilterMonth,
+    filterQuarter,
+    setFilterQuarter,
+    filterSemester,
+    setFilterSemester,
+    sortValue,
+    sortLabel,
+    setSortValue,
+    yearOptions,
+    monthOptions,
+    quarterOptions,
+    semesterOptions,
+    dateFilterLabels,
     pageSize,
     setPageSize,
     currentPage,
@@ -97,20 +127,74 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     {
       title: "Total Buku Tamu",
       value: summaryData.total,
-      description: "Seluruh kunjungan yang sudah dilayani/selesai",
-      icon: Users,
-      iconBg: "bg-primary/10",
-      iconClassName: "text-primary",
+      description: "Seluruh kunjungan pada filter aktif.",
+      valueClassName: "text-primary-color",
+    },
+    {
+      title: "Selesai Dilayani",
+      value: summaryData.completed,
+      description: "Kunjungan yang proses pelayanannya sudah selesai.",
+      valueClassName: "text-emerald-600",
     },
     {
       title: "Belum Isi SKD",
       value: summaryData.skdPending,
-      description: "Pengunjung yang belum mengisi SKD",
-      icon: AlertTriangle,
-      iconBg: "bg-orange-500/10",
-      iconClassName: "text-orange-600",
+      description: "Pengunjung yang belum mengirim monitoring SKD.",
+      valueClassName: "text-amber-600",
     },
   ];
+  const selectedPurposeOption = selectedEntry?.purpose
+    ? purposeOptions.find((option) => option.value === selectedEntry.purpose) ?? null
+    : null;
+  const selectedCompletedAtLabel = selectedEntry?.endTime
+    ? formatGuestbookDateTime(selectedEntry.endTime)
+    : selectedEntry?.status === QueueStatus.SERVING
+      ? "Belum selesai"
+      : "-";
+  const selectedSkdClass = selectedEntry?.filledSKD
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+    : "border-red-500/30 bg-red-500/10 text-red-700";
+  const selectedTrackingLink = selectedEntry?.trackingLink ?? null;
+  const selectedTrackingIsUrl = selectedTrackingLink
+    ? /^https?:\/\//i.test(selectedTrackingLink)
+    : false;
+  const isDefaultSort = sortValue === "createdAt.desc";
+
+  const handleSendSkdReminder = async (entry: GuestbookEntry) => {
+    if (entry.filledSKD) {
+      toast.info("SKD sudah diisi, pengingat tidak diperlukan.");
+      return;
+    }
+
+    try {
+      setRemindingEntryId(entry.id);
+      try {
+        await queuesApi.remindSkdBot(entry.id);
+        toast.success("Pengingat SKD berhasil dikirim.");
+        return;
+      } catch (botError) {
+        console.warn("Bot reminder failed, falling back to manual WhatsApp link:", botError);
+      }
+
+      const fallbackResponse = await queuesApi.remindSkd(entry.id);
+      const whatsappUrl =
+        typeof fallbackResponse.data?.whatsappUrl === "string"
+          ? fallbackResponse.data.whatsappUrl
+          : null;
+
+      if (whatsappUrl) {
+        window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+        toast.success("Bot tidak tersedia, pengingat dibuka via WhatsApp.");
+      } else {
+        toast.success("Pengingat SKD berhasil disiapkan.");
+      }
+    } catch (error) {
+      console.error("Error sending SKD reminder:", error);
+      toast.error(getGuestbookErrorMessage(error, "Gagal mengirim pengingat SKD"));
+    } finally {
+      setRemindingEntryId((current) => (current === entry.id ? null : current));
+    }
+  };
 
   return (
     <PageContainer>
@@ -138,35 +222,25 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
         }
       />
 
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {summaryCards.map((card) => {
-          const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-border/80 bg-card/88">
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                <div className="space-y-1">
-                  <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
-                    {card.title}
-                  </CardTitle>
-                  <div className="text-2xl font-bold text-primary-color md:text-3xl">
-                    {card.value}
-                  </div>
-                </div>
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full ${card.iconBg}`}
-                >
-                  <Icon className={`h-5 w-5 ${card.iconClassName}`} />
-                </div>
+            <Card key={card.title} className="border-border/80 bg-card shadow-none">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
+                  {card.title}
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-secondary-color">{card.description}</p>
+                <p className={`text-3xl font-bold ${card.valueClassName}`}>{card.value}</p>
+                <p className="mt-1 text-xs text-secondary-color">{card.description}</p>
               </CardContent>
             </Card>
           );
         })}
       </section>
 
-      <Card className="border-border/80">
+      <Card className="border-border/80 bg-card shadow-none">
         <CardHeader className="gap-2">
           <CardTitle className="text-xl font-semibold text-primary-color">
             Daftar Buku Tamu
@@ -218,14 +292,101 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                 </Select>
                 <Select
                   value={dateFilter}
-                  onValueChange={(value) => setDateFilter(value as "today" | "all")}
+                  onValueChange={(value) => setDateFilter(value as DateFilter)}
                 >
-                  <SelectTrigger className="w-full sm:w-[170px]">
+                  <SelectTrigger className="w-full sm:w-[190px]">
                     <SelectValue placeholder="Filter tanggal" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="today">Hari ini</SelectItem>
-                    <SelectItem value="all">Semua tanggal</SelectItem>
+                    {Object.entries(dateFilterLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {dateFilter === "year" ||
+                dateFilter === "month" ||
+                dateFilter === "quarter" ||
+                dateFilter === "semester" ? (
+                  <Select
+                    value={filterYear.toString()}
+                    onValueChange={(value) => setFilterYear(Number(value))}
+                  >
+                    <SelectTrigger className="w-full sm:w-[145px]">
+                      <SelectValue placeholder="Tahun" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {yearOptions.map((year) => (
+                        <SelectItem key={year} value={year.toString()}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                {dateFilter === "month" ? (
+                  <Select
+                    value={filterMonth.toString()}
+                    onValueChange={(value) => setFilterMonth(Number(value))}
+                  >
+                    <SelectTrigger className="w-full sm:w-[185px]">
+                      <SelectValue placeholder="Bulan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {monthOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value.toString()}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                {dateFilter === "quarter" ? (
+                  <Select
+                    value={filterQuarter.toString()}
+                    onValueChange={(value) => setFilterQuarter(Number(value))}
+                  >
+                    <SelectTrigger className="w-full sm:w-[185px]">
+                      <SelectValue placeholder="Triwulan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {quarterOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value.toString()}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                {dateFilter === "semester" ? (
+                  <Select
+                    value={filterSemester.toString()}
+                    onValueChange={(value) => setFilterSemester(Number(value))}
+                  >
+                    <SelectTrigger className="w-full sm:w-[185px]">
+                      <SelectValue placeholder="Semester" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {semesterOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value.toString()}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                <Select value={sortValue} onValueChange={setSortValue}>
+                  <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectValue placeholder="Urutkan data" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="createdAt.desc">Tanggal datang terbaru</SelectItem>
+                    <SelectItem value="createdAt.asc">Tanggal datang terlama</SelectItem>
+                    <SelectItem value="fullName.asc">Nama A-Z</SelectItem>
+                    <SelectItem value="fullName.desc">Nama Z-A</SelectItem>
+                    <SelectItem value="serviceName.asc">Layanan A-Z</SelectItem>
+                    <SelectItem value="serviceName.desc">Layanan Z-A</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select
@@ -325,7 +486,12 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                 )}
                 {dateFilter !== "today" && (
                   <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                    Tanggal: Semua tanggal
+                    Periode: {dateFilterLabel}
+                  </Badge>
+                )}
+                {!isDefaultSort && (
+                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                    Urutkan: {sortLabel}
                   </Badge>
                 )}
                 {debouncedSearch && (
@@ -339,7 +505,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
 
           {isInitialLoading ? (
             <div className="overflow-x-auto">
-              <TableSkeleton columns={7} rows={5} />
+              <TableSkeleton columns={8} rows={5} />
             </div>
           ) : entries.length === 0 ? (
             <EmptyState
@@ -367,26 +533,30 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
           ) : (
             <div className="space-y-4">
               <div className="dashboard-table-shell">
-                <Table className="w-full md:min-w-[1080px]">
-                  <TableHeader className="hidden bg-muted/50 md:table-header-group">
+                <Table className="w-full md:min-w-[1160px]">
+                  <TableHeader className="hidden bg-muted/35 md:table-header-group">
                     <TableRow>
+                      <TableHead className="w-20 text-center">No</TableHead>
                       <TableHead className="text-center">Pengunjung</TableHead>
                       <TableHead className="text-center">Layanan</TableHead>
-                      <TableHead className="text-center">Antrean</TableHead>
-                      <TableHead className="text-center">Waktu</TableHead>
-                      <TableHead className="text-center">SKD</TableHead>
+                      <TableHead className="text-center">Tanggal Datang</TableHead>
                       <TableHead className="text-center">Petugas</TableHead>
-                      <TableHead className="w-[90px] text-center">Aksi</TableHead>
+                      <TableHead className="text-center">Monitoring SKD</TableHead>
+                      <TableHead className="text-center">Status Layanan</TableHead>
+                      <TableHead className="w-[140px] text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {entries.map((entry) => (
+                    {entries.map((entry, index) => (
                       <GuestbookTableRow
                         key={entry.id}
+                        rowNumber={(currentPage - 1) * pageSize + index + 1}
                         entry={entry}
                         statusLabels={statusLabels}
                         statusBadgeClass={statusBadgeClass}
                         onViewDetail={openDetail}
+                        onSendReminder={handleSendSkdReminder}
+                        isReminding={remindingEntryId === entry.id}
                       />
                     ))}
                   </TableBody>
@@ -421,136 +591,179 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       </Card>
 
       <Dialog open={detailOpen} onOpenChange={handleDetailOpenChange}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl pr-14 sm:pr-16">
           <DialogHeader>
             <DialogTitle>Detail Buku Tamu</DialogTitle>
           </DialogHeader>
           {selectedEntry ? (
             <div className="space-y-4">
-              <div className="rounded-xl border border-border/70 bg-muted/40 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-secondary-color">Kode antrean</p>
-                    <p className="text-2xl font-bold text-primary-color">
-                      {selectedEntry.queueCode}
-                    </p>
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm text-secondary-color">Pengunjung</p>
+                    <p className="text-lg font-semibold text-primary-color">{selectedEntry.fullName}</p>
+                    <p className="mt-1 text-xs text-secondary-color">No. WA: {selectedEntry.phone}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className={statusBadgeClass[selectedEntry.status]}>
                       {statusLabels[selectedEntry.status]}
                     </Badge>
                     <Badge variant="outline">
                       {selectedEntry.queueType === "ONLINE" ? "Online" : "Offline"}
                     </Badge>
+                    {!selectedEntry.filledSKD ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleSendSkdReminder(selectedEntry)}
+                        disabled={remindingEntryId === selectedEntry.id}
+                        className="h-8 gap-1.5 border-border/80"
+                      >
+                        {remindingEntryId === selectedEntry.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <BellRing className="h-3.5 w-3.5" />
+                        )}
+                        Pengingat SKD
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-secondary-color">
-                  Dibuat pada {formatGuestbookDateTime(selectedEntry.createdAt)}
+              </div>
+
+              <div className="rounded-lg border border-border/70 bg-card p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
+                  Ringkasan Layanan
                 </p>
+                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Nomor antrean</dt>
+                    <dd className="font-semibold text-primary-color">{selectedEntry.queueCode}</dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Nomor urut sistem</dt>
+                    <dd>{selectedEntry.queueNumber}</dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Layanan</dt>
+                    <dd className="break-words font-medium">{selectedEntry.serviceName}</dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Petugas</dt>
+                    <dd className="break-words">{selectedEntry.officerName || "-"}</dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Tanggal datang / antrean dibuat</dt>
+                    <dd>{formatGuestbookDateTime(selectedEntry.createdAt)}</dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Tanggal selesai pelayanan</dt>
+                    <dd>{selectedCompletedAtLabel}</dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Monitoring SKD</dt>
+                    <dd>
+                      <Badge variant="outline" className={selectedSkdClass}>
+                        {selectedEntry.filledSKD ? "Sudah" : "Belum"}
+                      </Badge>
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Jenis antrean</dt>
+                    <dd>{selectedEntry.queueType === "ONLINE" ? "Online" : "Offline"}</dd>
+                  </div>
+                </dl>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-border/70 bg-background/80 p-4">
-                  <p className="text-xs font-semibold uppercase text-secondary-color">
+                <div className="rounded-lg border border-border/70 bg-card p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
                     Data Pengunjung
                   </p>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div>
-                      <p className="text-xs text-secondary-color">Nama lengkap</p>
-                      <p className="break-words font-semibold text-primary-color">{selectedEntry.fullName}</p>
+                  <dl className="mt-3 space-y-2 text-sm">
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Nama lengkap</dt>
+                      <dd className="break-words font-semibold text-primary-color">{selectedEntry.fullName}</dd>
                     </div>
-                    <div>
-                      <p className="text-xs text-secondary-color">Kontak</p>
-                      <p>{selectedEntry.phone}</p>
-                      <p className="text-secondary-color">{selectedEntry.email || "-"}</p>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Nomor WA</dt>
+                      <dd>{selectedEntry.phone}</dd>
                     </div>
-                    <div>
-                      <p className="text-xs text-secondary-color">Alamat</p>
-                      <p className="break-words">{selectedEntry.address || "-"}</p>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Email</dt>
+                      <dd className="break-all">{selectedEntry.email || "-"}</dd>
                     </div>
-                    <div className="flex flex-wrap gap-3">
-                      <div>
-                        <p className="text-xs text-secondary-color">Umur</p>
-                        <p>{selectedEntry.age ? `${selectedEntry.age} tahun` : "-"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-secondary-color">Jenis kelamin</p>
-                        <p>{selectedEntry.gender ? genderLabels[selectedEntry.gender] : "-"}</p>
-                      </div>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Asal / Instansi</dt>
+                      <dd className="break-words">{selectedEntry.institution || "-"}</dd>
                     </div>
-                    <div>
-                      <p className="text-xs text-secondary-color">Pendidikan terakhir</p>
-                      <p>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Alamat</dt>
+                      <dd className="break-words">{selectedEntry.address || "-"}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
+                    Data Tambahan
+                  </p>
+                  <dl className="mt-3 space-y-2 text-sm">
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Umur</dt>
+                      <dd>{selectedEntry.age ? `${selectedEntry.age} tahun` : "-"}</dd>
+                    </div>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Jenis kelamin</dt>
+                      <dd>{selectedEntry.gender ? genderLabels[selectedEntry.gender] : "-"}</dd>
+                    </div>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Pendidikan terakhir</dt>
+                      <dd>
                         {selectedEntry.lastEducation
                           ? educationLabels[selectedEntry.lastEducation]
                           : "-"}
-                      </p>
+                      </dd>
                     </div>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-background/80 p-4">
-                  <p className="text-xs font-semibold uppercase text-secondary-color">
-                    Informasi Kunjungan
-                  </p>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div>
-                      <p className="text-xs text-secondary-color">Asal / Instansi</p>
-                      <p className="break-words">{selectedEntry.institution || "-"}</p>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Pekerjaan</dt>
+                      <dd className="break-words">{selectedEntry.occupation || "-"}</dd>
                     </div>
-                    <div>
-                      <p className="text-xs text-secondary-color">Pekerjaan</p>
-                      <p className="break-words">{selectedEntry.occupation || "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-secondary-color">Keperluan</p>
-                      {selectedEntry.purpose ? (
-                        <Badge
-                          variant="outline"
-                          className={
-                            purposeOptions.find((option) => option.value === selectedEntry.purpose)
-                              ?.accent
-                          }
-                        >
-                          {
-                            purposeOptions.find((option) => option.value === selectedEntry.purpose)
-                              ?.label
-                          }
-                        </Badge>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Keperluan</dt>
+                      {selectedPurposeOption ? (
+                        <dd>
+                          <Badge variant="secondary" className="bg-muted/40 text-primary-color">
+                            {selectedPurposeOption.label}
+                          </Badge>
+                        </dd>
                       ) : (
-                        <p>-</p>
+                        <dd>-</dd>
                       )}
                     </div>
-                    <div>
-                      <p className="text-xs text-secondary-color">Layanan</p>
-                      <p className="font-semibold text-primary-color">
-                        {selectedEntry.serviceName}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-secondary-color">Petugas</p>
-                      <p>{selectedEntry.officerName || "-"}</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={
-                          selectedEntry.filledSKD
-                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-                            : "border-red-500/30 bg-red-500/10 text-red-700"
-                        }
-                      >
-                        SKD {selectedEntry.filledSKD ? "Sudah" : "Belum"}
-                      </Badge>
-                      {selectedEntry.trackingLink && (
-                        <Badge
-                          variant="secondary"
-                          className="bg-background/80 text-secondary-color"
-                        >
-                          Tracking aktif
-                        </Badge>
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
+                      <dt className="text-xs text-secondary-color">Link monitoring</dt>
+                      {selectedTrackingLink ? (
+                        <dd>
+                          {selectedTrackingIsUrl ? (
+                            <a
+                              href={selectedTrackingLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="break-all text-primary hover:underline"
+                            >
+                              {selectedTrackingLink}
+                            </a>
+                          ) : (
+                            <span className="break-all font-mono text-[13px] text-primary-color">
+                              {selectedTrackingLink}
+                            </span>
+                          )}
+                        </dd>
+                      ) : (
+                        <dd>-</dd>
                       )}
                     </div>
-                  </div>
+                  </dl>
                 </div>
               </div>
             </div>
@@ -564,6 +777,3 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     </PageContainer>
   );
 }
-
-
-

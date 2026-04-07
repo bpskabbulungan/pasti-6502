@@ -1,8 +1,8 @@
 "use client";
 
+import AppLoader from "@/components/shared/app-loader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import PageBackground from "@/components/shared/page-background";
-import { Loader2 } from "lucide-react";
 
 export default function VisitorFormRouteSkeleton() {
     return (
@@ -19,7 +19,7 @@ export default function VisitorFormRouteSkeleton() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-col items-center space-y-6 py-4">
-                        <Loader2 className="w-16 h-16 text-primary animate-spin" />
+                        <AppLoader size="xl" className="text-primary" />
                         <div className="space-y-8 w-full">
                             <div className="bg-secondary rounded w-full h-12 animate-pulse"></div>
                             <div className="bg-secondary rounded w-full h-12 animate-pulse"></div>

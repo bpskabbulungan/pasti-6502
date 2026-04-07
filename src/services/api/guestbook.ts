@@ -15,6 +15,24 @@ const buildGuestbookListUrl = (params?: GuestbookListParams) => {
 	if (params?.dateFilter) {
 		searchParams.set("dateFilter", params.dateFilter);
 	}
+	if (typeof params?.year === "number") {
+		searchParams.set("year", String(params.year));
+	}
+	if (typeof params?.month === "number") {
+		searchParams.set("month", String(params.month));
+	}
+	if (typeof params?.quarter === "number") {
+		searchParams.set("quarter", String(params.quarter));
+	}
+	if (typeof params?.semester === "number") {
+		searchParams.set("semester", String(params.semester));
+	}
+	if (params?.sortBy) {
+		searchParams.set("sortBy", params.sortBy);
+	}
+	if (params?.sortOrder) {
+		searchParams.set("sortOrder", params.sortOrder);
+	}
 	if (params?.search) {
 		searchParams.set("search", params.search);
 	}

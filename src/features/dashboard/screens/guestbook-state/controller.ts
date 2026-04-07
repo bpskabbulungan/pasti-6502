@@ -7,10 +7,22 @@ import { guestbookApi } from "@/services/api/guestbook";
 import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
 import { exportGuestbookData } from "./service";
 import { formatGuestbookDateTime, getGuestbookErrorMessage } from "./helper";
-import type { DateFilter, PurposeFilter, StatusFilter } from "./schema";
+import type {
+	DateFilter,
+	PurposeFilter,
+	SortByFilter,
+	SortOrderFilter,
+	StatusFilter,
+} from "./schema";
 import {
 	buildFallbackSummary,
+	dateFilterLabels,
+	getDateFilterLabel,
 	getPurposeFilterLabel,
+	monthOptions,
+	quarterOptions,
+	semesterOptions,
+	sortOptions,
 	getStatusFilterLabel,
 } from "./view-model";
 
@@ -18,11 +30,23 @@ export function useGuestbookPageController(
 	initialData: GuestbookListResponse,
 	initialFetchedAt: string
 ) {
+	const now = new Date();
+	const defaultYear = now.getFullYear();
+	const defaultMonth = now.getMonth() + 1;
+	const defaultQuarter = Math.ceil(defaultMonth / 3);
+	const defaultSemester = defaultMonth <= 6 ? 1 : 2;
+
 	const [searchTerm, setSearchTerm] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
 	const [purposeFilter, setPurposeFilter] = useState<PurposeFilter>("ALL");
 	const [dateFilter, setDateFilter] = useState<DateFilter>("today");
+	const [filterYear, setFilterYear] = useState(defaultYear);
+	const [filterMonth, setFilterMonth] = useState(defaultMonth);
+	const [filterQuarter, setFilterQuarter] = useState(defaultQuarter);
+	const [filterSemester, setFilterSemester] = useState(defaultSemester);
+	const [sortBy, setSortBy] = useState<SortByFilter>("createdAt");
+	const [sortOrder, setSortOrder] = useState<SortOrderFilter>("desc");
 	const [pageSize, setPageSize] = useState(10);
 	const [currentPage, setCurrentPage] = useState(1);
 	const [selectedEntry, setSelectedEntry] = useState<GuestbookEntry | null>(null);
@@ -38,23 +62,56 @@ export function useGuestbookPageController(
 
 	useEffect(() => {
 		setCurrentPage(1);
-	}, [statusFilter, purposeFilter, dateFilter, pageSize, debouncedSearch]);
+	}, [
+		statusFilter,
+		purposeFilter,
+		dateFilter,
+		filterYear,
+		filterMonth,
+		filterQuarter,
+		filterSemester,
+		sortBy,
+		sortOrder,
+		pageSize,
+		debouncedSearch,
+	]);
+
+	const periodParams = useMemo(() => {
+		switch (dateFilter) {
+			case "year":
+				return { year: filterYear };
+			case "month":
+				return { year: filterYear, month: filterMonth };
+			case "quarter":
+				return { year: filterYear, quarter: filterQuarter };
+			case "semester":
+				return { year: filterYear, semester: filterSemester };
+			default:
+				return {};
+		}
+	}, [dateFilter, filterYear, filterMonth, filterQuarter, filterSemester]);
 
 	const offset = (currentPage - 1) * pageSize;
 	const guestbookUrl = guestbookApi.listUrl({
 		status: statusFilter,
 		purpose: purposeFilter,
 		dateFilter,
+		...periodParams,
+		sortBy,
+		sortOrder,
 		search: debouncedSearch || undefined,
 		limit: pageSize,
 		offset,
 	});
+
 	const isUsingInitialData =
 		currentPage === 1 &&
 		pageSize === 10 &&
 		statusFilter === "ALL" &&
 		purposeFilter === "ALL" &&
 		dateFilter === "today" &&
+		sortBy === "createdAt" &&
+		sortOrder === "desc" &&
 		!debouncedSearch;
 
 	const {
@@ -99,6 +156,21 @@ export function useGuestbookPageController(
 
 	const purposeFilterLabel = getPurposeFilterLabel(purposeFilter);
 	const statusFilterLabel = getStatusFilterLabel(statusFilter);
+	const dateFilterLabel = getDateFilterLabel({
+		dateFilter,
+		year: filterYear,
+		month: filterMonth,
+		quarter: filterQuarter,
+		semester: filterSemester,
+	});
+	const sortValue = `${sortBy}.${sortOrder}` as `${SortByFilter}.${SortOrderFilter}`;
+	const sortLabel = sortOptions.find((option) => option.value === sortValue)?.label ?? "-";
+	const isDefaultSort = sortBy === "createdAt" && sortOrder === "desc";
+	const yearOptions = useMemo(() => {
+		const startYear = defaultYear - 5;
+		const endYear = defaultYear + 1;
+		return Array.from({ length: endYear - startYear + 1 }, (_, idx) => endYear - idx);
+	}, [defaultYear]);
 
 	const totalItems = totalEntries ?? entries.length;
 	const totalPages = totalEntries ? Math.max(1, Math.ceil(totalEntries / pageSize)) : 1;
@@ -116,6 +188,7 @@ export function useGuestbookPageController(
 		statusFilter !== "ALL" ||
 		purposeFilter !== "ALL" ||
 		dateFilter !== "today" ||
+		!isDefaultSort ||
 		Boolean(debouncedSearch);
 
 	const resetFilters = () => {
@@ -123,6 +196,20 @@ export function useGuestbookPageController(
 		setStatusFilter("ALL");
 		setPurposeFilter("ALL");
 		setDateFilter("today");
+		setFilterYear(defaultYear);
+		setFilterMonth(defaultMonth);
+		setFilterQuarter(defaultQuarter);
+		setFilterSemester(defaultSemester);
+		setSortBy("createdAt");
+		setSortOrder("desc");
+	};
+
+	const setSortValue = (value: string) => {
+		const [nextBy, nextOrder] = value.split(".") as [SortByFilter | undefined, SortOrderFilter | undefined];
+		if (!nextBy || !nextOrder) return;
+		if (!sortOptions.some((option) => option.value === `${nextBy}.${nextOrder}`)) return;
+		setSortBy(nextBy);
+		setSortOrder(nextOrder);
 	};
 
 	const handleExport = async (format: "xlsx" | "pdf") => {
@@ -132,6 +219,12 @@ export function useGuestbookPageController(
 				statusFilter,
 				purposeFilter,
 				dateFilter,
+				year: filterYear,
+				month: filterMonth,
+				quarter: filterQuarter,
+				semester: filterSemester,
+				sortBy,
+				sortOrder,
 				search: debouncedSearch || undefined,
 				format,
 			});
@@ -167,6 +260,25 @@ export function useGuestbookPageController(
 		setPurposeFilter,
 		dateFilter,
 		setDateFilter,
+		dateFilterLabel,
+		filterYear,
+		setFilterYear,
+		filterMonth,
+		setFilterMonth,
+		filterQuarter,
+		setFilterQuarter,
+		filterSemester,
+		setFilterSemester,
+		sortBy,
+		sortOrder,
+		sortValue,
+		sortLabel,
+		setSortValue,
+		yearOptions,
+		monthOptions,
+		quarterOptions,
+		semesterOptions,
+		dateFilterLabels,
 		pageSize,
 		setPageSize,
 		currentPage,

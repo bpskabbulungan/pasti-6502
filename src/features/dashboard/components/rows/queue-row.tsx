@@ -1,46 +1,31 @@
 import { memo } from "react";
-import { formatDistance } from "date-fns";
-import { id } from "date-fns/locale";
-import { Smartphone } from "lucide-react";
+import { ExternalLink, ListChecks, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { Role } from "@/shared/constants/enums";
+import { formatDisplayDate } from "@/lib/date-format";
 import type { QueueDetail } from "@shared/types/queue";
 
 type QueueTableRowProps = {
+  rowNumber: number;
   queue: QueueDetail;
-  currentUserRole?: Role;
-  currentUserName?: string | null;
   onServe: (queueId: string) => void;
-  onComplete: (queueId: string) => void;
   onOpenCancel: (queue: QueueDetail) => void;
-  onRemindSkd: (queue: QueueDetail) => void;
-  onMarkSkdFilled: (queue: QueueDetail, filled: boolean) => void;
-  onCopyTrackingLink: (tempUuid: string) => void;
 };
 
-const formatQueueTime = (isoDateString: string | Date): string => {
-  const date = new Date(isoDateString);
-  const day = date.getDate().toString().padStart(2, "0");
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  return `${day}${month}`;
-};
-
-const getWaitingTime = (createdAt: string | Date) => {
-  try {
-    return formatDistance(new Date(createdAt), new Date(), {
-      addSuffix: false,
-      locale: id,
-    });
-  } catch {
-    return "-";
-  }
-};
-
-const queueTypeBadgeClass: Record<"ONLINE" | "OFFLINE", string> = {
-  ONLINE: "border-blue-500/30 bg-blue-500/10 text-blue-700",
-  OFFLINE: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
+const formatServiceQueueCode = (serviceName: string, queueNumber: number) => {
+  const trimmed = serviceName.toLowerCase();
+  const prefix = trimmed.includes("dtsen")
+    ? "D"
+    : trimmed.includes("perpust")
+    ? "P"
+    : trimmed.includes("konsul")
+      ? "K"
+      : trimmed.includes("rekomen")
+        ? "R"
+        : "L";
+  const padded = queueNumber.toString().padStart(3, "0");
+  return `${prefix}-${padded}`;
 };
 
 const queueStatusLabel = {
@@ -57,174 +42,128 @@ const queueStatusClass = {
   CANCELED: "border-red-500/30 bg-red-500/10 text-red-700",
 } as const;
 
+const actionButtonTone = {
+  serve:
+    "border-emerald-300/90 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:ring-emerald-300/60 dark:border-emerald-500/40 dark:bg-emerald-500/14 dark:text-emerald-200 dark:hover:bg-emerald-500/22",
+  cancel:
+    "border-rose-300/90 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:ring-rose-300/60 dark:border-rose-500/40 dark:bg-rose-500/14 dark:text-rose-200 dark:hover:bg-rose-500/22",
+} as const;
+
 function QueueTableRowComponent({
+  rowNumber,
   queue,
-  currentUserRole,
-  currentUserName,
   onServe,
-  onComplete,
   onOpenCancel,
-  onRemindSkd,
-  onMarkSkdFilled,
-  onCopyTrackingLink,
 }: QueueTableRowProps) {
-  const canComplete =
-    currentUserRole === Role.ADMIN ||
-    (queue.admin && queue.admin.name === currentUserName);
-  const queueCode = `${queue.queueNumber}-${formatQueueTime(queue.createdAt)}`;
-  const queueTypeLabel = queue.queueType === "ONLINE" ? "Online" : "Offline";
+  const queueCode = formatServiceQueueCode(queue.service.name, queue.queueNumber);
+  const queueDate = formatDisplayDate(queue.createdAt);
+  const trackingPath = queue.tempUuid ? `/visitor-form/${queue.tempUuid}` : null;
 
   return (
     <>
       <TableRow className="hidden md:table-row">
-        <TableCell className="font-semibold text-primary-color">{queueCode}</TableCell>
-        <TableCell>
-          <div className="space-y-1">
-            <p className="break-words font-medium text-primary-color">{queue.visitor.name}</p>
-            <p className="break-words text-xs text-muted-foreground">{queue.visitor.institution || "-"}</p>
-            <p className="text-xs text-muted-foreground">{queue.visitor.phone}</p>
-          </div>
+        <TableCell className="text-center font-semibold text-primary-color">{rowNumber}</TableCell>
+        <TableCell className="text-center font-medium text-primary-color">{queue.visitor.name}</TableCell>
+        <TableCell className="text-center">{queue.visitor.institution || "-"}</TableCell>
+        <TableCell className="max-w-[220px] break-words text-center font-medium">
+          {queue.service.name}
         </TableCell>
-        <TableCell className="max-w-[220px] break-words font-medium">{queue.service.name}</TableCell>
-        <TableCell>
-          <Badge variant="outline" className={queueTypeBadgeClass[queue.queueType]}>
-            {queueTypeLabel}
-          </Badge>
-        </TableCell>
-        <TableCell>
-          <p className="text-xs text-muted-foreground">{getWaitingTime(queue.createdAt)}</p>
-        </TableCell>
-        <TableCell>
+        <TableCell className="text-center font-semibold text-primary-color">{queueCode}</TableCell>
+        <TableCell className="text-center text-xs">{queueDate}</TableCell>
+        <TableCell className="text-center">
           <span className="text-xs font-semibold text-primary-color">
             {queue.dutyStaff?.name || queue.admin?.name || "-"}
           </span>
         </TableCell>
-        <TableCell>
-          {queue.filledSKD ? (
-            <div className="flex flex-col items-start gap-2 lg:flex-row lg:items-center">
-              <Badge
-                variant="outline"
-                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-              >
-                Sudah Diisi
-              </Badge>
-              <Button
-                variant="warning"
-                size="sm"
-                className="h-8 px-2 text-xs"
-                onClick={() => onMarkSkdFilled(queue, false)}
-              >
-                Tandai Belum
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-start gap-2 lg:flex-row lg:items-center">
-              <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-700">
-                Belum Diisi
-              </Badge>
-              <Button
-                variant="success"
-                size="sm"
-                className="h-8 px-2 text-xs"
-                onClick={() => onMarkSkdFilled(queue, true)}
-              >
-                Tandai Sudah
-              </Button>
-            </div>
-          )}
-        </TableCell>
-        <TableCell>
-          {queue.trackingLink && queue.tempUuid ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => onCopyTrackingLink(queue.tempUuid!)}
+        <TableCell className="text-center">
+          {trackingPath ? (
+            <a
+              href={trackingPath}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
             >
-              Salin Link
-            </Button>
+              Buka
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
           ) : (
             <span className="text-xs text-muted-foreground">-</span>
           )}
         </TableCell>
-        <TableCell className="text-right">
-          <div className="flex flex-wrap justify-end gap-1.5">
-            {!queue.filledSKD && queue.tempUuid && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 max-w-full gap-1.5 px-3 text-xs"
-                onClick={() => onRemindSkd(queue)}
-              >
-                <Smartphone className="h-3.5 w-3.5" />
-                <span>Pengingat SKD</span>
-              </Button>
-            )}
+        <TableCell className="text-center">
+          <div className="flex flex-wrap justify-center gap-1.5">
             {queue.status === "WAITING" && (
               <>
-                <Button size="sm" className="h-8 px-3 text-xs" onClick={() => onServe(queue.id)}>
-                  Layani
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.serve}`}
+                  onClick={() => onServe(queue.id)}
+                  aria-label="Layani antrean"
+                  title="Layani antrean"
+                >
+                  <ListChecks className="h-3.5 w-3.5" />
                 </Button>
                 <Button
                   size="sm"
-                  variant="warning"
-                  className="h-8 px-3 text-xs"
+                  variant="outline"
+                  className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
                   onClick={() => onOpenCancel(queue)}
+                  aria-label="Batalkan antrean"
+                  title="Batalkan antrean"
                 >
-                  Batalkan
+                  <XCircle className="h-3.5 w-3.5" />
                 </Button>
               </>
             )}
-            {queue.status === "SERVING" &&
-              (canComplete ? (
-                <Button
-                  size="sm"
-                  variant="success"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => onComplete(queue.id)}
-                >
-                  Selesai
-                </Button>
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  Dilayani oleh {queue.admin?.name}
-                </span>
-              ))}
+            {queue.status === "SERVING" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
+                onClick={() => onOpenCancel(queue)}
+                aria-label="Batalkan antrean"
+                title="Batalkan antrean"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+            {queue.status !== "WAITING" && queue.status !== "SERVING" ? (
+              <span className="text-xs text-muted-foreground">-</span>
+            ) : null}
           </div>
         </TableCell>
       </TableRow>
 
       <TableRow className="border-0 md:hidden hover:bg-transparent">
-        <TableCell colSpan={9} className="p-0 whitespace-normal">
-          <div className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm">
+        <TableCell colSpan={9} className="whitespace-normal p-0">
+          <div className="rounded-lg border border-border/70 bg-card p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
-                <p className="text-lg font-bold text-primary-color">{queueCode}</p>
+                <p className="text-lg font-bold text-primary-color">No. {rowNumber}</p>
+                <p className="text-xs text-muted-foreground">{queueCode}</p>
                 <p className="break-words text-sm font-medium text-primary-color">{queue.visitor.name}</p>
                 <p className="break-words text-xs text-muted-foreground">{queue.service.name}</p>
               </div>
-              <div className="flex flex-col items-end gap-1.5">
+              <div className="flex flex-col items-end gap-1.5 text-right">
                 <Badge variant="outline" className={queueStatusClass[queue.status]}>
                   {queueStatusLabel[queue.status]}
-                </Badge>
-                <Badge variant="outline" className={queueTypeBadgeClass[queue.queueType]}>
-                  {queueTypeLabel}
                 </Badge>
               </div>
             </div>
 
-            <div className="mt-3 grid gap-2 rounded-lg bg-muted/40 p-3 text-xs">
+            <div className="mt-3 grid gap-2 rounded-lg bg-muted/25 p-3 text-xs">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Kontak</span>
-                <span className="text-right">{queue.visitor.phone}</span>
+                <span className="text-muted-foreground">Nomor Antrean</span>
+                <span className="font-semibold text-primary-color">{queueCode}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Tanggal</span>
+                <span>{queueDate}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Instansi</span>
                 <span className="max-w-[70%] break-words text-right">{queue.visitor.institution || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Menunggu</span>
-                <span>{getWaitingTime(queue.createdAt)}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Petugas</span>
@@ -232,87 +171,60 @@ function QueueTableRowComponent({
                   {queue.dutyStaff?.name || queue.admin?.name || "-"}
                 </span>
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Tracking</span>
+                {trackingPath ? (
+                  <a
+                    href={trackingPath}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                  >
+                    Buka
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : (
+                  <span>-</span>
+                )}
+              </div>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {queue.filledSKD ? (
-                <Badge
-                  variant="outline"
-                  className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-                >
-                  SKD Sudah Diisi
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-700">
-                  SKD Belum Diisi
-                </Badge>
-              )}
-              <Button
-                variant={queue.filledSKD ? "warning" : "success"}
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => onMarkSkdFilled(queue, !queue.filledSKD)}
-              >
-                {queue.filledSKD ? "Tandai Belum" : "Tandai Sudah"}
-              </Button>
-              {queue.tempUuid ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => onCopyTrackingLink(queue.tempUuid!)}
-                >
-                  Salin Link Tracking
-                </Button>
-              ) : null}
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {!queue.filledSKD && queue.tempUuid ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 flex-1 gap-1.5 text-xs"
-                  onClick={() => onRemindSkd(queue)}
-                >
-                  <Smartphone className="h-3.5 w-3.5" />
-                  Kirim Pengingat
-                </Button>
-              ) : null}
               {queue.status === "WAITING" ? (
                 <>
                   <Button
                     size="sm"
-                    className="h-8 min-w-[120px] flex-1 text-xs"
+                    variant="outline"
+                    className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.serve}`}
                     onClick={() => onServe(queue.id)}
+                    aria-label="Layani antrean"
+                    title="Layani antrean"
                   >
-                    Layani Sekarang
+                    <ListChecks className="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     size="sm"
-                    variant="warning"
-                    className="h-8 min-w-[120px] flex-1 text-xs"
+                    variant="outline"
+                    className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
                     onClick={() => onOpenCancel(queue)}
+                    aria-label="Batalkan antrean"
+                    title="Batalkan antrean"
                   >
-                    Batalkan
+                    <XCircle className="h-3.5 w-3.5" />
                   </Button>
                 </>
               ) : null}
               {queue.status === "SERVING" ? (
-                canComplete ? (
-                  <Button
-                    size="sm"
-                    variant="success"
-                    className="h-8 min-w-[120px] flex-1 text-xs"
-                    onClick={() => onComplete(queue.id)}
-                  >
-                    Selesai
-                  </Button>
-                ) : (
-                  <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    Dilayani oleh {queue.admin?.name}
-                  </div>
-                )
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`h-8 w-8 p-0 shadow-none ${actionButtonTone.cancel}`}
+                  onClick={() => onOpenCancel(queue)}
+                  aria-label="Batalkan antrean"
+                  title="Batalkan antrean"
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                </Button>
               ) : null}
             </div>
           </div>

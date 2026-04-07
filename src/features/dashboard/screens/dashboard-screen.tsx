@@ -72,11 +72,12 @@ export default function DashboardPage({
   if (!stats) {
     return (
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <div className="rounded-2xl border border-border/80 bg-card/80 p-6 text-center shadow-md">
+        <div className="rounded-xl border border-border/80 bg-card p-6 text-center">
           <p className="text-secondary-color">Tidak ada data statistik untuk ditampilkan.</p>
           <Button
             onClick={() => void refresh()}
-            className="mt-4 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
+            variant="outline"
+            className="mt-4 border-border/80"
           >
             Muat Ulang
           </Button>
@@ -91,44 +92,40 @@ export default function DashboardPage({
       value: stats.counts.waiting,
       description: "Pengunjung yang sedang menunggu layanan",
       icon: Hourglass,
-      iconClassName: "text-primary",
-      iconBg: "bg-primary/10",
+      iconClassName: "text-amber-600 dark:text-amber-300",
+      iconBadgeClassName: "border-amber-400/35 bg-amber-500/10",
       link: "/dashboard/queue?status=WAITING",
       linkLabel: "Lihat Detail",
-      linkClassName: "text-primary",
     },
     {
       title: "Sedang Dilayani",
       value: stats.counts.serving,
       description: "Pengunjung yang sedang dalam proses layanan",
       icon: Users,
-      iconClassName: "text-accent",
-      iconBg: "bg-accent/10",
+      iconClassName: "text-sky-600 dark:text-sky-300",
+      iconBadgeClassName: "border-sky-400/35 bg-sky-500/10",
       link: "/dashboard/queue?status=SERVING",
       linkLabel: "Lihat Detail",
-      linkClassName: "text-accent",
     },
     {
       title: "Selesai Dilayani",
       value: stats.counts.completed,
       description: "Layanan yang telah selesai hari ini",
       icon: CheckCircle,
-      iconClassName: "text-emerald-600",
-      iconBg: "bg-emerald-500/10",
+      iconClassName: "text-emerald-600 dark:text-emerald-300",
+      iconBadgeClassName: "border-emerald-400/35 bg-emerald-500/10",
       link: "/dashboard/queue?status=COMPLETED",
       linkLabel: "Lihat Detail",
-      linkClassName: "text-emerald-600",
     },
     {
       title: "Dibatalkan",
       value: stats.counts.canceled,
       description: "Antrean yang dibatalkan hari ini",
       icon: XCircle,
-      iconClassName: "text-destructive",
-      iconBg: "bg-destructive/10",
+      iconClassName: "text-rose-600 dark:text-rose-300",
+      iconBadgeClassName: "border-rose-400/35 bg-rose-500/10",
       link: "/dashboard/queue?status=CANCELED",
       linkLabel: "Lihat Detail",
-      linkClassName: "text-destructive",
     },
   ];
 
@@ -138,16 +135,16 @@ export default function DashboardPage({
       value: stats.averages.waitTimeMinutes,
       description: "Waktu rata-rata pengunjung menunggu sebelum dilayani",
       icon: Clock3,
-      iconClassName: "text-accent",
-      iconBg: "bg-accent/10",
+      iconClassName: "text-violet-600 dark:text-violet-300",
+      iconBadgeClassName: "border-violet-400/35 bg-violet-500/10",
     },
     {
       title: "Rata-rata Waktu Layanan",
       value: stats.averages.serviceTimeMinutes,
       description: "Durasi rata-rata layanan per pengunjung",
       icon: Clock3,
-      iconClassName: "text-primary",
-      iconBg: "bg-primary/10",
+      iconClassName: "text-cyan-600 dark:text-cyan-300",
+      iconBadgeClassName: "border-cyan-400/35 bg-cyan-500/10",
     },
   ];
 
@@ -175,15 +172,16 @@ export default function DashboardPage({
               <Button
                 asChild
                 variant="outline"
-                className="dashboard-header-action border-border/80 bg-background/75 text-primary-color"
+                className="dashboard-header-action border-border/80 bg-background text-primary-color"
               >
                 <Link href="/dashboard/ui-showcase">UI Showcase</Link>
               </Button>
             )}
             <Button
+              variant="outline"
               onClick={() => void refresh()}
               disabled={isRefreshing}
-              className="dashboard-header-action"
+              className="dashboard-header-action border-border/80 bg-background"
               aria-label="Perbarui data statistik"
             >
               <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -197,10 +195,7 @@ export default function DashboardPage({
         {metricCards.map((card) => {
           const Icon = card.icon;
           return (
-            <Card
-              key={card.title}
-              className="group h-full border-border/80 bg-card/88 transition hover:-translate-y-0.5"
-            >
+            <Card key={card.title} className="h-full border-border/80 bg-card shadow-none">
               <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                 <div className="space-y-1">
                   <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
@@ -211,7 +206,7 @@ export default function DashboardPage({
                   </div>
                 </div>
                 <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full ${card.iconBg}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg border ${card.iconBadgeClassName}`}
                 >
                   <Icon className={`h-5 w-5 ${card.iconClassName}`} />
                 </div>
@@ -224,7 +219,7 @@ export default function DashboardPage({
                   asChild
                   variant="ghost"
                   size="sm"
-                  className={`w-full justify-start rounded-lg px-2 text-xs ${card.linkClassName}`}
+                  className="w-full justify-start rounded-lg px-2 text-xs text-secondary-color hover:text-primary-color"
                 >
                   <Link href={card.link}>{card.linkLabel}</Link>
                 </Button>
@@ -238,7 +233,7 @@ export default function DashboardPage({
         {averageCards.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-border/80 bg-card/88">
+            <Card key={card.title} className="border-border/80 bg-card shadow-none">
               <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                 <div>
                   <CardTitle className="text-sm font-semibold text-primary-color">
@@ -246,7 +241,7 @@ export default function DashboardPage({
                   </CardTitle>
                 </div>
                 <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-full ${card.iconBg}`}
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg border ${card.iconBadgeClassName}`}
                 >
                   <Icon className={`h-4 w-4 ${card.iconClassName}`} />
                 </div>
@@ -265,13 +260,13 @@ export default function DashboardPage({
 
       {currentUser.role === Role.ADMIN && (
         <section className="grid gap-4 md:grid-cols-2">
-          <Card className="border-border/80 bg-card/88">
+          <Card className="border-border/80 bg-card shadow-none">
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-semibold text-primary-color">
                 Total Pengunjung Hari Ini
               </CardTitle>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-                <Users className="h-4 w-4 text-primary" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-indigo-400/35 bg-indigo-500/10">
+                <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
               </div>
             </CardHeader>
             <CardContent>
@@ -284,13 +279,13 @@ export default function DashboardPage({
               </p>
             </CardContent>
           </Card>
-          <Card className="border-border/80 bg-card/88">
+          <Card className="border-border/80 bg-card shadow-none">
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-semibold text-primary-color">
                 Pengaturan Sistem
               </CardTitle>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10">
-                <Settings className="h-4 w-4 text-accent" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-fuchsia-400/35 bg-fuchsia-500/10">
+                <Settings className="h-4 w-4 text-fuchsia-600 dark:text-fuchsia-300" />
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -321,5 +316,3 @@ export default function DashboardPage({
     </div>
   );
 }
-
-

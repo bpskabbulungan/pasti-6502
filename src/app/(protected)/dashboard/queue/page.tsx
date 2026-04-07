@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
 import QueuePage from "@/features/dashboard/screens/queue-management-screen";
 import { requireDashboardUser } from "@/lib/dashboard-session";
 import { QueueStatus } from "@prisma/client";
 import { getQueues } from "@api/modules/queues/queue.service";
+
+export const metadata: Metadata = {
+  title: "Antrean",
+};
 
 type PageProps = {
   searchParams?: Promise<{
@@ -31,7 +36,7 @@ const parseStatusParam = (value?: string) => {
 const parseDateFilterParam = (value?: string) => (value?.toLowerCase() === "all" ? "all" : "today");
 
 export default async function Page({ searchParams }: PageProps) {
-  const user = await requireDashboardUser();
+  await requireDashboardUser();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const initialStatus = parseStatusParam(resolvedSearchParams?.status);
   const initialDateFilter = parseDateFilterParam(resolvedSearchParams?.dateFilter);
@@ -45,7 +50,6 @@ export default async function Page({ searchParams }: PageProps) {
 
   return (
     <QueuePage
-      currentUser={user}
       initialStatus={initialStatus}
       initialDateFilter={initialDateFilter}
       initialPageData={initialPageData}

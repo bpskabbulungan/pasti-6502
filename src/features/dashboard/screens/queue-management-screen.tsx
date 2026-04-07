@@ -1,6 +1,5 @@
 "use client";
 
-import type { Session } from "next-auth";
 import { useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
@@ -18,13 +17,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
@@ -34,13 +26,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueueStatus } from "@/shared/constants/enums";
-import { RefreshCw, Smartphone, AlertCircle, MessageSquareText, Inbox } from "lucide-react";
+import { RefreshCcw, Inbox } from "lucide-react";
 import { queuesApi } from "@/services/api/queues";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import TableSkeleton from "@/features/dashboard/components/skeletons/table-skeleton";
 import QueueTableRow from "@/features/dashboard/components/rows/queue-row";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import type { QueueDetail, QueueListResponse } from "@shared/types/queue";
 
@@ -66,7 +56,6 @@ const parseDateFilterParam = (value: string | null): "today" | "all" | null => {
 
 type Queue = QueueDetail;
 type QueuePageProps = {
-  currentUser: Session["user"];
   initialStatus: QueueStatus;
   initialDateFilter: "today" | "all";
   initialPageData: QueueListResponse;
@@ -74,7 +63,6 @@ type QueuePageProps = {
 };
 
 export default function QueueManagementPage({
-  currentUser,
   initialStatus,
   initialDateFilter,
   initialPageData,
@@ -84,13 +72,6 @@ export default function QueueManagementPage({
   const statusParam = searchParams.get("status");
   const dateFilterParam = searchParams.get("dateFilter");
   const [statusFilter, setStatusFilter] = useState<QueueStatus>(initialStatus);
-  const [showContinueDialog, setShowContinueDialog] = useState(false);
-  const [nextInQueue, setNextInQueue] = useState<Queue | null>(null);
-  const [showRemindSkdDialog, setShowRemindSkdDialog] = useState(false);
-  const [selectedQueue, setSelectedQueue] = useState<Queue | null>(null);
-  const [reminderMessage, setReminderMessage] = useState("");
-  const [isSendingReminder, setIsSendingReminder] = useState(false);
-  const [reminderError, setReminderError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<"today" | "all">(initialDateFilter);
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -156,25 +137,6 @@ export default function QueueManagementPage({
     [refresh]
   );
 
-  const handleCompleteQueue = useCallback(
-    async (queueId: string) => {
-      try {
-        const result = await queuesApi.complete(queueId);
-        toast.success("Antrean telah selesai dilayani");
-        await refresh();
-
-        if (result.nextQueue) {
-          setNextInQueue(result.nextQueue);
-          setShowContinueDialog(true);
-        }
-      } catch (error) {
-        console.error("Error completing queue:", error);
-        toast.error("Terjadi kesalahan");
-      }
-    },
-    [refresh]
-  );
-
   const handleCancelQueue = async (queueId: string) => {
     try {
       setIsCancelingQueue(true);
@@ -196,98 +158,17 @@ export default function QueueManagementPage({
     setShowCancelDialog(true);
   }, []);
 
-  // Function to handle opening the SKD reminder dialog
-  const handleRemindSKD = useCallback((queue: Queue) => {
-    setSelectedQueue(queue);
-    setReminderMessage(
-      `Halo ${queue.visitor.name}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: s.bps.go.id/skd2025_bpsbusel`
-    );
-    setShowRemindSkdDialog(true);
-  }, []);
-
-  // Function to prepare WhatsApp message
-  const prepareWhatsAppReminder = async () => {
-    if (!selectedQueue) return;
-
-    try {
-      setIsSendingReminder(true);
-      setReminderError(null);
-
-      const data = await queuesApi.remindSkd(selectedQueue.id, reminderMessage);
-      if (data?.data?.whatsappUrl) {
-        window.open(data.data.whatsappUrl, "_blank");
-        toast.success("Link WhatsApp berhasil dibuka");
-        setShowRemindSkdDialog(false);
-      } else {
-        toast.error("Gagal menyiapkan pengingat");
-      }
-    } catch (error) {
-      console.error("Error preparing WhatsApp reminder:", error);
-      setReminderError("Terjadi kesalahan saat menyiapkan pengingat WhatsApp");
-      toast.error("Terjadi kesalahan saat menyiapkan pengingat WhatsApp");
-    } finally {
-      setIsSendingReminder(false);
-    }
-  };
-
-  // Function to send reminder via WhatsApp Bot
-  const sendWhatsAppBotReminderHandler = async () => {
-    if (!selectedQueue) return;
-
-    try {
-      setIsSendingReminder(true);
-      setReminderError(null);
-
-      const result = await queuesApi.remindSkdBot(selectedQueue.id, reminderMessage);
-
-      if (result.success) {
-        toast.success("Pengingat berhasil dikirim via WhatsApp Bot");
-        setShowRemindSkdDialog(false);
-      } else {
-        setReminderError(result.message);
-        toast.error(result.message);
-      }
-    } catch (error) {
-      console.error("Error sending WhatsApp Bot reminder:", error);
-      setReminderError("Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot");
-      toast.error("Terjadi kesalahan saat mengirim pengingat via WhatsApp Bot");
-    } finally {
-      setIsSendingReminder(false);
-    }
-  };
-
-  // Function to handle SKD check
-  const handleMarkSkdFilled = useCallback(
-    async (queue: Queue, filled: boolean) => {
-      try {
-        const status = filled ? "SUDAH_MENGISI" : "BELUM_MENGISI";
-        await queuesApi.updateSkdStatus(queue.id, status);
-        toast.success(filled ? "SKD ditandai telah diisi" : "SKD ditandai belum diisi");
-        await refresh();
-      } catch (error) {
-        console.error("Error updating SKD status:", error);
-        toast.error("Terjadi kesalahan saat mengubah status SKD");
-      }
-    },
-    [refresh]
-  );
-
-  const handleCopyTrackingLink = useCallback((tempUuid: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/visitor-form/${tempUuid}`);
-    toast.success("Link tracking disalin ke clipboard");
-  }, []);
-
   const getTableColumns = () => (
     <>
-      <TableHead className="w-16">No</TableHead>
-      <TableHead>Nama</TableHead>
-      <TableHead>Layanan</TableHead>
-      <TableHead>Tipe</TableHead>
-      <TableHead>Waktu</TableHead>
-      <TableHead>Dilayani Oleh</TableHead>
-      <TableHead>Status SKD</TableHead>
-      <TableHead>Link Tracking</TableHead>
-      <TableHead className="w-[240px] text-right">Aksi</TableHead>
+      <TableHead className="w-20 text-center">No</TableHead>
+      <TableHead className="text-center">Pengunjung</TableHead>
+      <TableHead className="text-center">Asal Instansi</TableHead>
+      <TableHead className="text-center">Layanan</TableHead>
+      <TableHead className="text-center">Nomor Antrean</TableHead>
+      <TableHead className="text-center">Tanggal</TableHead>
+      <TableHead className="text-center">Petugas</TableHead>
+      <TableHead className="text-center">Tracking</TableHead>
+      <TableHead className="w-[190px] text-center">Aksi</TableHead>
     </>
   );
 
@@ -386,18 +267,20 @@ export default function QueueManagementPage({
         actions={
           <div className="dashboard-header-actions">
             <Button
+              variant="outline"
               onClick={handleManualRefresh}
               disabled={isRefreshing}
-              className="dashboard-header-action"
+              className="dashboard-header-action border-border/80 bg-background"
+              aria-label="Perbarui data antrean"
             >
               {isRefreshing ? (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  <RefreshCcw className="mr-2 h-4 w-4 animate-spin" />
                   Memperbarui...
                 </>
               ) : (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                  <RefreshCcw className="mr-2 h-4 w-4" />
                   Perbarui Data
                 </>
               )}
@@ -405,7 +288,7 @@ export default function QueueManagementPage({
           </div>
         }
       />
-      <Card className="border-border/80 bg-card/88">
+      <Card className="border-border/80 bg-card shadow-none">
         <CardHeader className="gap-2">
           <CardTitle className="text-xl font-semibold text-primary-color">Daftar Antrean</CardTitle>
           <CardDescription>
@@ -448,7 +331,7 @@ export default function QueueManagementPage({
                 </SelectContent>
               </Select>
             </div>
-            <div className="mt-3 rounded-lg border border-border/70 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+            <div className="mt-3 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
               {showingLabel}
             </div>
           </div>
@@ -458,23 +341,18 @@ export default function QueueManagementPage({
             </div>
           ) : queues.length > 0 ? (
             <div className="dashboard-table-shell">
-              <Table className="w-full md:min-w-[940px]">
-                <TableHeader className="hidden bg-muted/50 md:table-header-group">
+              <Table className="w-full md:min-w-[1140px]">
+                <TableHeader className="hidden bg-muted/35 md:table-header-group">
                   <TableRow>{getTableColumns()}</TableRow>
                 </TableHeader>
                 <TableBody>
-                  {queues.map((queue) => (
+                  {queues.map((queue, index) => (
                     <QueueTableRow
                       key={queue.id}
+                      rowNumber={offset + index + 1}
                       queue={queue}
-                      currentUserRole={currentUser.role}
-                      currentUserName={currentUser.name}
                       onServe={handleServeQueue}
-                      onComplete={handleCompleteQueue}
                       onOpenCancel={openCancelDialog}
-                      onRemindSkd={handleRemindSKD}
-                      onMarkSkdFilled={handleMarkSkdFilled}
-                      onCopyTrackingLink={handleCopyTrackingLink}
                     />
                   ))}
                 </TableBody>
@@ -537,113 +415,6 @@ export default function QueueManagementPage({
           ) : null
         }
       />
-      <Dialog open={showContinueDialog} onOpenChange={setShowContinueDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Lanjut ke Pengunjung Berikutnya?</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            {nextInQueue && (
-              <div className="space-y-2">
-                <p>
-                  Pengunjung berikutnya: <strong>{nextInQueue.visitor.name}</strong>
-                </p>
-                <p>
-                  Nomor Antrean: <strong>{nextInQueue.queueNumber}</strong>
-                </p>
-                <p>
-                  Layanan: <strong>{nextInQueue.service.name}</strong>
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="flex gap-2 sm:justify-end">
-            <Button variant="outline" onClick={() => setShowContinueDialog(false)} className="w-full sm:w-auto">
-              Nanti Saja
-            </Button>
-            <Button
-              onClick={() => {
-                if (nextInQueue) {
-                  handleServeQueue(nextInQueue.id);
-                  setShowContinueDialog(false);
-                }
-              }}
-              className="w-full sm:w-auto"
-            >
-              Ya, Layani Sekarang
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add SKD Reminder Dialog */}
-      <Dialog open={showRemindSkdDialog} onOpenChange={setShowRemindSkdDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Kirim Pengingat SKD</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {selectedQueue && (
-              <>
-                <div className="space-y-2">
-                  <p>
-                    Pengunjung: <strong>{selectedQueue.visitor.name}</strong>
-                  </p>
-                  <p>
-                    No. HP: <strong>{selectedQueue.visitor.phone}</strong>
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="reminder-message">Pesan Pengingat:</Label>
-                  <Textarea
-                    id="reminder-message"
-                    value={reminderMessage}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                      setReminderMessage(e.target.value)
-                    }
-                    rows={4}
-                    className="resize-none"
-                    placeholder="Ketik pesan di sini..."
-                  />
-                </div>
-
-                {reminderError && (
-                  <div className="flex items-start gap-2 bg-destructive/15 p-3 rounded-md text-destructive text-sm">
-                    <AlertCircle className="flex-shrink-0 mt-0.5 w-4 h-4" />
-                    <div>{reminderError}</div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-          <DialogFooter className="sm:flex-row flex-col gap-2">
-            <Button variant="outline" onClick={() => setShowRemindSkdDialog(false)} className="w-full sm:w-auto">
-              Batal
-            </Button>
-            <div className="flex w-full flex-col gap-2 sm:flex-1 sm:flex-row sm:justify-end">
-              <Button
-                onClick={prepareWhatsAppReminder}
-                disabled={isSendingReminder}
-                className="w-full gap-2 sm:w-auto"
-                variant="default"
-              >
-                <MessageSquareText className="w-4 h-4" />
-                Kirim via WA Direct
-              </Button>
-              <Button
-                onClick={sendWhatsAppBotReminderHandler}
-                disabled={isSendingReminder}
-                className="w-full gap-2 sm:w-auto"
-                variant="secondary"
-              >
-                <Smartphone className="w-4 h-4" />
-                Kirim via WA Bot
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageContainer>
   );
 }

@@ -16,9 +16,20 @@ export async function GET(req: NextRequest) {
 		const search = url.searchParams.get("search");
 		const dateFilterParam = url.searchParams.get("dateFilter");
 		const dateFilter =
-			dateFilterParam === "all" || dateFilterParam === "today"
+			dateFilterParam === "all" ||
+			dateFilterParam === "today" ||
+			dateFilterParam === "year" ||
+			dateFilterParam === "month" ||
+			dateFilterParam === "quarter" ||
+			dateFilterParam === "semester"
 				? dateFilterParam
 				: "today";
+		const year = url.searchParams.get("year");
+		const month = url.searchParams.get("month");
+		const quarter = url.searchParams.get("quarter");
+		const semester = url.searchParams.get("semester");
+		const sortBy = url.searchParams.get("sortBy");
+		const sortOrder = url.searchParams.get("sortOrder");
 		const formatParam = url.searchParams.get("format");
 
 		if (formatParam && formatParam !== "xlsx" && formatParam !== "pdf") {
@@ -33,6 +44,12 @@ export async function GET(req: NextRequest) {
 			status,
 			purpose,
 			dateFilter,
+			year,
+			month,
+			quarter,
+			semester,
+			sortBy,
+			sortOrder,
 			search,
 			format: exportFormat,
 		});

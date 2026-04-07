@@ -5,16 +5,28 @@ import * as XLSX from "xlsx";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import prisma from "@api/infrastructure/database/prisma";
 import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
-import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
+import {
+  getDayRangeInTimeZone,
+  parseDateOnlyInTimeZone,
+  toIsoDateInTimeZone,
+} from "@shared/utils/date-boundary";
 import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
-type DateFilter = "today" | "all";
+type DateFilter = "today" | "all" | "year" | "month" | "quarter" | "semester";
+type GuestbookSortBy = "createdAt" | "fullName" | "serviceName";
+type GuestbookSortOrder = "asc" | "desc";
 type ExportFormat = "xlsx" | "pdf";
 
 type GuestbookListParams = {
   status?: string | null;
   purpose?: string | null;
   dateFilter?: DateFilter;
+  year?: string | null;
+  month?: string | null;
+  quarter?: string | null;
+  semester?: string | null;
+  sortBy?: string | null;
+  sortOrder?: string | null;
   search?: string | null;
   limit?: string | null;
   offset?: string | null;
@@ -25,6 +37,12 @@ type GuestbookExportParams = {
   status?: string | null;
   purpose?: string | null;
   dateFilter?: DateFilter;
+  year?: string | null;
+  month?: string | null;
+  quarter?: string | null;
+  semester?: string | null;
+  sortBy?: string | null;
+  sortOrder?: string | null;
   search?: string | null;
   format: ExportFormat;
 };
@@ -107,6 +125,38 @@ const sanitizeOffset = (offsetParam?: string | null) => {
   return Math.max(parsed, 0);
 };
 
+const sanitizeYear = (value?: string | null) => {
+  if (value === null || typeof value === "undefined") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return undefined;
+  if (parsed < 2000 || parsed > 2100) return undefined;
+  return parsed;
+};
+
+const sanitizeMonth = (value?: string | null) => {
+  if (value === null || typeof value === "undefined") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return undefined;
+  if (parsed < 1 || parsed > 12) return undefined;
+  return parsed;
+};
+
+const sanitizeQuarter = (value?: string | null) => {
+  if (value === null || typeof value === "undefined") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return undefined;
+  if (parsed < 1 || parsed > 4) return undefined;
+  return parsed;
+};
+
+const sanitizeSemester = (value?: string | null) => {
+  if (value === null || typeof value === "undefined") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return undefined;
+  if (parsed < 1 || parsed > 2) return undefined;
+  return parsed;
+};
+
 const parseStatus = (value?: string | null) => {
   if (!value || value === "ALL") return null;
   const normalized = value.toUpperCase();
@@ -119,12 +169,155 @@ const parsePurpose = (value?: string | null) => {
   return Object.values(Purpose).includes(normalized as Purpose) ? (normalized as Purpose) : null;
 };
 
+const parseSortBy = (value?: string | null): GuestbookSortBy => {
+  if (!value) return "createdAt";
+  if (value === "createdAt" || value === "fullName" || value === "serviceName") {
+    return value;
+  }
+  return "createdAt";
+};
+
+const parseSortOrder = (value?: string | null): GuestbookSortOrder => {
+  if (!value) return "desc";
+  return value === "asc" ? "asc" : "desc";
+};
+
+const parseDateFilter = (value?: string | null): DateFilter => {
+  if (
+    value === "today" ||
+    value === "all" ||
+    value === "year" ||
+    value === "month" ||
+    value === "quarter" ||
+    value === "semester"
+  ) {
+    return value;
+  }
+  return "today";
+};
+
+const createDateOnly = (year: number, month: number, day: number) =>
+  `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+const resolvePeriodRange = ({
+  dateFilter,
+  year,
+  month,
+  quarter,
+  semester,
+}: {
+  dateFilter: DateFilter;
+  year?: number;
+  month?: number;
+  quarter?: number;
+  semester?: number;
+}) => {
+  if (dateFilter === "all") {
+    return null;
+  }
+
+  if (dateFilter === "today") {
+    return getDayRangeInTimeZone(new Date());
+  }
+
+  const [currentYearText, currentMonthText] = toIsoDateInTimeZone(new Date()).split("-");
+  const currentYear = Number.parseInt(currentYearText ?? "", 10);
+  const currentMonth = Number.parseInt(currentMonthText ?? "", 10);
+
+  const normalizedYear = year ?? (Number.isNaN(currentYear) ? new Date().getFullYear() : currentYear);
+  const normalizedMonth = month ?? (Number.isNaN(currentMonth) ? new Date().getMonth() + 1 : currentMonth);
+  const normalizedQuarter =
+    quarter ?? (Number.isNaN(currentMonth) ? Math.ceil((new Date().getMonth() + 1) / 3) : Math.ceil(currentMonth / 3));
+  const normalizedSemester =
+    semester ?? (Number.isNaN(currentMonth) ? (new Date().getMonth() + 1 <= 6 ? 1 : 2) : currentMonth <= 6 ? 1 : 2);
+
+  const startYear = normalizedYear;
+  let startMonth = 1;
+  let endYear = normalizedYear + 1;
+  let endMonth = 1;
+
+  if (dateFilter === "month") {
+    startMonth = normalizedMonth;
+    if (normalizedMonth === 12) {
+      endYear = normalizedYear + 1;
+      endMonth = 1;
+    } else {
+      endYear = normalizedYear;
+      endMonth = normalizedMonth + 1;
+    }
+  }
+
+  if (dateFilter === "quarter") {
+    startMonth = (normalizedQuarter - 1) * 3 + 1;
+    const computedEndMonth = startMonth + 3;
+    if (computedEndMonth > 12) {
+      endYear = normalizedYear + 1;
+      endMonth = computedEndMonth - 12;
+    } else {
+      endYear = normalizedYear;
+      endMonth = computedEndMonth;
+    }
+  }
+
+  if (dateFilter === "semester") {
+    startMonth = normalizedSemester === 1 ? 1 : 7;
+    if (normalizedSemester === 1) {
+      endYear = normalizedYear;
+      endMonth = 7;
+    } else {
+      endYear = normalizedYear + 1;
+      endMonth = 1;
+    }
+  }
+
+  const start = parseDateOnlyInTimeZone(createDateOnly(startYear, startMonth, 1));
+  const end = parseDateOnlyInTimeZone(createDateOnly(endYear, endMonth, 1));
+  if (!start || !end) {
+    return null;
+  }
+
+  return { start, end };
+};
+
+const buildOrderBy = ({
+  sortBy,
+  sortOrder,
+}: {
+  sortBy: GuestbookSortBy;
+  sortOrder: GuestbookSortOrder;
+}): Prisma.QueueOrderByWithRelationInput[] => {
+  if (sortBy === "fullName") {
+    return [{ guest: { fullName: sortOrder } }, { createdAt: "desc" }];
+  }
+
+  if (sortBy === "serviceName") {
+    return [{ service: { name: sortOrder } }, { createdAt: "desc" }];
+  }
+
+  return [{ createdAt: sortOrder }];
+};
+
 const buildGuestbookBaseWhere = ({
   purpose,
   dateFilter,
+  year,
+  month,
+  quarter,
+  semester,
   search,
-}: Pick<GuestbookListParams, "purpose" | "dateFilter" | "search">) => {
+}: Pick<
+  GuestbookListParams,
+  "purpose" | "dateFilter" | "year" | "month" | "quarter" | "semester" | "search"
+>) => {
   const normalizedPurpose = parsePurpose(purpose);
+  const normalizedDateFilter = parseDateFilter(dateFilter);
+  const periodRange = resolvePeriodRange({
+    dateFilter: normalizedDateFilter,
+    year: sanitizeYear(year),
+    month: sanitizeMonth(month),
+    quarter: sanitizeQuarter(quarter),
+    semester: sanitizeSemester(semester),
+  });
   const searchTerm = search?.trim() ?? "";
 
   const baseWhere: Prisma.QueueWhereInput = {
@@ -132,9 +325,8 @@ const buildGuestbookBaseWhere = ({
     status: { in: ALLOWED_STATUSES },
   };
 
-  if (dateFilter === "today") {
-    const { start, end } = getDayRangeInTimeZone(new Date());
-    baseWhere.queueDate = { gte: start, lt: end };
+  if (periodRange) {
+    baseWhere.queueDate = { gte: periodRange.start, lt: periodRange.end };
   }
 
   if (normalizedPurpose) {
@@ -221,6 +413,7 @@ const toGuestbookEntry = (queue: GuestbookQueueWithRelations): GuestbookEntry =>
     serviceName: queue.service.name,
     officerName: queue.dutyStaff?.name ?? queue.admin?.name ?? null,
     createdAt: queue.createdAt,
+    endTime: queue.endTime,
     filledSKD: queue.filledSKD ?? false,
     trackingLink: queue.trackingLink ?? null,
   };
@@ -310,6 +503,12 @@ export async function getGuestbookEntries({
   status,
   purpose,
   dateFilter = "today",
+  year,
+  month,
+  quarter,
+  semester,
+  sortBy: sortByParam,
+  sortOrder: sortOrderParam,
   search,
   limit: limitParam,
   offset: offsetParam,
@@ -318,7 +517,18 @@ export async function getGuestbookEntries({
   const limit = sanitizeLimit(limitParam);
   const offset = sanitizeOffset(offsetParam);
   const normalizedStatus = parseStatus(status);
-  const baseWhere = buildGuestbookBaseWhere({ purpose, dateFilter, search });
+  const sortBy = parseSortBy(sortByParam);
+  const sortOrder = parseSortOrder(sortOrderParam);
+  const orderBy = buildOrderBy({ sortBy, sortOrder });
+  const baseWhere = buildGuestbookBaseWhere({
+    purpose,
+    dateFilter,
+    year,
+    month,
+    quarter,
+    semester,
+    search,
+  });
 
   const listWhere: Prisma.QueueWhereInput = normalizedStatus
     ? { ...baseWhere, status: normalizedStatus }
@@ -391,6 +601,10 @@ export async function getGuestbookEntries({
       canceled: statusSummary.canceled,
       skdPending: skdPendingCount,
     },
+    sorting: {
+      sortBy,
+      sortOrder,
+    },
     latestUpdatedAt:
       (normalizedStatus
         ? listAggregate?._max.updatedAt
@@ -428,7 +642,7 @@ export async function getGuestbookEntries({
   const queues = await prisma.queue.findMany({
     ...guestbookQueueWithRelations,
     where: listWhere,
-    orderBy: { createdAt: "desc" },
+    orderBy,
     take: limit,
     skip: offset,
   });
@@ -448,6 +662,12 @@ export async function exportGuestbookEntries({
   status,
   purpose,
   dateFilter = "today",
+  year,
+  month,
+  quarter,
+  semester,
+  sortBy: sortByParam,
+  sortOrder: sortOrderParam,
   search,
   format,
 }: GuestbookExportParams) {
@@ -456,7 +676,18 @@ export async function exportGuestbookEntries({
   }
 
   const normalizedStatus = parseStatus(status);
-  const baseWhere = buildGuestbookBaseWhere({ purpose, dateFilter, search });
+  const sortBy = parseSortBy(sortByParam);
+  const sortOrder = parseSortOrder(sortOrderParam);
+  const orderBy = buildOrderBy({ sortBy, sortOrder });
+  const baseWhere = buildGuestbookBaseWhere({
+    purpose,
+    dateFilter,
+    year,
+    month,
+    quarter,
+    semester,
+    search,
+  });
   const listWhere: Prisma.QueueWhereInput = normalizedStatus
     ? { ...baseWhere, status: normalizedStatus }
     : baseWhere;
@@ -473,7 +704,7 @@ export async function exportGuestbookEntries({
   const queues = await prisma.queue.findMany({
     ...guestbookQueueWithRelations,
     where: listWhere,
-    orderBy: { createdAt: "desc" },
+    orderBy,
   });
 
   const rows = queues.map((queue) => {

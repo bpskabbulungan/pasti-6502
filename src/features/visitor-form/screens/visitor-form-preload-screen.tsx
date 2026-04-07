@@ -8,8 +8,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import AppLoader from "@/components/shared/app-loader";
 import PageBackground from "@/components/shared/page-background";
-import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { markNavigationPending } from "@/lib/navigation-pending";
@@ -90,7 +90,7 @@ export default function VisitorFormPreloadPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col justify-center items-center space-y-6 py-8">
-					<Loader2 className="w-16 h-16 text-primary animate-spin" />
+					<AppLoader size="xl" className="text-primary" />
 					<p className="text-muted-foreground text-center">
 						Mohon tunggu sebentar, kami sedang menyiapkan informasi antrean untuk
 						Anda...

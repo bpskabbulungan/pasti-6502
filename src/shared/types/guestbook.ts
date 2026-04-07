@@ -26,6 +26,7 @@ export type GuestbookEntry = {
   serviceName: string;
   officerName: string | null;
   createdAt: string | Date;
+  endTime: string | Date | null;
   filledSKD: boolean;
   trackingLink: string | null;
 };
@@ -55,7 +56,13 @@ export type GuestbookListResponse = {
 export type GuestbookListParams = {
   status?: QueueStatus | "ALL";
   purpose?: Purpose | "ALL";
-  dateFilter?: "today" | "all";
+  dateFilter?: "today" | "all" | "year" | "month" | "quarter" | "semester";
+  year?: number;
+  month?: number;
+  quarter?: number;
+  semester?: number;
+  sortBy?: "createdAt" | "fullName" | "serviceName";
+  sortOrder?: "asc" | "desc";
   search?: string;
   limit?: number;
   offset?: number;

@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
 import AnalyticsPage from "@/features/dashboard/screens/analytics-screen";
 import { requireAdminDashboardUser } from "@/lib/dashboard-session";
 import { getAnalyticsSummary } from "@api/modules/analytics/analytics-summary.service";
 import { addDaysInTimeZone, parseDateOnlyInTimeZone, toIsoDateInTimeZone } from "@shared/utils/date-boundary";
+
+export const metadata: Metadata = {
+  title: "Analisis",
+};
 
 export default async function Page() {
   await requireAdminDashboardUser();

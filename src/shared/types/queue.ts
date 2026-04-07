@@ -62,6 +62,8 @@ export type QueueDisplayResponse = {
 		service: { name: string };
 		admin: { name: string } | null;
 		dutyStaff?: { name: string } | null;
+		visitor?: { name: string } | null;
+		guest?: { fullName: string } | null;
 		createdAt: Date;
 		startTime: Date | null;
 		endTime: Date | null;
@@ -74,6 +76,8 @@ export type QueueDisplayResponse = {
 		service: { name: string };
 		admin?: { name: string } | null;
 		dutyStaff?: { name: string } | null;
+		visitor?: { name: string } | null;
+		guest?: { fullName: string } | null;
 		createdAt: Date;
 		startTime: Date | null;
 		endTime: Date | null;

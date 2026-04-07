@@ -23,11 +23,12 @@ import { Select, SelectContent, SelectItem, SelectValue } from "@/components/ui/
 import { SelectTrigger } from "@/features/visitor-form/components/visitor-form-select";
 import { ServiceStatus } from "@/shared/constants/enums";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle, Clock, Loader2, RefreshCcw } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, RefreshCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ClientTimestamp } from "@/components/shared/client-timestamp";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import PageBackground from "@/components/shared/page-background";
+import AppLoader from "@/components/shared/app-loader";
 import VisitorFormSkeleton from "@/features/visitor-form/components/visitor-form-skeleton";
 import { useVisitorFormController } from "@/features/visitor-form/screens/visitor-form-state/controller";
 import { formatQueueTime } from "@/features/visitor-form/screens/visitor-form-state/helper";
@@ -174,7 +175,7 @@ export default function VisitorFormPage() {
                 )}
                 {trackingInfo.status === "SERVING" && (
                   <div className="flex items-start space-x-3 bg-blue-50 p-3 rounded-md">
-                    <Loader2 className="mt-0.5 w-5 h-5 text-blue-500 animate-spin" />
+                    <AppLoader size="md" className="mt-0.5 text-blue-500" />
                     <div>
                       <p className="font-medium text-blue-800 text-sm">Sedang Dilayani</p>
                       <p className="text-blue-700 text-sm">Anda sedang dalam proses pelayanan</p>
@@ -776,7 +777,7 @@ export default function VisitorFormPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col items-center space-y-6 py-4">
-                <Loader2 className="h-16 w-16 animate-spin text-primary" />
+                <AppLoader size="xl" className="text-primary" />
                 <p className="mt-4 text-center text-muted-foreground">
                   Memeriksa informasi antrean...
                 </p>
@@ -788,7 +789,6 @@ export default function VisitorFormPage() {
     </>
   );
 }
-
 
 
 
