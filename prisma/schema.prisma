@@ -147,6 +147,9 @@ model Queue {
   updatedAt    DateTime    @updatedAt
   tempUuid     String?     @unique
   filledSKD    Boolean     @default(false)
+  serviceRating Int?
+  serviceFeedback String?  @db.Text
+  feedbackSubmittedAt DateTime?
   trackingLink String?     @unique
 
   @@unique([queueDate, queueNumber])

@@ -10,15 +10,23 @@ import {
 import { guestSchema } from "@shared/schemas/guest";
 import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
-const purposeToServiceName: Record<Purpose, string> = {
-  [Purpose.KONSULTASI_STATISTIK]: "Konsultasi Statistik",
-  [Purpose.PERPUSTAKAAN]: "Perpustakaan",
-  [Purpose.REKOMENDASI_STATISTIK]: "Rekomendasi Statistik",
-  [Purpose.LAINNYA]: "Konsultasi Statistik",
+const normalizedServiceNameToPurpose: Record<string, Purpose> = {
+  "konsultasi statistik": Purpose.KONSULTASI_STATISTIK,
+  perpustakaan: Purpose.PERPUSTAKAAN,
+  "rekomendasi statistik": Purpose.REKOMENDASI_STATISTIK,
 };
 
 const hashPayload = (payload: unknown) =>
   createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+
+const normalizeServiceName = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const resolvePurposeFromServiceName = (serviceName: string): Purpose =>
+  normalizedServiceNameToPurpose[normalizeServiceName(serviceName)] ?? Purpose.LAINNYA;
 
 export type GuestSubmissionResult = {
   queueId: string;
@@ -29,7 +37,34 @@ export type GuestSubmissionResult = {
   serviceName: string;
   guestName: string;
   trackingLink: string | null;
+  officerName?: string | null;
 };
+
+type GuestQueueDetailResult = GuestSubmissionResult & {
+  filledSKD: boolean;
+  serviceRating: number | null;
+  serviceFeedback: string | null;
+  feedbackSubmittedAt: string | null;
+};
+
+type GuestFeedbackInput = {
+  rating: number;
+  comment?: string;
+};
+
+export async function listActiveGuestServices() {
+  const services = await prisma.service.findMany({
+    where: { status: ServiceStatus.ACTIVE },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return { ok: true as const, services };
+}
 
 export async function getGuestQueueDetail(queueId: string, clientHash?: string | null) {
   const queue = await prisma.queue.findUnique({
@@ -38,6 +73,8 @@ export async function getGuestQueueDetail(queueId: string, clientHash?: string |
       service: { select: { name: true, updatedAt: true } },
       guest: { select: { fullName: true, purpose: true, updatedAt: true } },
       visitor: { select: { name: true, updatedAt: true } },
+      admin: { select: { name: true, updatedAt: true } },
+      dutyStaff: { select: { name: true, updatedAt: true } },
     },
   });
 
@@ -49,6 +86,20 @@ export async function getGuestQueueDetail(queueId: string, clientHash?: string |
   }
 
   const guestName = queue.guest?.fullName ?? queue.visitor?.name ?? "Pengunjung";
+  const dutySchedule = await prisma.dutySchedule.findUnique({
+    where: { scheduleDate: queue.queueDate },
+    select: {
+      updatedAt: true,
+      staff: {
+        select: {
+          name: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+  const officerName =
+    queue.dutyStaff?.name ?? queue.admin?.name ?? dutySchedule?.staff?.name ?? null;
   const data = {
     queueId: queue.id,
     queueNumber: queue.queueNumber,
@@ -58,13 +109,22 @@ export async function getGuestQueueDetail(queueId: string, clientHash?: string |
     serviceName: queue.service.name,
     guestName,
     trackingLink: queue.trackingLink,
-  } satisfies GuestSubmissionResult;
+    officerName,
+    filledSKD: Boolean(queue.filledSKD),
+    serviceRating: queue.serviceRating ?? null,
+    serviceFeedback: queue.serviceFeedback ?? null,
+    feedbackSubmittedAt: queue.feedbackSubmittedAt?.toISOString() ?? null,
+  } satisfies GuestQueueDetailResult;
   const hash = hashPayload({
     queueId: queue.id,
     queueUpdatedAt: queue.updatedAt.toISOString(),
     serviceUpdatedAt: queue.service.updatedAt.toISOString(),
     guestUpdatedAt: queue.guest?.updatedAt?.toISOString() ?? null,
     visitorUpdatedAt: queue.visitor?.updatedAt?.toISOString() ?? null,
+    adminUpdatedAt: queue.admin?.updatedAt?.toISOString() ?? null,
+    dutyStaffUpdatedAt: queue.dutyStaff?.updatedAt?.toISOString() ?? null,
+    dutyScheduleUpdatedAt: dutySchedule?.updatedAt?.toISOString() ?? null,
+    dutyScheduleStaffUpdatedAt: dutySchedule?.staff?.updatedAt?.toISOString() ?? null,
     data,
   });
   const hasChanges = !clientHash || clientHash !== hash;
@@ -78,6 +138,61 @@ export async function getGuestQueueDetail(queueId: string, clientHash?: string |
     },
     hash,
     hasChanges,
+  };
+}
+
+export async function submitGuestQueueFeedback(queueId: string, payload: GuestFeedbackInput) {
+  const normalizedComment = payload.comment?.trim() ?? "";
+
+  const queue = await prisma.queue.findUnique({
+    where: { id: queueId },
+    select: {
+      id: true,
+      guestId: true,
+      status: true,
+      serviceRating: true,
+    },
+  });
+
+  if (!queue || !queue.guestId) {
+    return { ok: false as const, status: 404, error: "Queue not found" };
+  }
+
+  if (queue.status !== QueueStatus.COMPLETED) {
+    return { ok: false as const, status: 400, error: "Feedback hanya bisa diisi setelah layanan selesai" };
+  }
+
+  if (queue.serviceRating !== null) {
+    return { ok: false as const, status: 409, error: "Feedback untuk antrean ini sudah tersimpan" };
+  }
+
+  const updated = await prisma.queue.update({
+    where: { id: queueId },
+    data: {
+      serviceRating: payload.rating,
+      serviceFeedback: normalizedComment.length > 0 ? normalizedComment : null,
+      feedbackSubmittedAt: new Date(),
+    },
+    select: {
+      id: true,
+      serviceRating: true,
+      serviceFeedback: true,
+      feedbackSubmittedAt: true,
+    },
+  });
+
+  if (!updated.feedbackSubmittedAt || updated.serviceRating === null) {
+    return { ok: false as const, status: 500, error: "Failed to save feedback" };
+  }
+
+  return {
+    ok: true as const,
+    data: {
+      queueId: updated.id,
+      serviceRating: updated.serviceRating,
+      serviceFeedback: updated.serviceFeedback ?? null,
+      feedbackSubmittedAt: updated.feedbackSubmittedAt.toISOString(),
+    },
   };
 }
 
@@ -97,47 +212,50 @@ export async function processGuestSubmission(body: unknown) {
   const sanitized = {
     ...data,
     fullName: data.fullName.trim(),
-    email: data.email?.trim() ?? null,
-    address: data.address?.trim(),
+    email: data.email.trim(),
+    address: data.address.trim(),
     phone: data.phone.trim(),
     institution: data.institution.trim(),
     occupation: data.occupation.trim(),
+    serviceId: data.serviceId.trim(),
   };
 
+  const selectedService = await prisma.service.findFirst({
+    where: {
+      id: sanitized.serviceId,
+      status: ServiceStatus.ACTIVE,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!selectedService) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Layanan tidak tersedia atau tidak aktif",
+      details: undefined,
+    };
+  }
+
   const queueDate = normalizeQueueDate(new Date());
+  const purpose = resolvePurposeFromServiceName(selectedService.name);
 
   const transactionResult = await prisma.$transaction(async (tx) => {
-    const preferredServiceName = purposeToServiceName[sanitized.purpose];
-    const preferredService = await tx.service.findFirst({
-      where: {
-        name: preferredServiceName,
-        status: ServiceStatus.ACTIVE,
-      },
-    });
-
-    const fallbackService =
-      preferredService ??
-      (await tx.service.findFirst({
-        where: { status: ServiceStatus.ACTIVE },
-        orderBy: { createdAt: "asc" },
-      }));
-
-    if (!fallbackService) {
-      throw new Error("NO_ACTIVE_SERVICE");
-    }
-
     const nextQueueNumber = await allocateNextQueueNumber(tx, queueDate);
     const { visitor, guest } = await createGuestParticipantPair(tx, {
       fullName: sanitized.fullName,
       phone: sanitized.phone,
       institution: sanitized.institution,
       email: sanitized.email,
-      address: sanitized.address ?? null,
+      address: sanitized.address,
       age: sanitized.age,
       gender: sanitized.gender,
       lastEducation: sanitized.lastEducation,
       occupation: sanitized.occupation,
-      purpose: sanitized.purpose,
+      purpose,
     });
 
     const queue = await tx.queue.create({
@@ -148,7 +266,7 @@ export async function processGuestSubmission(body: unknown) {
         queueType: QueueType.OFFLINE,
         visitorId: visitor.id,
         guestId: guest.id,
-        serviceId: fallbackService.id,
+        serviceId: selectedService.id,
         trackingLink: nanoid(10),
         filledSKD: false,
       },

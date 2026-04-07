@@ -18,6 +18,58 @@ const defaultHeaders = {
 	"Content-Type": "application/json",
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null;
+
+const getErrorMessageFromDetails = (details: unknown) => {
+	if (!isRecord(details)) {
+		return null;
+	}
+
+	if (typeof details.error === "string" && details.error.trim()) {
+		return details.error;
+	}
+
+	if (typeof details.message === "string" && details.message.trim()) {
+		return details.message;
+	}
+
+	return null;
+};
+
+async function readResponseDetails(response: Response): Promise<unknown> {
+	const contentType = response.headers.get("content-type") || "";
+
+	if (contentType.includes("application/json")) {
+		try {
+			return await response.json();
+		} catch {
+			// fall through and try text
+		}
+	}
+
+	try {
+		const text = (await response.text()).trim();
+		return text ? { error: text } : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+const buildApiError = (
+	response: Response,
+	details: unknown,
+	fallbackMessage?: string
+): ApiError => ({
+	status: response.status,
+	message:
+		getErrorMessageFromDetails(details) ||
+		response.statusText ||
+		fallbackMessage ||
+		"Request failed",
+	details,
+});
+
 export async function apiFetch<TResponse, TBody = unknown>(
 	url: string,
 	options: RequestOptions<TBody> = {}
@@ -33,19 +85,8 @@ export async function apiFetch<TResponse, TBody = unknown>(
 	});
 
 	if (!response.ok) {
-		let details: unknown;
-		try {
-			details = await response.json();
-		} catch {
-			// ignore parse errors
-		}
-
-		const error: ApiError = {
-			status: response.status,
-			message: response.statusText || "Request failed",
-			details,
-		};
-		throw error;
+		const details = await readResponseDetails(response);
+		throw buildApiError(response, details);
 	}
 
 	// Some endpoints may return no content
@@ -53,5 +94,18 @@ export async function apiFetch<TResponse, TBody = unknown>(
 		return undefined as TResponse;
 	}
 
-	return (await response.json()) as TResponse;
+	const contentType = response.headers.get("content-type") || "";
+
+	if (contentType.includes("application/json")) {
+		const fallbackResponse = response.clone();
+		try {
+			return (await response.json()) as TResponse;
+		} catch {
+			const details = await readResponseDetails(fallbackResponse);
+			throw buildApiError(response, details, "Invalid JSON response");
+		}
+	}
+
+	const details = await readResponseDetails(response);
+	throw buildApiError(response, details, "Expected JSON response");
 }

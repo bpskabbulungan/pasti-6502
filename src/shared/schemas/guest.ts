@@ -2,7 +2,6 @@ import { z } from "zod";
 import {
 	Gender,
 	LastEducation,
-	Purpose,
 } from "@/shared/constants/enums";
 
 const genderValues = Object.values(Gender) as [Gender, ...Gender[]];
@@ -10,25 +9,36 @@ const lastEducationValues = Object.values(LastEducation) as [
 	LastEducation,
 	...LastEducation[],
 ];
-const purposeValues = Object.values(Purpose) as [Purpose, ...Purpose[]];
+const fullNameRegex = /^[\p{L}\s'.-]+$/u;
+const institutionRegex = /^[\p{L}\p{N}\s.,'"/()&-]+$/u;
+const indonesianPhoneRegex = /^(?:08|628)\d{8,12}$/;
 
 export const guestSchema = z.object({
-	fullName: z.string().min(2, "Nama lengkap minimal 2 karakter"),
+	fullName: z
+		.string()
+		.trim()
+		.min(3, "Nama lengkap minimal 3 karakter")
+		.max(120, "Nama lengkap maksimal 120 karakter")
+		.regex(fullNameRegex, "Nama lengkap hanya boleh berisi huruf dan tanda baca umum"),
 	email: z
 		.string()
+		.trim()
+		.min(1, "Email wajib diisi")
+		.max(120, "Email maksimal 120 karakter")
 		.email("Format email tidak valid")
-		.optional()
-		.or(z.literal("")),
+		.toLowerCase(),
 	address: z
 		.string()
-		.min(5, "Alamat minimal 5 karakter")
-		.max(200, "Alamat terlalu panjang")
-		.optional(),
+		.trim()
+		.min(10, "Alamat minimal 10 karakter")
+		.max(200, "Alamat terlalu panjang"),
 	phone: z
 		.string()
-		.min(8, "Nomor HP minimal 8 digit")
-		.max(20, "Nomor HP maksimal 20 digit")
-		.regex(/^[0-9+()\s-]+$/, "Nomor HP hanya boleh berisi angka"),
+		.trim()
+		.regex(/^\d+$/, "Nomor HP hanya boleh berisi angka")
+		.min(10, "Nomor HP minimal 10 digit")
+		.max(15, "Nomor HP maksimal 15 digit")
+		.regex(indonesianPhoneRegex, "Nomor HP harus diawali 08 atau 628"),
 	age: z.preprocess(
 		(value) => {
 			if (value === "" || value === null || typeof value === "undefined") {
@@ -38,16 +48,20 @@ export const guestSchema = z.object({
 			return Number.isNaN(asNumber) ? value : asNumber;
 		},
 		z
-			.number()
+			.number({
+				required_error: "Umur wajib diisi",
+				invalid_type_error: "Umur wajib diisi",
+			})
 			.int()
 			.min(1, "Umur minimal 1 tahun")
 			.max(120, "Umur tidak valid")
-			.optional()
 	),
 	institution: z
 		.string()
+		.trim()
 		.min(2, "Asal/Instansi minimal 2 karakter")
-		.max(150),
+		.max(150, "Asal/Instansi maksimal 150 karakter")
+		.regex(institutionRegex, "Asal/Instansi berisi karakter yang tidak diperbolehkan"),
 	gender: z.enum(genderValues, {
 		required_error: "Jenis kelamin wajib dipilih",
 	}),
@@ -56,18 +70,18 @@ export const guestSchema = z.object({
 	}),
 	occupation: z.enum(
 		[
-			"Guru/Dosen",
-			"Karyawan BUMN",
-			"Karyawan Swasta",
 			"Pelajar/Mahasiswa",
 			"PNS/PPPK",
 			"TNI/Polri",
-			"Wiraswasta",
+			"Pegawai BUMN/BUMD",
+			"Pegawai Swasta",
+			"Wiraswasta/Usahawan",
+			"Guru/Dosen",
+			"Tidak/Belum Bekerja",
+			"Pensiunan",
 			"Lainnya",
 		],
 		{ required_error: "Pilih pekerjaan" }
 	),
-	purpose: z.enum(purposeValues, {
-		required_error: "Keperluan wajib dipilih",
-	}),
+	serviceId: z.string().trim().min(1, "Keperluan kunjungan wajib dipilih"),
 });

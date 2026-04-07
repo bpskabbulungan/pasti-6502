@@ -98,6 +98,114 @@ const OCCUPATIONS = [
 const EDUCATION_LEVELS = Object.values(LastEducation) as LastEducation[];
 const PURPOSES = Object.values(Purpose) as Purpose[];
 
+const PST_OFFICER_SEEDS = [
+  {
+    name: "Afnita Rahma Auliya Putri",
+    phone: "6285882292588",
+    username: "afnita.rahma",
+  },
+  {
+    name: "Alphin Pratama Husada",
+    phone: "6282261828467",
+    username: "alphin.pratama",
+  },
+  {
+    name: "Anuar",
+    phone: "6282251097208",
+    username: "anuar",
+  },
+  {
+    name: "Bambang Luhat",
+    phone: "6282358880344",
+    username: "bambang_luhat",
+  },
+  {
+    name: "Chafri Fajar Erwandra",
+    phone: "6285784585563",
+    username: "chafri.fajar",
+  },
+  {
+    name: "Febri Fatika Sari",
+    phone: "6285726025343",
+    username: "febri.fatika",
+  },
+  {
+    name: "Fiqah Rochmah Ningtyas Duana Putri",
+    phone: "6287764807421",
+    username: "fiqah.putri",
+  },
+  {
+    name: "Insan Dienuari",
+    phone: "6285730405955",
+    username: "insandienuari",
+  },
+  {
+    name: "Jusman",
+    phone: "6285159002598",
+    username: "jusman",
+  },
+  {
+    name: "Lia Aulia Hayati",
+    phone: "6281256530709",
+    username: "liaauliahayati",
+  },
+  {
+    name: "Mardiana",
+    phone: "6282354058587",
+    username: "mar.diana",
+  },
+  {
+    name: "Marinda Saga Putra",
+    phone: "6281258149414",
+    username: "marindaputra",
+  },
+  {
+    name: "Marini Safa Aziza",
+    phone: "6281519961747",
+    username: "marinisafa",
+  },
+  {
+    name: "Muhamadsyah",
+    phone: "6285294404060",
+    username: "muhamadsyah",
+  },
+  {
+    name: "Najwa Fairus Samaya",
+    phone: "62895415969010",
+    username: "najwa.fairus",
+  },
+  {
+    name: "Novanni Indi Pradana",
+    phone: "6283836260392",
+    username: "novanniindipradana",
+  },
+  {
+    name: "Rosetina Fini Alsera",
+    phone: "6281296036385",
+    username: "finialsera",
+  },
+  {
+    name: "Shafa",
+    phone: "6287863150050",
+    username: "sha.fa",
+  },
+  {
+    name: "Tsabit Bintang Herindra",
+    phone: "6285156460949",
+    username: "tsabitbintang",
+  },
+  {
+    name: "Warsidi",
+    phone: "6281253216991",
+    username: "warsidi2",
+  },
+  {
+    name: "Zulkifli",
+    phone: "6282350529800",
+    username: "zulkifli",
+  },
+] as const;
+
 const FIRST_NAMES = [
   "Ahmad",
   "Siti",
@@ -215,11 +323,20 @@ const requiredEnv = (key: string) => {
 };
 
 const optionalEnvPassword = (
-  key: string
+  key: string,
+  fallbackPassword?: string
 ): { password: string; fromEnv: boolean; source: string } => {
   const value = process.env[key]?.trim();
   if (value) {
     return { password: value, fromEnv: true, source: key };
+  }
+
+  if (typeof fallbackPassword === "string") {
+    return {
+      password: fallbackPassword,
+      fromEnv: false,
+      source: "default",
+    };
   }
 
   return {
@@ -308,27 +425,26 @@ async function seedUsers(): Promise<SeededUsers> {
     source: "SEED_ADMIN_PASSWORD",
   });
 
-  const operatorBaseUsername = process.env.SEED_OPERATOR_USERNAME_PREFIX || "petugas";
-  const operatorPasswordMeta = optionalEnvPassword("SEED_OPERATOR_PASSWORD");
+  const operatorPasswordMeta = optionalEnvPassword("SEED_OPERATOR_PASSWORD", "password");
   const operatorHashedPassword = await bcryptjs.hash(operatorPasswordMeta.password, 12);
   const officers: User[] = [];
   const seededUsernames = [adminUsername];
 
-  for (let index = 1; index <= 10; index++) {
-    const username = `${operatorBaseUsername}${String(index).padStart(2, "0")}`;
+  for (const officerSeed of PST_OFFICER_SEEDS) {
+    const username = officerSeed.username.trim();
     const officer = await prisma.user.upsert({
       where: { username },
       update: {
         password: operatorHashedPassword,
-        name: `Petugas PST ${String(index).padStart(2, "0")}`,
-        phone: `628520000${String(index).padStart(4, "0")}`,
+        name: officerSeed.name.trim(),
+        phone: officerSeed.phone.trim(),
         role: Role.PETUGAS,
       },
       create: {
         username,
         password: operatorHashedPassword,
-        name: `Petugas PST ${String(index).padStart(2, "0")}`,
-        phone: `628520000${String(index).padStart(4, "0")}`,
+        name: officerSeed.name.trim(),
+        phone: officerSeed.phone.trim(),
         role: Role.PETUGAS,
       },
     });
@@ -347,7 +463,7 @@ async function seedUsers(): Promise<SeededUsers> {
 
   credentials.push({
     role: Role.PETUGAS,
-    username: `${operatorBaseUsername}01-${operatorBaseUsername}10`,
+    username: `all-petugas-pst (${PST_OFFICER_SEEDS.length} akun)`,
     passwordHint: operatorPasswordMeta.fromEnv ? undefined : operatorPasswordMeta.password,
     source: operatorPasswordMeta.source,
   });
@@ -360,7 +476,7 @@ async function seedServices(): Promise<ServiceByPurpose> {
     { name: "Perpustakaan", status: ServiceStatus.ACTIVE },
     { name: "Konsultasi Statistik", status: ServiceStatus.ACTIVE },
     { name: "Rekomendasi Statistik", status: ServiceStatus.ACTIVE },
-    { name: "Pelayanan Data Sektoral", status: ServiceStatus.INACTIVE },
+    { name: "Pelayanan DTSEN", status: ServiceStatus.ACTIVE },
   ];
 
   await prisma.service.deleteMany({
@@ -913,7 +1029,9 @@ async function main() {
     console.log("Seeded users with passwords supplied via environment variables (not logged).");
   }
 
-  console.log(`Users seeded: admin=1, petugas=${seededUsers.officers.length} (target: 10)`);
+  console.log(
+    `Users seeded: admin=1, petugas=${seededUsers.officers.length} (target: ${PST_OFFICER_SEEDS.length})`
+  );
   console.log(
     `Queues seeded: total=${queueSeed.total}, waiting=${queueSeed.statusCount.WAITING}, serving=${queueSeed.statusCount.SERVING}, completed=${queueSeed.statusCount.COMPLETED}, canceled=${queueSeed.statusCount.CANCELED}`
   );

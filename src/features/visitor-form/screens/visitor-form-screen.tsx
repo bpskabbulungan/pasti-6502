@@ -358,7 +358,7 @@ export default function VisitorFormPage() {
               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-2">
                   <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                    Buku Tamu PASTI 6502
+                    Buku Tamu PST 6502
                     <Badge
                       variant="secondary"
                       className="bg-white/80 text-primary-color dark:bg-slate-900/60"

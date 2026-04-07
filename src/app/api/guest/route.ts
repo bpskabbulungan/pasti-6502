@@ -1,7 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
-import { processGuestSubmission } from "@api/modules/guest";
-import type { GuestSubmissionResponse } from "@shared/types/guest";
+import { listActiveGuestServices, processGuestSubmission } from "@api/modules/guest";
+import type { GuestServicesResponse, GuestSubmissionResponse } from "@shared/types/guest";
+
+export async function GET(req: NextRequest) {
+  try {
+    const limiter = await rateLimit(req, "guest-services-get", {
+      limit: 20,
+      windowMs: 60_000,
+    });
+    if (!limiter.allowed) {
+      return NextResponse.json(
+        { error: "Terlalu banyak permintaan, coba lagi nanti." },
+        { status: 429 }
+      );
+    }
+
+    const result = await listActiveGuestServices();
+    return NextResponse.json<GuestServicesResponse>({
+      services: result.services,
+    });
+  } catch (error) {
+    console.error("Error fetching guest services:", error);
+    return NextResponse.json({ error: "Gagal mengambil data layanan aktif." }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
 	try {
@@ -36,12 +59,6 @@ export async function POST(req: NextRequest) {
 			return NextResponse.json(
 				{ error: "Nomor antrean duplikat, silakan coba lagi." },
 				{ status: 409 }
-			);
-		}
-		if ((error as Error).message === "NO_ACTIVE_SERVICE") {
-			return NextResponse.json(
-				{ error: "Tidak ada layanan aktif untuk membuat antrean." },
-				{ status: 400 }
 			);
 		}
 

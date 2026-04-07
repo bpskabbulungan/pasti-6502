@@ -1,4 +1,3 @@
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { Role } from "@prisma/client";
 import { NextAuthOptions } from "next-auth";
 import { compare } from "bcryptjs";
@@ -15,6 +14,9 @@ import { loginCredentialsSchema } from "@/lib/validation/login-credentials";
 
 const DUMMY_BCRYPT_HASH = "$2a$12$WzE8Ys1YB1s5nM3rWEO0mOnfy4VBfWbfX3HBOH4Zz2oxEd4pqco3e";
 
+const isRole = (value: unknown): value is Role =>
+  value === Role.ADMIN || value === Role.PETUGAS;
+
 const logRateLimitEvent = (
   reason: "pre-check" | "failed-password",
   ip: string,
@@ -30,7 +32,6 @@ const logRateLimitEvent = (
 };
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -102,19 +103,39 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        token.username = user.username;
-        token.role = user.role;
+        if (typeof user.id === "string") {
+          token.id = user.id;
+        }
+        if (typeof user.username === "string") {
+          token.username = user.username;
+        }
+        if (isRole(user.role)) {
+          token.role = user.role;
+        }
       }
       return token;
     },
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string;
-        session.user.name = token.name as string;
-        session.user.username = token.username as string;
-        session.user.role = token.role as Role;
+      session.user ??= {
+        id: "",
+        name: "",
+        username: "",
+        role: Role.PETUGAS,
+      };
+
+      if (typeof token.id === "string") {
+        session.user.id = token.id;
       }
+      if (typeof token.name === "string") {
+        session.user.name = token.name;
+      }
+      if (typeof token.username === "string") {
+        session.user.username = token.username;
+      }
+      if (isRole(token.role)) {
+        session.user.role = token.role;
+      }
+
       return session;
     },
   },

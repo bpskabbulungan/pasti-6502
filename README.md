@@ -83,7 +83,7 @@ src
 
 ### 1) Prerequisites
 
-- Bun 1.x (disarankan) atau Node.js 18+
+- Bun 1.2.14 (wajib)
 - MySQL 8+
 - Git
 - Docker + Docker Compose (opsional)
@@ -95,6 +95,8 @@ git clone <repo-url>
 cd pasti-6502
 bun install
 ```
+
+Gunakan Bun saja untuk semua perintah dependency dan script (`bun install`, `bun run`, `bunx`).
 
 ### 3) Environment Variables
 

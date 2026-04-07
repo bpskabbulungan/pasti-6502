@@ -115,7 +115,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
   return (
     <PageContainer>
       <DashboardPageHeader
-        title="Buku Tamu PASTI 6502"
+        title="Buku Tamu PST 6502"
         description="Rekapitulasi kunjungan pengunjung yang sudah dilayani atau selesai."
         meta={
           <>

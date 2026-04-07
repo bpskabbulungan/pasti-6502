@@ -61,6 +61,32 @@ async function readErrorDetails(response: Response): Promise<unknown> {
   }
 }
 
+async function readSuccessPayload<TData>(response: Response): Promise<TData> {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const details = await readErrorDetails(response);
+    const error: ApiError = {
+      status: response.status,
+      message: "Expected JSON response",
+      details,
+    };
+    throw error;
+  }
+
+  const fallbackResponse = response.clone();
+  try {
+    return (await response.json()) as TData;
+  } catch {
+    const details = await readErrorDetails(fallbackResponse);
+    const error: ApiError = {
+      status: response.status,
+      message: "Invalid JSON response",
+      details,
+    };
+    throw error;
+  }
+}
+
 type LiveEnvelope<TData> = {
   data: TData;
   etag: string | null;
@@ -103,8 +129,10 @@ async function fetchLiveJson<TData>(
       throw error;
     }
 
+    const data = await readSuccessPayload<TData>(response);
+
     return {
-      data: (await response.json()) as TData,
+      data,
       etag: response.headers.get("etag"),
       fetchedAt: new Date().toISOString(),
     };
