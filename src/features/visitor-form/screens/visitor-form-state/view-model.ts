@@ -1,4 +1,4 @@
-import { Gender, LastEducation, Purpose } from "@/shared/constants/enums";
+import { Gender, LastEducation } from "@/shared/constants/enums";
 
 export const TRACKING_POLL_INTERVAL_MS = 60000;
 
@@ -30,26 +30,3 @@ export const occupationOptions = [
 	{ value: "Wiraswasta", label: "Wiraswasta" },
 	{ value: "Lainnya", label: "Lainnya" },
 ] as const;
-
-export const purposeOptions: Array<{
-	value: Purpose;
-	label: string;
-	description?: string;
-}> = [
-	{
-		value: Purpose.KONSULTASI_STATISTIK,
-		label: "Konsultasi Statistik",
-		description: "Diskusi dan pendampingan data",
-	},
-	{
-		value: Purpose.PERPUSTAKAAN,
-		label: "Perpustakaan",
-		description: "Akses ruang baca & referensi",
-	},
-	{
-		value: Purpose.REKOMENDASI_STATISTIK,
-		label: "Rekomendasi Statistik",
-		description: "Surat rekomendasi/pendataan",
-	},
-	{ value: Purpose.LAINNYA, label: "Lainnya" },
-];

@@ -13,7 +13,6 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
-    const purpose = url.searchParams.get("purpose");
     const dateFilterParam = url.searchParams.get("dateFilter");
     const dateFilter =
       dateFilterParam === "all" ||
@@ -38,7 +37,6 @@ export async function GET(req: NextRequest) {
 
     const result = await getGuestbookEntries({
       status,
-      purpose,
       dateFilter,
       year,
       month,

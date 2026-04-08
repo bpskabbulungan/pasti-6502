@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
-import { Purpose, QueueStatus, Prisma } from "@prisma/client";
+import { QueueStatus, Prisma, Gender, LastEducation } from "@prisma/client";
+import { format } from "date-fns";
+import { id as localeId } from "date-fns/locale";
 import PDFDocument from "pdfkit";
 import * as XLSX from "xlsx";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
@@ -19,7 +21,6 @@ type ExportFormat = "xlsx" | "pdf";
 
 type GuestbookListParams = {
   status?: string | null;
-  purpose?: string | null;
   dateFilter?: DateFilter;
   year?: string | null;
   month?: string | null;
@@ -35,7 +36,6 @@ type GuestbookListParams = {
 
 type GuestbookExportParams = {
   status?: string | null;
-  purpose?: string | null;
   dateFilter?: DateFilter;
   year?: string | null;
   month?: string | null;
@@ -48,13 +48,24 @@ type GuestbookExportParams = {
 };
 
 type GuestbookExportRow = {
-  pengunjung: string;
-  keperluan: string;
+  no: number;
+  nama_lengkap: string;
+  jenis_kelamin: string;
+  umur: number | null;
+  email: string;
+  nomor_wa: string;
+  alamat: string;
+  asal_instansi: string;
+  pendidikan_terakhir: string;
+  pekerjaan: string;
   layanan: string;
-  antrean: string;
-  petugas: string;
-  skd: string;
-  waktu: string;
+  tanggal: Date;
+  nomor_antrean: number;
+  kode_antrean: string;
+  status_layanan: string;
+  durasi_pelayanan: number | null;
+  petugas_pelayanan: string;
+  status_skd: string;
 };
 
 const ALLOWED_STATUSES: QueueStatus[] = [QueueStatus.COMPLETED, QueueStatus.CANCELED];
@@ -66,21 +77,43 @@ const statusLabels: Record<QueueStatus, string> = {
   CANCELED: "Dibatalkan",
 };
 
-const purposeLabels: Record<Purpose, string> = {
-  KONSULTASI_STATISTIK: "Konsultasi Statistik",
-  PERPUSTAKAAN: "Perpustakaan",
-  REKOMENDASI_STATISTIK: "Rekomendasi Statistik",
+const genderLabels: Record<Gender, string> = {
+  MALE: "Laki-laki",
+  FEMALE: "Perempuan",
+};
+
+const educationLabels: Record<LastEducation, string> = {
+  SD: "SD",
+  SMP: "SMP",
+  SMA_SMK: "SMA/SMK",
+  D1: "D1",
+  D2: "D2",
+  D3: "D3",
+  D4_S1: "D4/S1",
+  S2: "S2",
+  S3: "S3",
   LAINNYA: "Lainnya",
 };
 
 const EXPORT_COLUMNS: Array<{ key: keyof GuestbookExportRow; label: string }> = [
-  { key: "pengunjung", label: "Pengunjung" },
-  { key: "keperluan", label: "Keperluan" },
+  { key: "no", label: "No" },
+  { key: "nama_lengkap", label: "Nama Lengkap" },
+  { key: "jenis_kelamin", label: "Jenis Kelamin" },
+  { key: "umur", label: "Umur" },
+  { key: "email", label: "Email" },
+  { key: "nomor_wa", label: "Nomor WhatsApp" },
+  { key: "alamat", label: "Alamat" },
+  { key: "asal_instansi", label: "Asal/Instansi" },
+  { key: "pendidikan_terakhir", label: "Pendidikan Terakhir" },
+  { key: "pekerjaan", label: "Pekerjaan" },
   { key: "layanan", label: "Layanan" },
-  { key: "antrean", label: "Antrean" },
-  { key: "petugas", label: "Petugas" },
-  { key: "skd", label: "SKD" },
-  { key: "waktu", label: "Waktu" },
+  { key: "tanggal", label: "Tanggal" },
+  { key: "nomor_antrean", label: "Nomor Antrean" },
+  { key: "kode_antrean", label: "Kode Antrean" },
+  { key: "status_layanan", label: "Status Layanan" },
+  { key: "durasi_pelayanan", label: "Durasi Pelayanan" },
+  { key: "petugas_pelayanan", label: "Petugas Pelayanan" },
+  { key: "status_skd", label: "Status SKD" },
 ];
 
 const PDF_COLUMNS: Array<{
@@ -88,13 +121,14 @@ const PDF_COLUMNS: Array<{
   label: string;
   width: number;
 }> = [
-  { key: "pengunjung", label: "Pengunjung", width: 110 },
-  { key: "keperluan", label: "Keperluan", width: 110 },
-  { key: "layanan", label: "Layanan", width: 100 },
-  { key: "antrean", label: "Antrean", width: 95 },
-  { key: "petugas", label: "Petugas", width: 105 },
-  { key: "skd", label: "SKD", width: 55 },
-  { key: "waktu", label: "Waktu", width: 120 },
+  { key: "nama_lengkap", label: "Nama", width: 90 },
+  { key: "nomor_wa", label: "WhatsApp", width: 85 },
+  { key: "layanan", label: "Layanan", width: 90 },
+  { key: "kode_antrean", label: "Kode", width: 60 },
+  { key: "status_layanan", label: "Status", width: 75 },
+  { key: "petugas_pelayanan", label: "Petugas", width: 80 },
+  { key: "tanggal", label: "Tgl", width: 85 },
+  { key: "status_skd", label: "SKD", width: 45 },
 ];
 
 const hashPayload = (payload: unknown) =>
@@ -161,12 +195,6 @@ const parseStatus = (value?: string | null) => {
   if (!value || value === "ALL") return null;
   const normalized = value.toUpperCase();
   return ALLOWED_STATUSES.includes(normalized as QueueStatus) ? (normalized as QueueStatus) : null;
-};
-
-const parsePurpose = (value?: string | null) => {
-  if (!value || value === "ALL") return null;
-  const normalized = value.toUpperCase();
-  return Object.values(Purpose).includes(normalized as Purpose) ? (normalized as Purpose) : null;
 };
 
 const parseSortBy = (value?: string | null): GuestbookSortBy => {
@@ -307,7 +335,6 @@ const buildOrderBy = ({
 };
 
 const buildGuestbookBaseWhere = ({
-  purpose,
   dateFilter,
   year,
   month,
@@ -316,9 +343,8 @@ const buildGuestbookBaseWhere = ({
   search,
 }: Pick<
   GuestbookListParams,
-  "purpose" | "dateFilter" | "year" | "month" | "quarter" | "semester" | "search"
+  "dateFilter" | "year" | "month" | "quarter" | "semester" | "search"
 >) => {
-  const normalizedPurpose = parsePurpose(purpose);
   const normalizedDateFilter = parseDateFilter(dateFilter);
   const periodRange = resolvePeriodRange({
     dateFilter: normalizedDateFilter,
@@ -336,10 +362,6 @@ const buildGuestbookBaseWhere = ({
 
   if (periodRange) {
     baseWhere.queueDate = { gte: periodRange.start, lt: periodRange.end };
-  }
-
-  if (normalizedPurpose) {
-    baseWhere.guest = { is: { purpose: normalizedPurpose } };
   }
 
   if (searchTerm) {
@@ -414,15 +436,13 @@ const toGuestbookEntry = (queue: GuestbookQueueWithRelations): GuestbookEntry =>
     gender: guest?.gender ?? null,
     lastEducation: guest?.lastEducation ?? null,
     occupation: guest?.occupation ?? null,
-    purpose: guest?.purpose ?? null,
     queueNumber: queue.queueNumber,
-    queueCode: formatGuestQueueCode(guest?.purpose, queue.queueNumber),
+    queueCode: formatGuestQueueCode(queue.service, queue.queueNumber),
     status: queue.status,
-    queueType: queue.queueType,
     serviceName: queue.service.name,
     officerName: queue.dutyStaff?.name ?? queue.admin?.name ?? null,
     createdAt: queue.createdAt,
-    endTime: queue.endTime,
+    startTime: queue.startTime,
     filledSKD: queue.filledSKD ?? false,
     trackingLink: queue.trackingLink ?? null,
   };
@@ -494,7 +514,9 @@ const buildPdfBuffer = async (rows: GuestbookExportRow[]) => {
     ensureSpace();
     let x = startX;
     columns.forEach((col) => {
-      doc.text(row[col.key], x, y + 3, {
+      const cellValue = row[col.key as keyof GuestbookExportRow];
+      const cellText = typeof cellValue === "string" ? cellValue : String(cellValue ?? "");
+      doc.text(cellText, x, y + 3, {
         width: col.width - 4,
         align: "left",
         ellipsis: true,
@@ -510,7 +532,6 @@ const buildPdfBuffer = async (rows: GuestbookExportRow[]) => {
 
 export async function getGuestbookEntries({
   status,
-  purpose,
   dateFilter = "today",
   year,
   month,
@@ -530,7 +551,6 @@ export async function getGuestbookEntries({
   const sortOrder = parseSortOrder(sortOrderParam);
   const orderBy = buildOrderBy({ sortBy, sortOrder });
   const baseWhere = buildGuestbookBaseWhere({
-    purpose,
     dateFilter,
     year,
     month,
@@ -657,7 +677,6 @@ export async function getGuestbookEntries({
 
 export async function exportGuestbookEntries({
   status,
-  purpose,
   dateFilter = "today",
   year,
   month,
@@ -666,85 +685,407 @@ export async function exportGuestbookEntries({
   sortBy: sortByParam,
   sortOrder: sortOrderParam,
   search,
-  format,
+  format: exportFormat,
 }: GuestbookExportParams) {
-  if (format !== "xlsx" && format !== "pdf") {
-    return { ok: false as const, status: 400, error: "Format export tidak didukung" };
-  }
+  try {
+    if (exportFormat !== "xlsx" && exportFormat !== "pdf") {
+      return { ok: false as const, status: 400, error: "Format export tidak didukung" };
+    }
 
-  const normalizedStatus = parseStatus(status);
-  const sortBy = parseSortBy(sortByParam);
-  const sortOrder = parseSortOrder(sortOrderParam);
-  const orderBy = buildOrderBy({ sortBy, sortOrder });
-  const baseWhere = buildGuestbookBaseWhere({
-    purpose,
-    dateFilter,
-    year,
-    month,
-    quarter,
-    semester,
-    search,
-  });
-  const listWhere: Prisma.QueueWhereInput = normalizedStatus
-    ? { ...baseWhere, status: normalizedStatus }
-    : baseWhere;
+    const normalizedStatus = parseStatus(status);
+    const sortBy = parseSortBy(sortByParam);
+    const sortOrder = parseSortOrder(sortOrderParam);
+    const orderBy = buildOrderBy({ sortBy, sortOrder });
+    const baseWhere = buildGuestbookBaseWhere({
+      dateFilter,
+      year,
+      month,
+      quarter,
+      semester,
+      search,
+    });
+    const listWhere: Prisma.QueueWhereInput = normalizedStatus
+      ? { ...baseWhere, status: normalizedStatus }
+      : baseWhere;
 
-  const totalRows = await prisma.queue.count({ where: listWhere });
-  if (totalRows === 0) {
-    return {
-      ok: false as const,
-      status: 404,
-      error: "Tidak ada data buku tamu untuk diekspor",
+    const totalRows = await prisma.queue.count({ where: listWhere });
+    if (totalRows === 0) {
+      return {
+        ok: false as const,
+        status: 404,
+        error: "Tidak ada data buku tamu untuk diekspor",
+      };
+    }
+
+    const queues = await prisma.queue.findMany({
+      ...guestbookQueueWithRelations,
+      where: listWhere,
+      orderBy,
+    });
+
+    const formatTimeOnly = (value: string | Date | null): string => {
+      try {
+        if (!value) return "-";
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return "-";
+        return format(date, "HH:mm", { locale: localeId });
+      } catch (error) {
+        console.error("Error formatting time:", error, value);
+        return "-";
+      }
     };
-  }
 
-  const queues = await prisma.queue.findMany({
-    ...guestbookQueueWithRelations,
-    where: listWhere,
-    orderBy,
-  });
+    const formatDateOnly = (value: string | Date | null): string => {
+      try {
+        if (!value) return "-";
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return "-";
+        return format(date, "dd-MMM-yyyy", { locale: localeId });
+      } catch (error) {
+        console.error("Error formatting date:", error, value);
+        return "-";
+      }
+    };
 
-  const rows = queues.map((queue) => {
-    const entry = toGuestbookEntry(queue);
-    const purposeLabel = entry.purpose ? purposeLabels[entry.purpose] : "-";
-    const queueLabel = `${entry.queueCode} (${statusLabels[entry.status]})`;
+    // Helper untuk calculate durasi dalam menit (dari createdAt ke startTime)
+    const calculateDurationMinutes = (createdAt: Date, startTime: Date | null): number | null => {
+      if (!startTime) return null;
+      const diffMs = new Date(startTime).getTime() - new Date(createdAt).getTime();
+      if (diffMs < 0) return null; // invalid duration
+      return Math.round(diffMs / 60000);
+    };
 
-    return {
-      pengunjung: entry.fullName,
-      keperluan: purposeLabel,
-      layanan: entry.serviceName,
-      antrean: queueLabel,
-      petugas: entry.officerName ?? "-",
-      skd: entry.filledSKD ? "Sudah" : "Belum",
-      waktu: formatDisplayDateTimeWithSeconds(entry.createdAt),
-    } satisfies GuestbookExportRow;
-  });
+    const rows = queues.map((queue, index) => {
+      const entry = toGuestbookEntry(queue);
+      const genderLabel = entry.gender ? genderLabels[entry.gender] : "-";
+      const educationLabel = entry.lastEducation ? educationLabels[entry.lastEducation] : "-";
+      const durationMinutes = calculateDurationMinutes(new Date(entry.createdAt), entry.startTime ? new Date(entry.startTime) : null);
 
-  if (format === "xlsx") {
-    const headerRow = EXPORT_COLUMNS.map((column) => column.label);
-    const dataRows = rows.map((row) => EXPORT_COLUMNS.map((column) => row[column.key]));
-    const worksheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Guestbook");
-    const body = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+      const createdDate = new Date(entry.createdAt);
 
+      return {
+        no: index + 1,
+        nama_lengkap: entry.fullName || "-",
+        jenis_kelamin: genderLabel,
+        umur: entry.age ?? null,
+        email: entry.email || "-",
+        nomor_wa: entry.phone || "-",
+        alamat: entry.address || "-",
+        asal_instansi: entry.institution || "-",
+        pendidikan_terakhir: educationLabel,
+        pekerjaan: entry.occupation || "-",
+        layanan: entry.serviceName,
+        tanggal: createdDate,
+        nomor_antrean: entry.queueNumber,
+        kode_antrean: entry.queueCode,
+        status_layanan: statusLabels[entry.status],
+        durasi_pelayanan: durationMinutes,
+        petugas_pelayanan: entry.officerName || "-",
+        status_skd: entry.filledSKD ? "Sudah" : "Belum",
+      } satisfies GuestbookExportRow;
+    });
+
+    if (exportFormat === "xlsx") {
+      // Helper untuk extract date-only (time set to 00:00:00)
+      const getDateOnly = (date: Date | null): Date | null => {
+        if (!date || !(date instanceof Date) || isNaN(date.getTime())) return null;
+        const dateOnly = new Date(date);
+        dateOnly.setHours(0, 0, 0, 0);
+        return dateOnly;
+      };
+
+      // Helper untuk format cell value dengan proper type
+      const formatCellValue = (value: unknown, key: keyof GuestbookExportRow) => {
+        if (value === null || value === undefined) return "";
+        
+        if (key === "tanggal") {
+          const dateValue = value instanceof Date ? value : null;
+          return getDateOnly(dateValue);
+        }
+        
+        if (key === "nomor_wa") {
+          return String(value);
+        }
+        
+        if (key === "umur" || key === "durasi_pelayanan" || key === "nomor_antrean" || key === "no") {
+          return typeof value === "number" ? value : "";
+        }
+        
+        return value;
+      };
+
+      const headerRow = EXPORT_COLUMNS.map((col) => col.label);
+
+      const dataRows = rows.map((row) =>
+        EXPORT_COLUMNS.map((col) => formatCellValue(row[col.key as keyof typeof row], col.key as keyof typeof row))
+      );
+
+      // === SHEET 1: Summary Sheet ===
+      const totalRows = rows.length;
+      const totalCompleted = rows.filter((r) => r.status_layanan === "Selesai").length;
+      const totalCanceled = rows.filter((r) => r.status_layanan === "Dibatalkan").length;
+      const totalPending = rows.filter((r) => r.status_layanan !== "Selesai" && r.status_layanan !== "Dibatalkan").length;
+      const totalSkdPending = rows.filter((r) => r.status_skd === "Belum").length;
+      const avgDuration = rows
+        .filter((r) => r.durasi_pelayanan !== null && r.durasi_pelayanan !== undefined)
+        .reduce((sum, r) => sum + (r.durasi_pelayanan || 0), 0) / Math.max(rows.filter((r) => r.durasi_pelayanan !== null && r.durasi_pelayanan !== undefined).length, 1);
+
+      const summaryData = [
+        ["RINGKASAN LAPORAN BUKU TAMU"],
+        [],
+        ["Tanggal Export", new Date()],
+        [],
+        ["STATISTIK UTAMA"],
+        ["Total Data", totalRows],
+        ["Selesai", totalCompleted],
+        ["Dibatalkan", totalCanceled],
+        ["Pending/Proses", totalPending],
+        [],
+        ["Data Quality"],
+        ["SKD Belum Diisi", totalSkdPending],
+        ["Rata-rata Durasi Pelayanan (Menit)", Math.round(avgDuration)],
+      ];
+
+      const summaryWorksheet = XLSX.utils.aoa_to_sheet(summaryData);
+      summaryWorksheet["!cols"] = [{ wch: 30 }, { wch: 20 }];
+      summaryWorksheet["!rows"] = [{ hpx: 25 }]; // Header height
+
+      // Apply summary styling
+      const summaryTitleStyle = {
+        font: { bold: true, size: 14, color: { rgb: "FFFFFF" } },
+        fill: { type: "pattern" as const, patternType: "solid" as const, fgColor: { rgb: "1F2937" } },
+        alignment: { horizontal: "left" as const, vertical: "center" as const, wrapText: true },
+        border: {
+          left: { style: "thin" as const },
+          right: { style: "thin" as const },
+          top: { style: "thin" as const },
+          bottom: { style: "thin" as const },
+        },
+      };
+
+      const summarySectionStyle = {
+        font: { bold: true, size: 11, color: { rgb: "FFFFFF" } },
+        fill: { type: "pattern" as const, patternType: "solid" as const, fgColor: { rgb: "374151" } },
+        alignment: { horizontal: "left" as const, vertical: "center" as const },
+        border: {
+          left: { style: "thin" as const },
+          right: { style: "thin" as const },
+          top: { style: "thin" as const },
+          bottom: { style: "thin" as const },
+        },
+      };
+
+      const summaryDataStyle = {
+        alignment: { horizontal: "left" as const, vertical: "center" as const },
+        border: {
+          left: { style: "hair" as const },
+          right: { style: "hair" as const },
+          bottom: { style: "hair" as const },
+        },
+      };
+
+      const summaryNumberStyle = {
+        ...summaryDataStyle,
+        alignment: { horizontal: "right" as const, vertical: "center" as const },
+        numFmt: "0",
+      };
+
+      // Apply styles ke summary worksheet
+      summaryWorksheet["A1"].s = summaryTitleStyle;
+      
+      for (let i = 0; i < summaryData.length; i++) {
+        const row = i + 1;
+        if (summaryData[i][0] === "STATISTIK UTAMA" || summaryData[i][0] === "Data Quality") {
+          summaryWorksheet[`A${row}`].s = summarySectionStyle;
+        } else if (typeof summaryData[i][1] === "number" || summaryData[i][0] === "Tanggal Export") {
+          summaryWorksheet[`A${row}`].s = summaryDataStyle;
+          if (summaryWorksheet[`B${row}`]) {
+            if (summaryData[i][0] === "Tanggal Export") {
+              summaryWorksheet[`B${row}`].s = { ...summaryDataStyle, numFmt: "yyyy-mm-dd hh:mm:ss" };
+              summaryWorksheet[`B${row}`].t = "d";
+            } else {
+              summaryWorksheet[`B${row}`].s = summaryNumberStyle;
+              summaryWorksheet[`B${row}`].t = "n";
+            }
+          }
+        }
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Ringkasan");
+
+      // === SHEET 2: Data Sheet dengan Table ===
+      const dataWorksheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+
+      // Define column widths for the new 18-column export
+      const columnWidths: Array<{ wch: number }> = [
+        { wch: 5 },   // No
+        { wch: 18 },  // Nama Lengkap
+        { wch: 14 },  // Jenis Kelamin
+        { wch: 8 },   // Umur
+        { wch: 20 },  // Email
+        { wch: 16 },  // Nomor WhatsApp
+        { wch: 20 },  // Alamat
+        { wch: 18 },  // Asal/Instansi
+        { wch: 16 },  // Pendidikan Terakhir
+        { wch: 14 },  // Pekerjaan
+        { wch: 16 },  // Layanan
+        { wch: 13 },  // Tanggal
+        { wch: 10 },  // Nomor Antrean
+        { wch: 12 },  // Kode Antrean
+        { wch: 14 },  // Status Layanan
+        { wch: 12 },  // Durasi Pelayanan
+        { wch: 14 },  // Petugas Pelayanan
+        { wch: 12 },  // Status SKD
+      ];
+      dataWorksheet["!cols"] = columnWidths;
+
+      // Header styling
+      const headerStyle = {
+        fill: { type: "pattern" as const, patternType: "solid" as const, fgColor: { rgb: "1F2937" } },
+        font: { bold: true, color: { rgb: "FFFFFF" }, size: 11 },
+        alignment: { horizontal: "center" as const, vertical: "center" as const, wrapText: true },
+        border: {
+          left: { style: "thin" as const, color: { rgb: "D1D5DB" } },
+          right: { style: "thin" as const, color: { rgb: "D1D5DB" } },
+          top: { style: "thin" as const, color: { rgb: "D1D5DB" } },
+          bottom: { style: "thin" as const, color: { rgb: "D1D5DB" } },
+        },
+      };
+
+      // Data cell styling dengan wrap text
+      const dataStyle = {
+        alignment: { horizontal: "left" as const, vertical: "center" as const, wrapText: true },
+        border: {
+          left: { style: "hair" as const, color: { rgb: "E5E7EB" } },
+          right: { style: "hair" as const, color: { rgb: "E5E7EB" } },
+          top: { style: "hair" as const, color: { rgb: "E5E7EB" } },
+          bottom: { style: "hair" as const, color: { rgb: "E5E7EB" } },
+        },
+      };
+
+      // Center align style untuk kolom tertentu
+      const centerStyle = {
+        ...dataStyle,
+        alignment: { horizontal: "center" as const, vertical: "center" as const, wrapText: true },
+      };
+
+      // Date format (date-only)
+      const dateStyle = { ...centerStyle, numFmt: "dd/mm/yyyy" };
+      // Time format (time-only)
+      const timeStyle = { ...centerStyle, numFmt: "hh:mm" };
+      // Number format
+      const numberStyle = { ...centerStyle, numFmt: "0" };
+      // Phone text format untuk safely retain leading zero
+      const phoneStyle = { ...dataStyle, numFmt: "@" }; // @ = text format
+
+      // Apply header styles
+      for (let i = 0; i < headerRow.length; i++) {
+        const cellRef = XLSX.utils.encode_col(i) + "1";
+        if (!dataWorksheet[cellRef]) dataWorksheet[cellRef] = {};
+        dataWorksheet[cellRef].s = headerStyle;
+      }
+
+      // Apply data cell styles dan format types
+      for (let rowIdx = 0; rowIdx < dataRows.length; rowIdx++) {
+        for (let colIdx = 0; colIdx < EXPORT_COLUMNS.length; colIdx++) {
+          const cellRef = XLSX.utils.encode_col(colIdx) + (rowIdx + 2);
+          const colKey = EXPORT_COLUMNS[colIdx].key;
+          const cellValue = dataRows[rowIdx][colIdx];
+
+          if (!dataWorksheet[cellRef]) dataWorksheet[cellRef] = {};
+
+          // Conditional formatting untuk status_layanan dengan warna
+          if (colKey === "status_layanan") {
+            if (cellValue === "Selesai") {
+              dataWorksheet[cellRef].s = {
+                ...dataStyle,
+                fill: { type: "pattern" as const, patternType: "solid" as const, fgColor: { rgb: "D1FAE5" } },
+                font: { bold: true, color: { rgb: "065F46" } },
+              };
+            } else if (cellValue === "Dibatalkan") {
+              dataWorksheet[cellRef].s = {
+                ...dataStyle,
+                fill: { type: "pattern" as const, patternType: "solid" as const, fgColor: { rgb: "FEE2E2" } },
+                font: { bold: true, color: { rgb: "991B1B" } },
+              };
+            } else {
+              dataWorksheet[cellRef].s = {
+                ...dataStyle,
+                fill: { type: "pattern" as const, patternType: "solid" as const, fgColor: { rgb: "FEF3C7" } },
+                font: { color: { rgb: "92400E" } },
+              };
+            }
+          } else if (colKey === "tanggal") {
+            dataWorksheet[cellRef].s = dateStyle;
+            dataWorksheet[cellRef].t = "d"; // date type
+          } else if (colKey === "umur" || colKey === "durasi_pelayanan" || colKey === "nomor_antrean") {
+            dataWorksheet[cellRef].s = numberStyle;
+            dataWorksheet[cellRef].t = "n"; // number type
+          } else if (colKey === "no") {
+            dataWorksheet[cellRef].s = centerStyle;
+            dataWorksheet[cellRef].t = "n";
+          } else if (colKey === "nomor_wa") {
+            dataWorksheet[cellRef].s = phoneStyle;
+            dataWorksheet[cellRef].t = "s"; // text type
+          } else {
+            dataWorksheet[cellRef].s = dataStyle;
+          }
+        }
+      }
+
+      // Enable AutoFilter
+      const filterRange = `A1:${XLSX.utils.encode_col(EXPORT_COLUMNS.length - 1)}${dataRows.length + 1}`;
+      dataWorksheet["!autofilter"] = { ref: filterRange };
+
+      // Freeze header row ONLY (ySplit: 1, xSplit: 0)
+      dataWorksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+      // Add Excel Table untuk data range (untuk pivot compatibility)
+      const tableRange = `A1:${XLSX.utils.encode_col(EXPORT_COLUMNS.length - 1)}${dataRows.length + 1}`;
+      dataWorksheet["!table"] = {
+        ref: tableRange,
+        name: "DataBubuTamu",
+        displayName: "DataBubuTamu",
+        tableStyleInfo: {
+          name: "TableStyleMedium2",
+          showFirstColumn: false,
+          showLastColumn: false,
+          showRowStripes: true,
+          showColumnStripes: false,
+        },
+      };
+
+      XLSX.utils.book_append_sheet(workbook, dataWorksheet, "Buku Tamu");
+
+      // Write workbook
+      const body = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+
+      return {
+        ok: true as const,
+        format: "xlsx" as const,
+        body,
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      };
+    }
+
+    const body = await buildPdfBuffer(rows);
     return {
       ok: true as const,
-      format: "xlsx" as const,
+      format: "pdf" as const,
       body,
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Type": "application/pdf",
       },
     };
+  } catch (error) {
+    console.error("Export guestbook error:", error);
+    return {
+      ok: false as const,
+      status: 500,
+      error: error instanceof Error ? error.message : "Terjadi kesalahan tidak terduga saat mengekspor data",
+    };
   }
-
-  const body = await buildPdfBuffer(rows);
-  return {
-    ok: true as const,
-    format: "pdf" as const,
-    body,
-    headers: {
-      "Content-Type": "application/pdf",
-    },
-  };
 }

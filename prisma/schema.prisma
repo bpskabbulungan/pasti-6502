@@ -63,15 +63,9 @@ model Visitor {
   occupation    String?
   institution   String?
   email         String?
-  purpose       Purpose?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   queues        Queue[]
-}
-
-enum QueueType {
-  ONLINE
-  OFFLINE
 }
 
 enum Gender {
@@ -92,16 +86,10 @@ enum LastEducation {
   LAINNYA
 }
 
-enum Purpose {
-  KONSULTASI_STATISTIK
-  PERPUSTAKAAN
-  REKOMENDASI_STATISTIK
-  LAINNYA
-}
-
 enum DutyCycleStatus {
   ACTIVE
   COMPLETED
+  CANCELLED
 }
 
 enum DayOffType {
@@ -129,7 +117,6 @@ model Queue {
   id           String      @id @default(uuid())
   queueNumber  Int
   status       QueueStatus @default(WAITING)
-  queueType    QueueType   @default(OFFLINE)
   queueDate    DateTime    @default(now())
   visitorId    String
   visitor      Visitor     @relation(fields: [visitorId], references: [id])
@@ -142,7 +129,6 @@ model Queue {
   dutyStaffId  String?
   dutyStaff    User?       @relation("DutyStaffQueueUser", fields: [dutyStaffId], references: [id])
   startTime    DateTime?
-  endTime      DateTime?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   tempUuid     String?     @unique
@@ -318,6 +304,13 @@ model NotificationRead {
   @@index([notificationId])
 }
 
+model SkdTemplate {
+  id        String   @id @default("default")
+  template  String   @db.LongText
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Guest {
   id            String         @id @default(uuid())
   fullName      String
@@ -329,7 +322,6 @@ model Guest {
   gender        Gender?
   lastEducation LastEducation?
   occupation    String?
-  purpose       Purpose?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   queues        Queue[]

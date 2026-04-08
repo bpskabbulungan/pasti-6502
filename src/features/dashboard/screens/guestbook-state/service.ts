@@ -1,13 +1,11 @@
 import type {
 	DateFilter,
-	PurposeFilter,
 	SortByFilter,
 	SortOrderFilter,
 } from "./schema";
 import { getFilenameFromContentDisposition } from "./helper";
 
 type ExportParams = {
-	purposeFilter: PurposeFilter;
 	dateFilter: DateFilter;
 	year?: number;
 	month?: number;
@@ -21,9 +19,6 @@ type ExportParams = {
 
 export async function exportGuestbookData(params: ExportParams) {
 	const query = new URLSearchParams();
-	if (params.purposeFilter !== "ALL") {
-		query.set("purpose", params.purposeFilter);
-	}
 	if (params.search) {
 		query.set("search", params.search);
 	}

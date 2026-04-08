@@ -103,7 +103,6 @@ export async function submitVisitorForm(body: unknown) {
     gender,
     lastEducation,
     occupation,
-    purpose,
     serviceId,
     tempUuid,
   } = parsed.data;
@@ -118,7 +117,6 @@ export async function submitVisitorForm(body: unknown) {
     gender,
     lastEducation,
     occupation: occupation.trim(),
-    purpose,
     serviceId: serviceId.trim(),
     tempUuid: tempUuid.trim(),
   };
@@ -153,7 +151,6 @@ export async function submitVisitorForm(body: unknown) {
       gender: sanitized.gender,
       lastEducation: sanitized.lastEducation,
       occupation: sanitized.occupation,
-      purpose: sanitized.purpose,
     });
 
     const trackingLink = nanoid(10);

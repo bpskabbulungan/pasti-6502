@@ -9,7 +9,6 @@ import { exportGuestbookData } from "./service";
 import { formatGuestbookDateTime, getGuestbookErrorMessage } from "./helper";
 import type {
 	DateFilter,
-	PurposeFilter,
 	SortByFilter,
 	SortOrderFilter,
 } from "./schema";
@@ -17,7 +16,6 @@ import {
 	buildFallbackSummary,
 	dateFilterLabels,
 	getDateFilterLabel,
-	getPurposeFilterLabel,
 	monthOptions,
 	quarterOptions,
 	semesterOptions,
@@ -36,7 +34,6 @@ export function useGuestbookPageController(
 
 	const [searchTerm, setSearchTerm] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
-	const [purposeFilter, setPurposeFilter] = useState<PurposeFilter>("ALL");
 	const [dateFilter, setDateFilter] = useState<DateFilter>("today");
 	const [filterYear, setFilterYear] = useState(defaultYear);
 	const [filterMonth, setFilterMonth] = useState(defaultMonth);
@@ -60,7 +57,6 @@ export function useGuestbookPageController(
 	useEffect(() => {
 		setCurrentPage(1);
 	}, [
-		purposeFilter,
 		dateFilter,
 		filterYear,
 		filterMonth,
@@ -89,7 +85,6 @@ export function useGuestbookPageController(
 
 	const offset = (currentPage - 1) * pageSize;
 	const guestbookUrl = guestbookApi.listUrl({
-		purpose: purposeFilter,
 		dateFilter,
 		...periodParams,
 		sortBy,
@@ -102,7 +97,6 @@ export function useGuestbookPageController(
 	const isUsingInitialData =
 		currentPage === 1 &&
 		pageSize === 10 &&
-		purposeFilter === "ALL" &&
 		dateFilter === "today" &&
 		sortBy === "createdAt" &&
 		sortOrder === "desc" &&
@@ -143,7 +137,6 @@ export function useGuestbookPageController(
 			: "Belum ada data";
 	const isInitialLoading = isLoading && entries.length === 0;
 
-	const purposeFilterLabel = getPurposeFilterLabel(purposeFilter);
 	const dateFilterLabel = getDateFilterLabel({
 		dateFilter,
 		year: filterYear,
@@ -173,14 +166,12 @@ export function useGuestbookPageController(
 	const canNextPage = totalEntries ? currentPage < totalPages : false;
 
 	const hasActiveFilters =
-		purposeFilter !== "ALL" ||
 		dateFilter !== "today" ||
 		!isDefaultSort ||
 		Boolean(debouncedSearch);
 
 	const resetFilters = () => {
 		setSearchTerm("");
-		setPurposeFilter("ALL");
 		setDateFilter("today");
 		setFilterYear(defaultYear);
 		setFilterMonth(defaultMonth);
@@ -214,7 +205,6 @@ export function useGuestbookPageController(
 		try {
 			setExportingFormat(format);
 			await exportGuestbookData({
-				purposeFilter,
 				dateFilter,
 				year: filterYear,
 				month: filterMonth,
@@ -251,8 +241,6 @@ export function useGuestbookPageController(
 	return {
 		searchTerm,
 		setSearchTerm,
-		purposeFilter,
-		setPurposeFilter,
 		dateFilter,
 		setDateFilter,
 		dateFilterLabel,
@@ -291,7 +279,6 @@ export function useGuestbookPageController(
 		hasFetched,
 		lastFetchedLabel,
 		showingLabel,
-		purposeFilterLabel,
 		hasActiveFilters,
 		debouncedSearch,
 		refresh,

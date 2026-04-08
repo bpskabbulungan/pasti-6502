@@ -46,6 +46,15 @@ export const queuesApi = {
 			method: "PATCH",
 			body: { status },
 		}),
+	getSkdTemplate: () =>
+		apiFetch<{ template: string }>("/api/queue/skd-template", {
+			method: "GET",
+		}),
+	updateSkdTemplate: (template: string) =>
+		apiFetch<{ template: string }>("/api/queue/skd-template", {
+			method: "PUT",
+			body: { template },
+		}),
 	detail: (id: string) => apiFetch<QueueDetail>(`/api/queue/${id}`),
 	list: (params?: QueueListParams) => apiFetch<QueueListResponse>(buildQueueListUrl(params)),
 };

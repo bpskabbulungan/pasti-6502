@@ -1,9 +1,7 @@
 import type {
   Gender,
   LastEducation,
-  Purpose,
   QueueStatus,
-  QueueType,
 } from "@/shared/constants/enums";
 
 export type GuestbookEntry = {
@@ -18,15 +16,13 @@ export type GuestbookEntry = {
   gender: Gender | null;
   lastEducation: LastEducation | null;
   occupation: string | null;
-  purpose: Purpose | null;
   queueNumber: number;
   queueCode: string;
   status: QueueStatus;
-  queueType: QueueType;
   serviceName: string;
   officerName: string | null;
   createdAt: string | Date;
-  endTime: string | Date | null;
+  startTime: string | Date | null;
   filledSKD: boolean;
   trackingLink: string | null;
 };
@@ -53,7 +49,6 @@ export type GuestbookListResponse = {
 
 export type GuestbookListParams = {
   status?: Extract<QueueStatus, "COMPLETED" | "CANCELED"> | "ALL";
-  purpose?: Purpose | "ALL";
   dateFilter?: "today" | "all" | "year" | "month" | "quarter" | "semester";
   year?: number;
   month?: number;

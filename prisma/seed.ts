@@ -6,9 +6,7 @@ import {
   LastEducation,
   Prisma,
   PrismaClient,
-  Purpose,
   QueueStatus,
-  QueueType,
   ReminderChannel,
   Role,
   ServiceStatus,
@@ -54,7 +52,7 @@ type SeededUsers = {
   credentials: SeededCredential[];
 };
 
-type ServiceByPurpose = Record<Purpose, { id: string; name: string }>;
+type ServiceInfo = { id: string; name: string }[];
 
 type DutySeedResult = {
   settingsId: string;
@@ -64,13 +62,11 @@ type DutySeedResult = {
 type QueueSeedResult = {
   total: number;
   guestQueues: number;
-  onlineQueues: number;
   statusCount: Record<QueueStatus, number>;
   snapshots: Array<{
     queueNumber: number;
     queueDate: Date;
     status: QueueStatus;
-    queueType: QueueType;
     serviceName: string;
     visitorName: string;
     adminId: string | null;
@@ -96,7 +92,7 @@ const OCCUPATIONS = [
 ] as const;
 
 const EDUCATION_LEVELS = Object.values(LastEducation) as LastEducation[];
-const PURPOSES = Object.values(Purpose) as Purpose[];
+
 
 const PST_OFFICER_SEEDS = [
   {
@@ -471,7 +467,7 @@ async function seedUsers(): Promise<SeededUsers> {
   return { admin, officers, credentials };
 }
 
-async function seedServices(): Promise<ServiceByPurpose> {
+async function seedServices(): Promise<ServiceInfo> {
   const serviceSeeds = [
     { name: "Perpustakaan", status: ServiceStatus.ACTIVE },
     { name: "Konsultasi Statistik", status: ServiceStatus.ACTIVE },
@@ -529,21 +525,7 @@ async function seedServices(): Promise<ServiceByPurpose> {
     },
   });
 
-  const byName = new Map(services.map((service) => [service.name, service]));
-  const konsultasi = byName.get("Konsultasi Statistik");
-  const perpustakaan = byName.get("Perpustakaan");
-  const rekomendasi = byName.get("Rekomendasi Statistik");
-
-  if (!konsultasi || !perpustakaan || !rekomendasi) {
-    throw new Error("Service utama tidak lengkap setelah proses seed.");
-  }
-
-  return {
-    [Purpose.KONSULTASI_STATISTIK]: konsultasi,
-    [Purpose.PERPUSTAKAAN]: perpustakaan,
-    [Purpose.REKOMENDASI_STATISTIK]: rekomendasi,
-    [Purpose.LAINNYA]: konsultasi,
-  };
+  return services;
 }
 
 async function seedDutyData(officers: User[]): Promise<DutySeedResult> {
@@ -709,7 +691,7 @@ async function seedDutyData(officers: User[]): Promise<DutySeedResult> {
   };
 }
 
-const createProfile = (index: number, purpose: Purpose) => {
+const createProfile = (index: number) => {
   const firstName = FIRST_NAMES[index % FIRST_NAMES.length];
   const lastName = LAST_NAMES[Math.floor(index / FIRST_NAMES.length) % LAST_NAMES.length];
   const fullName = `${firstName} ${lastName}`;
@@ -725,7 +707,6 @@ const createProfile = (index: number, purpose: Purpose) => {
     lastEducation: EDUCATION_LEVELS[index % EDUCATION_LEVELS.length],
     occupation: OCCUPATIONS[index % OCCUPATIONS.length],
     institution: INSTITUTIONS[index % INSTITUTIONS.length],
-    purpose,
   };
 };
 
@@ -742,17 +723,12 @@ const statusListFromPlan = (plan: {
 ];
 
 async function seedQueues(
-  serviceByPurpose: ServiceByPurpose,
+  services: ServiceInfo,
   seededUsers: SeededUsers,
   dutySeed: DutySeedResult
 ): Promise<QueueSeedResult> {
   const today = startOfDay(new Date());
-  const activeServiceIds = [
-    serviceByPurpose[Purpose.KONSULTASI_STATISTIK].id,
-    serviceByPurpose[Purpose.PERPUSTAKAAN].id,
-    serviceByPurpose[Purpose.REKOMENDASI_STATISTIK].id,
-  ];
-  const purposeList = PURPOSES;
+  const activeServiceIds = services.map((s) => s.id);
 
   const dayPlans = [
     { dayOffset: -6, completed: 9, canceled: 3, serving: 0, waiting: 0, guestCount: 5 },
@@ -777,7 +753,6 @@ async function seedQueues(
   let profileIndex = 0;
   let total = 0;
   let guestQueues = 0;
-  let onlineQueues = 0;
 
   for (const plan of dayPlans) {
     const queueDate = startOfDay(addDays(today, plan.dayOffset));
@@ -790,9 +765,7 @@ async function seedQueues(
       const queueNumber = index + 1;
       const status = statuses[index];
       const isGuestQueue = index < plan.guestCount;
-      const queueType = index % 3 === 0 ? QueueType.ONLINE : QueueType.OFFLINE;
-      const purpose = purposeList[(profileIndex + index) % purposeList.length];
-      const profile = createProfile(profileIndex, purpose);
+      const profile = createProfile(profileIndex);
       const createdAt = addMinutes(atTime(queueDate, 8, 0), index * 11);
 
       const visitor = await prisma.visitor.create({
@@ -806,7 +779,6 @@ async function seedQueues(
           occupation: profile.occupation,
           institution: profile.institution,
           email: profile.email,
-          purpose: profile.purpose,
           createdAt,
         },
       });
@@ -824,7 +796,6 @@ async function seedQueues(
             gender: profile.gender,
             lastEducation: profile.lastEducation,
             occupation: profile.occupation,
-            purpose: profile.purpose,
             createdAt,
           },
         });
@@ -832,47 +803,28 @@ async function seedQueues(
         guestQueues++;
       }
 
-      const serviceId = isGuestQueue
-        ? serviceByPurpose[profile.purpose].id
-        : activeServiceIds[index % activeServiceIds.length];
+      const serviceId = activeServiceIds[index % activeServiceIds.length];
 
       let adminId: string | null = null;
       let startTime: Date | null = null;
-      let endTime: Date | null = null;
 
       if (status === QueueStatus.COMPLETED) {
         adminId = adminPool[(index + Math.abs(plan.dayOffset)) % adminPool.length];
         startTime = addMinutes(createdAt, 4 + (index % 17));
-        endTime = addMinutes(startTime, 8 + (index % 25));
       } else if (status === QueueStatus.SERVING) {
         adminId = adminPool[(index + Math.abs(plan.dayOffset)) % adminPool.length];
         startTime = addMinutes(createdAt, 3 + (index % 10));
       } else if (status === QueueStatus.CANCELED && index % 2 === 0) {
         adminId = adminPool[(index + Math.abs(plan.dayOffset)) % adminPool.length];
         startTime = addMinutes(createdAt, 2 + (index % 8));
-        endTime = addMinutes(startTime, 4 + (index % 7));
       }
 
       const trackingLink = `track-${dayKey}-${String(queueNumber).padStart(3, "0")}`;
-      let tempUuid: string | null = null;
-
-      if (queueType === QueueType.ONLINE) {
-        tempUuid = crypto.randomUUID();
-        tempVisitorLinks.push({
-          uuid: tempUuid,
-          expiresAt: addDays(createdAt, 1),
-          createdAt,
-          updatedAt: createdAt,
-          used: true,
-        });
-        onlineQueues++;
-      }
 
       await prisma.queue.create({
         data: {
           queueNumber,
           status,
-          queueType,
           queueDate,
           visitorId: visitor.id,
           guestId,
@@ -880,8 +832,7 @@ async function seedQueues(
           adminId,
           dutyStaffId,
           startTime,
-          endTime,
-          tempUuid,
+          tempUuid: null,
           filledSKD:
             status === QueueStatus.COMPLETED
               ? index % 3 === 0
@@ -898,14 +849,13 @@ async function seedQueues(
       statusCount[status]++;
       total++;
 
+      const serviceName = services.find((s) => s.id === serviceId)?.name ?? "Layanan";
+
       snapshots.push({
         queueNumber,
         queueDate,
         status,
-        queueType,
-        serviceName:
-          Object.values(serviceByPurpose).find((service) => service.id === serviceId)?.name ??
-          "Layanan",
+        serviceName,
         visitorName: profile.fullName,
         adminId,
         createdAt,
@@ -933,7 +883,6 @@ async function seedQueues(
   return {
     total,
     guestQueues,
-    onlineQueues,
     statusCount,
     snapshots: snapshots.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
   };
@@ -945,13 +894,12 @@ async function seedNotifications(seededUsers: SeededUsers, queueSeed: QueueSeedR
 
   for (const queue of recentQueues) {
     const queueCode = `${queue.queueNumber}-${toQueueDateCode(queue.queueDate)}`;
-    const queueChannel = queue.queueType === QueueType.ONLINE ? "Online" : "Offline";
 
     if (queue.status === QueueStatus.WAITING) {
       notificationRows.push({
         type: "NEW_QUEUE",
         title: "Antrean Baru",
-        message: `Antrean baru #${queueCode} (${queueChannel}) dari ${queue.visitorName} untuk layanan ${queue.serviceName}`,
+        message: `Antrean baru #${queueCode} dari ${queue.visitorName} untuk layanan ${queue.serviceName}`,
         isRead: false,
       });
       continue;
@@ -961,7 +909,7 @@ async function seedNotifications(seededUsers: SeededUsers, queueSeed: QueueSeedR
       notificationRows.push({
         type: "QUEUE_SERVING",
         title: "Antrean Sedang Dilayani",
-        message: `Antrean #${queueCode} (${queueChannel}) sedang dilayani pada layanan ${queue.serviceName}`,
+        message: `Antrean #${queueCode} sedang dilayani pada layanan ${queue.serviceName}`,
         isRead: false,
       });
       continue;
@@ -971,7 +919,7 @@ async function seedNotifications(seededUsers: SeededUsers, queueSeed: QueueSeedR
       notificationRows.push({
         type: "QUEUE_COMPLETED",
         title: "Antrean Selesai",
-        message: `Antrean #${queueCode} (${queueChannel}) telah selesai dilayani untuk layanan ${queue.serviceName}`,
+        message: `Antrean #${queueCode} telah selesai dilayani untuk layanan ${queue.serviceName}`,
         isRead: false,
         userId: queue.adminId ?? seededUsers.admin.id,
       });
@@ -981,7 +929,7 @@ async function seedNotifications(seededUsers: SeededUsers, queueSeed: QueueSeedR
     notificationRows.push({
       type: "QUEUE_CANCELED",
       title: "Antrean Dibatalkan",
-      message: `Antrean #${queueCode} (${queueChannel}) dibatalkan untuk layanan ${queue.serviceName}`,
+      message: `Antrean #${queueCode} dibatalkan untuk layanan ${queue.serviceName}`,
       isRead: false,
       userId: queue.adminId ?? null,
     });
@@ -1010,10 +958,10 @@ async function seedNotifications(seededUsers: SeededUsers, queueSeed: QueueSeedR
 async function main() {
   await ensureQrCode();
   await cleanupTransactionalData();
-  const serviceByPurpose = await seedServices();
+  const services = await seedServices();
   const seededUsers = await seedUsers();
   const dutySeed = await seedDutyData(seededUsers.officers);
-  const queueSeed = await seedQueues(serviceByPurpose, seededUsers, dutySeed);
+  const queueSeed = await seedQueues(services, seededUsers, dutySeed);
   await seedNotifications(seededUsers, queueSeed);
 
   const generatedCreds = seededUsers.credentials.filter(
@@ -1036,7 +984,7 @@ async function main() {
     `Queues seeded: total=${queueSeed.total}, waiting=${queueSeed.statusCount.WAITING}, serving=${queueSeed.statusCount.SERVING}, completed=${queueSeed.statusCount.COMPLETED}, canceled=${queueSeed.statusCount.CANCELED}`
   );
   console.log(
-    `Guestbook coverage: guest queues=${queueSeed.guestQueues}, online queues=${queueSeed.onlineQueues}`
+    `Guestbook coverage: guest queues=${queueSeed.guestQueues}`
   );
 
   console.log("Database seeding completed successfully!");

@@ -12,7 +12,6 @@ export async function GET(req: NextRequest) {
 
 		const url = new URL(req.url);
 		const status = url.searchParams.get("status");
-		const purpose = url.searchParams.get("purpose");
 		const search = url.searchParams.get("search");
 		const dateFilterParam = url.searchParams.get("dateFilter");
 		const dateFilter =
@@ -42,7 +41,6 @@ export async function GET(req: NextRequest) {
 		const exportFormat = (formatParam as "xlsx" | "pdf" | null) ?? "xlsx";
 		const result = await exportGuestbookEntries({
 			status,
-			purpose,
 			dateFilter,
 			year,
 			month,

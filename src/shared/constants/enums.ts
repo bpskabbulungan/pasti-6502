@@ -50,12 +50,3 @@ export const LastEducation = {
 
 export type LastEducation =
 	(typeof LastEducation)[keyof typeof LastEducation];
-
-export const Purpose = {
-	KONSULTASI_STATISTIK: "KONSULTASI_STATISTIK",
-	PERPUSTAKAAN: "PERPUSTAKAAN",
-	REKOMENDASI_STATISTIK: "REKOMENDASI_STATISTIK",
-	LAINNYA: "LAINNYA",
-} as const;
-
-export type Purpose = (typeof Purpose)[keyof typeof Purpose];

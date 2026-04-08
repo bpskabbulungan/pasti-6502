@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { nanoid } from "nanoid";
-import { Purpose, QueueStatus, QueueType, ServiceStatus } from "@prisma/client";
+import { QueueStatus, ServiceStatus } from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
 import { createGuestParticipantPair } from "@api/modules/participants";
 import {
@@ -10,30 +10,11 @@ import {
 import { guestSchema } from "@shared/schemas/guest";
 import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
-const normalizedServiceNameToPurpose: Record<string, Purpose> = {
-  "konsultasi statistik": Purpose.KONSULTASI_STATISTIK,
-  perpustakaan: Purpose.PERPUSTAKAAN,
-  "rekomendasi statistik": Purpose.REKOMENDASI_STATISTIK,
-};
-
-const hashPayload = (payload: unknown) =>
-  createHash("sha256").update(JSON.stringify(payload)).digest("hex");
-
-const normalizeServiceName = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-
-const resolvePurposeFromServiceName = (serviceName: string): Purpose =>
-  normalizedServiceNameToPurpose[normalizeServiceName(serviceName)] ?? Purpose.LAINNYA;
-
 export type GuestSubmissionResult = {
   queueId: string;
   queueNumber: number;
   queueCode: string;
   status: QueueStatus;
-  purpose: Purpose | null;
   serviceName: string;
   guestName: string;
   trackingLink: string | null;
@@ -71,7 +52,7 @@ export async function getGuestQueueDetail(queueId: string, clientHash?: string |
     where: { id: queueId },
     include: {
       service: { select: { name: true, updatedAt: true } },
-      guest: { select: { fullName: true, purpose: true, updatedAt: true } },
+      guest: { select: { fullName: true, updatedAt: true } },
       visitor: { select: { name: true, updatedAt: true } },
       admin: { select: { name: true, updatedAt: true } },
       dutyStaff: { select: { name: true, updatedAt: true } },
@@ -103,9 +84,8 @@ export async function getGuestQueueDetail(queueId: string, clientHash?: string |
   const data = {
     queueId: queue.id,
     queueNumber: queue.queueNumber,
-    queueCode: formatGuestQueueCode(queue.guest?.purpose, queue.queueNumber),
+    queueCode: formatGuestQueueCode(queue.service, queue.queueNumber),
     status: queue.status,
-    purpose: queue.guest?.purpose ?? null,
     serviceName: queue.service.name,
     guestName,
     trackingLink: queue.trackingLink,
@@ -241,7 +221,6 @@ export async function processGuestSubmission(body: unknown) {
   }
 
   const queueDate = normalizeQueueDate(new Date());
-  const purpose = resolvePurposeFromServiceName(selectedService.name);
 
   const transactionResult = await prisma.$transaction(async (tx) => {
     const nextQueueNumber = await allocateNextQueueNumber(tx, queueDate);
@@ -255,7 +234,6 @@ export async function processGuestSubmission(body: unknown) {
       gender: sanitized.gender,
       lastEducation: sanitized.lastEducation,
       occupation: sanitized.occupation,
-      purpose,
     });
 
     const queue = await tx.queue.create({
@@ -263,7 +241,6 @@ export async function processGuestSubmission(body: unknown) {
         queueNumber: nextQueueNumber,
         queueDate,
         status: QueueStatus.WAITING,
-        queueType: QueueType.ONLINE,
         visitorId: visitor.id,
         guestId: guest.id,
         serviceId: selectedService.id,
@@ -280,11 +257,10 @@ export async function processGuestSubmission(body: unknown) {
     queueId: transactionResult.queue.id,
     queueNumber: transactionResult.queue.queueNumber,
     queueCode: formatGuestQueueCode(
-      transactionResult.guest.purpose,
+      transactionResult.queue.service,
       transactionResult.queue.queueNumber
     ),
     status: transactionResult.queue.status,
-    purpose: transactionResult.guest.purpose,
     serviceName: transactionResult.queue.service.name,
     guestName: transactionResult.guest.fullName,
     trackingLink: transactionResult.queue.trackingLink,

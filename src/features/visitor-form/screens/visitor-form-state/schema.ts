@@ -1,4 +1,3 @@
-import { Purpose } from "@/shared/constants/enums";
 import {
 	visitorFormClientSchema,
 	type VisitorFormClientData,
@@ -20,7 +19,5 @@ export const visitorFormDefaultValues: Partial<VisitorFormFormValues> = {
 	gender: undefined,
 	lastEducation: undefined,
 	occupation: "Pelajar/Mahasiswa",
-	purpose: Purpose.KONSULTASI_STATISTIK,
 	serviceId: "",
-	queueType: "OFFLINE",
 };

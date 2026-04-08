@@ -1,8 +1,7 @@
-import { Gender, LastEducation, Purpose, QueueStatus } from "@/shared/constants/enums";
+import { Gender, LastEducation, QueueStatus } from "@/shared/constants/enums";
 import type { GuestbookEntry, GuestbookSummary } from "@shared/types/guestbook";
 import type {
 	DateFilter,
-	PurposeFilter,
 	SortByFilter,
 	SortOrderFilter,
 } from "./schema";
@@ -24,34 +23,6 @@ export const educationLabels: Record<LastEducation, string> = {
 	[LastEducation.S3]: "S3",
 	[LastEducation.LAINNYA]: "Lainnya",
 };
-
-export const purposeOptions: Array<{ value: Purpose; label: string; accent: string }> = [
-	{
-		value: Purpose.KONSULTASI_STATISTIK,
-		label: "Konsultasi Statistik",
-		accent: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-100",
-	},
-	{
-		value: Purpose.PERPUSTAKAAN,
-		label: "Perpustakaan",
-		accent: "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100",
-	},
-	{
-		value: Purpose.REKOMENDASI_STATISTIK,
-		label: "Rekomendasi Statistik",
-		accent: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100",
-	},
-	{
-		value: Purpose.LAINNYA,
-		label: "Lainnya",
-		accent: "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-100",
-	},
-];
-
-export const getPurposeFilterLabel = (purposeFilter: PurposeFilter) =>
-	purposeFilter === "ALL"
-		? "Semua keperluan"
-		: (purposeOptions.find((option) => option.value === purposeFilter)?.label ?? "Keperluan");
 
 export const dateFilterLabels: Record<DateFilter, string> = {
 	today: "Hari ini",

@@ -36,7 +36,6 @@ import {
   educationOptions,
   genderOptions,
   occupationOptions,
-  purposeOptions,
 } from "@/features/visitor-form/screens/visitor-form-state/view-model";
 
 export default function VisitorFormPage() {
@@ -597,37 +596,6 @@ export default function VisitorFormPage() {
                           />
                         </div>
                         <div className="grid gap-4 md:grid-cols-2">
-                          <FormField
-                            control={form.control}
-                            name="purpose"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Keperluan</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue placeholder="Pilih keperluan" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {purposeOptions.map((option) => (
-                                      <SelectItem key={option.value} value={option.value}>
-                                        <div className="flex flex-col">
-                                          <span>{option.label}</span>
-                                          {option.description && (
-                                            <span className="text-xs text-muted-foreground">
-                                              {option.description}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
                           <FormField
                             control={form.control}
                             name="serviceId"

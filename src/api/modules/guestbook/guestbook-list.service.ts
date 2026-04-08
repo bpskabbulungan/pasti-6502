@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { Purpose, QueueStatus, Prisma } from "@prisma/client";
+import { QueueStatus, Prisma } from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
 import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
 import {
@@ -15,7 +15,6 @@ type GuestbookSortOrder = "asc" | "desc";
 
 type GuestbookListParams = {
   status?: string | null;
-  purpose?: string | null;
   dateFilter?: DateFilter;
   year?: string | null;
   month?: string | null;
@@ -95,12 +94,6 @@ const parseStatus = (value?: string | null) => {
   if (!value || value === "ALL") return null;
   const normalized = value.toUpperCase();
   return ALLOWED_STATUSES.includes(normalized as QueueStatus) ? (normalized as QueueStatus) : null;
-};
-
-const parsePurpose = (value?: string | null) => {
-  if (!value || value === "ALL") return null;
-  const normalized = value.toUpperCase();
-  return Object.values(Purpose).includes(normalized as Purpose) ? (normalized as Purpose) : null;
 };
 
 const parseSortBy = (value?: string | null): GuestbookSortBy => {
@@ -241,7 +234,6 @@ const buildOrderBy = ({
 };
 
 const buildGuestbookBaseWhere = ({
-  purpose,
   dateFilter,
   year,
   month,
@@ -250,9 +242,8 @@ const buildGuestbookBaseWhere = ({
   search,
 }: Pick<
   GuestbookListParams,
-  "purpose" | "dateFilter" | "year" | "month" | "quarter" | "semester" | "search"
+  "dateFilter" | "year" | "month" | "quarter" | "semester" | "search"
 >) => {
-  const normalizedPurpose = parsePurpose(purpose);
   const normalizedDateFilter = parseDateFilter(dateFilter);
   const periodRange = resolvePeriodRange({
     dateFilter: normalizedDateFilter,
@@ -270,10 +261,6 @@ const buildGuestbookBaseWhere = ({
 
   if (periodRange) {
     baseWhere.queueDate = { gte: periodRange.start, lt: periodRange.end };
-  }
-
-  if (normalizedPurpose) {
-    baseWhere.guest = { is: { purpose: normalizedPurpose } };
   }
 
   if (searchTerm) {
@@ -348,15 +335,13 @@ const toGuestbookEntry = (queue: GuestbookQueueWithRelations): GuestbookEntry =>
     gender: guest?.gender ?? null,
     lastEducation: guest?.lastEducation ?? null,
     occupation: guest?.occupation ?? null,
-    purpose: guest?.purpose ?? null,
     queueNumber: queue.queueNumber,
-    queueCode: formatGuestQueueCode(guest?.purpose, queue.queueNumber),
+    queueCode: formatGuestQueueCode(queue.service, queue.queueNumber),
     status: queue.status,
-    queueType: queue.queueType,
     serviceName: queue.service.name,
     officerName: queue.dutyStaff?.name ?? queue.admin?.name ?? null,
     createdAt: queue.createdAt,
-    endTime: queue.endTime,
+    startTime: queue.startTime,
     filledSKD: queue.filledSKD ?? false,
     trackingLink: queue.trackingLink ?? null,
   };
@@ -364,7 +349,6 @@ const toGuestbookEntry = (queue: GuestbookQueueWithRelations): GuestbookEntry =>
 
 export async function getGuestbookEntries({
   status,
-  purpose,
   dateFilter = "today",
   year,
   month,
@@ -384,7 +368,6 @@ export async function getGuestbookEntries({
   const sortOrder = parseSortOrder(sortOrderParam);
   const orderBy = buildOrderBy({ sortBy, sortOrder });
   const baseWhere = buildGuestbookBaseWhere({
-    purpose,
     dateFilter,
     year,
     month,

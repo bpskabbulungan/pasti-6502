@@ -9,6 +9,7 @@ import {
 	isTransitionConflict,
 } from "./queue.transition-policy";
 import { getDayRangeInTimeZone } from "@shared/utils/date-boundary";
+import { getSkdTemplate } from "./skd-template.service";
 
 const formatQueueDate = (date: Date): string => {
 	const day = date.getDate().toString().padStart(2, "0");
@@ -23,6 +24,25 @@ const buildDefaultSkdReminderMessage = (visitorName: string) => {
 	const skdLink =
 		process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
 	return `Halo ${visitorName}, mohon kesediaannya untuk mengisi Survei Kebutuhan Data (SKD) BPS Bulungan melalui link berikut: ${skdLink}`;
+};
+
+const interpolateSkdTemplate = (
+	template: string,
+	visitorName: string,
+	createdAt: Date
+): string => {
+	const skdLink = process.env.NEXT_PUBLIC_SKD_LINK ?? "s.bps.go.id/skd2025_bpsbusel";
+	const formattedDate = new Intl.DateTimeFormat("id-ID", {
+		weekday: "long",
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	}).format(createdAt);
+
+	return template
+		.replace(/{nama}/g, visitorName)
+		.replace(/{link}/g, skdLink)
+		.replace(/{tanggal}/g, formattedDate);
 };
 
 const normalizeWhatsappPhoneNumber = (phoneNumber: string) => {
@@ -446,10 +466,26 @@ export async function prepareSkdReminder(queueId: string, message?: string) {
 		};
 	}
 
+	// If message not provided, fetch template from DB and interpolate
+	let messageToUse = message;
+	if (!message) {
+		const templateResult = await getSkdTemplate();
+		if (templateResult.ok) {
+			messageToUse = interpolateSkdTemplate(
+				templateResult.template,
+				queue.visitor.name,
+				queue.createdAt
+			);
+		} else {
+			// Fallback to default message if template fetch fails
+			messageToUse = buildDefaultSkdReminderMessage(queue.visitor.name);
+		}
+	}
+
 	const preview = createSkdReminderPreview({
 		visitorName: queue.visitor.name,
 		visitorPhone: queue.visitor.phone,
-		message,
+		message: messageToUse,
 	});
 
 	return {

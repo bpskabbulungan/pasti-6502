@@ -1,4 +1,4 @@
-import { Gender, LastEducation, Prisma, Purpose } from "@prisma/client";
+import { Gender, LastEducation, Prisma } from "@prisma/client";
 
 export type QueueParticipantInput = {
   fullName: string;
@@ -10,7 +10,6 @@ export type QueueParticipantInput = {
   gender?: Gender | null;
   lastEducation?: LastEducation | null;
   occupation?: string | null;
-  purpose?: Purpose | null;
 };
 
 export const buildVisitorCreateData = (input: QueueParticipantInput) =>
@@ -24,7 +23,6 @@ export const buildVisitorCreateData = (input: QueueParticipantInput) =>
     gender: input.gender ?? null,
     lastEducation: input.lastEducation ?? null,
     occupation: input.occupation ?? null,
-    purpose: input.purpose ?? null,
   }) satisfies Prisma.VisitorCreateInput;
 
 export const buildGuestCreateData = (input: QueueParticipantInput) =>
@@ -38,7 +36,6 @@ export const buildGuestCreateData = (input: QueueParticipantInput) =>
     gender: input.gender ?? null,
     lastEducation: input.lastEducation ?? null,
     occupation: input.occupation ?? null,
-    purpose: input.purpose ?? null,
   }) satisfies Prisma.GuestCreateInput;
 
 export async function createVisitorParticipant(

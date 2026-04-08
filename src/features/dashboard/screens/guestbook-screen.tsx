@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
-  BellRing,
+  Send,
   Clock3,
   ArrowDown,
   ArrowUp,
@@ -14,6 +14,10 @@ import {
   RefreshCcw,
   Search,
   X,
+  ChevronDown,
+  Pencil,
+  MessageCircle,
+  AlertCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,17 +57,15 @@ import { queuesApi } from "@/services/api/queues";
 import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
 import { useGuestbookPageController } from "@/features/dashboard/screens/guestbook-state/controller";
 import {
-  formatGuestbookDateTime,
   getGuestbookErrorMessage,
 } from "@/features/dashboard/screens/guestbook-state/helper";
+import { formatDisplayDate } from "@/lib/date-format";
 import {
   educationLabels,
   genderLabels,
-  purposeOptions,
 } from "@/features/dashboard/screens/guestbook-state/view-model";
 import type {
   DateFilter,
-  PurposeFilter,
   SortByFilter,
   SortOrderFilter,
 } from "@/features/dashboard/screens/guestbook-state/schema";
@@ -81,12 +83,15 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
   const [previewPhone, setPreviewPhone] = useState<string>("");
   const [isPreparingPreview, setIsPreparingPreview] = useState(false);
   const [isSendingReminder, setIsSendingReminder] = useState(false);
+  const [expandVisitorData, setExpandVisitorData] = useState(false);
+  const [expandAdditionalData, setExpandAdditionalData] = useState(false);
+  const [templateEditOpen, setTemplateEditOpen] = useState(false);
+  const [editableTemplate, setEditableTemplate] = useState("");
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
   const {
     searchTerm,
     setSearchTerm,
-    purposeFilter,
-    setPurposeFilter,
     dateFilter,
     setDateFilter,
     dateFilterLabel,
@@ -125,7 +130,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     hasFetched,
     lastFetchedLabel,
     showingLabel,
-    purposeFilterLabel,
     hasActiveFilters,
     debouncedSearch,
     refresh,
@@ -146,30 +150,24 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       title: "Selesai Dilayani",
       value: summaryData.completed,
       description: "Layanan yang selesai diproses petugas.",
-      valueClassName: "text-emerald-600",
+      valueClassName: "text-primary-color",
     },
     {
       title: "Dibatalkan",
       value: summaryData.canceled,
       description: "Layanan yang dibatalkan oleh petugas.",
-      valueClassName: "text-rose-600",
+      valueClassName: "text-primary-color",
     },
     {
       title: "Belum Isi SKD",
       value: summaryData.skdPending,
       description: "Pengunjung yang belum mengisi SKD.",
-      valueClassName: "text-amber-600",
+      valueClassName: "text-primary-color",
     },
   ];
-  const selectedPurposeOption = selectedEntry?.purpose
-    ? purposeOptions.find((option) => option.value === selectedEntry.purpose) ?? null
-    : null;
-  const selectedCompletedAtLabel = selectedEntry?.endTime
-    ? formatGuestbookDateTime(selectedEntry.endTime)
-    : "-";
   const selectedSkdClass = selectedEntry?.filledSKD
-    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
-    : "border-red-500/30 bg-red-500/10 text-red-700";
+    ? "border-border/70 bg-muted/20 text-primary-color"
+    : "border-border/70 bg-muted/20 text-primary-color";
   const selectedTrackingLink = selectedEntry?.trackingLink ?? null;
   const selectedTrackingIsUrl = selectedTrackingLink
     ? /^https?:\/\//i.test(selectedTrackingLink)
@@ -219,6 +217,54 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     setPreviewOpen(open);
     if (!open) {
       resetPreviewState();
+    }
+  };
+
+  const handleOpenTemplateEditor = async () => {
+    try {
+      // Always fetch fresh template from server
+      const response = await queuesApi.getSkdTemplate();
+      const template = response.template ?? "";
+      setEditableTemplate(template);
+      setTemplateEditOpen(true);
+    } catch (error) {
+      console.error("Error loading template:", error);
+      toast.error(getGuestbookErrorMessage(error, "Gagal memuat template"));
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!editableTemplate.trim()) {
+      toast.error("Template pesan tidak boleh kosong.");
+      return;
+    }
+    
+    try {
+      setIsSavingTemplate(true);
+      await queuesApi.updateSkdTemplate(editableTemplate);
+      
+      // Refresh preview dengan template baru yang baru disave
+      if (previewEntry) {
+        setIsPreparingPreview(true);
+        try {
+          const previewResponse = await queuesApi.previewSkdReminder(previewEntry.id);
+          const previewData = previewResponse.data ?? {};
+          const previewMessageValue =
+            typeof previewData.message === "string" ? previewData.message : "";
+          setPreviewMessage(previewMessageValue);
+        } finally {
+          setIsPreparingPreview(false);
+        }
+      }
+      
+      setEditableTemplate("");
+      setTemplateEditOpen(false);
+      toast.success("Template pesan berhasil diperbarui.");
+    } catch (error) {
+      console.error("Error saving template:", error);
+      toast.error(getGuestbookErrorMessage(error, "Gagal menyimpan template"));
+    } finally {
+      setIsSavingTemplate(false);
     }
   };
 
@@ -376,22 +422,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Select
-                  value={purposeFilter}
-                  onValueChange={(value) => setPurposeFilter(value as PurposeFilter)}
-                >
-                  <SelectTrigger className="w-full sm:w-[220px]">
-                    <SelectValue placeholder="Keperluan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Semua keperluan</SelectItem>
-                    {purposeOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
                   value={dateFilter}
                   onValueChange={(value) => setDateFilter(value as DateFilter)}
                 >
@@ -526,11 +556,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
 
             {hasActiveFilters && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-                {purposeFilter !== "ALL" && (
-                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                    Keperluan: {purposeFilterLabel}
-                  </Badge>
-                )}
                 {dateFilter !== "today" && (
                   <Badge variant="secondary" className="bg-background/80 text-secondary-color">
                     Periode: {dateFilterLabel}
@@ -634,7 +659,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       </Card>
 
       <Dialog open={detailOpen} onOpenChange={handleDetailOpenChange}>
-        <DialogContent className="max-w-4xl pr-14 sm:pr-16">
+        <DialogContent className="max-w-4xl pr-4 sm:pr-6 max-h-[calc(100vh-6rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detail Buku Tamu</DialogTitle>
           </DialogHeader>
@@ -642,30 +667,31 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
             <div className="space-y-4">
               <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-lg font-semibold text-primary-color">{selectedEntry.fullName}</p>
-                    <p className="mt-1 text-xs text-secondary-color">WhatsApp: <b>{selectedEntry.phone}</b></p>
+                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2.5 py-1.5 text-sm font-medium text-primary-color">
+                      <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                      <span>{selectedEntry.phone}</span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className={selectedSkdClass}>
-                      SKD: {selectedEntry.filledSKD ? "Sudah" : "Belum"}
-                    </Badge>
-                    {!selectedEntry.filledSKD ? (
+                  <div className="flex items-center gap-2">
+                    <LiveStatusBadge
+                      isRefreshing={isRefreshing} 
+                      hasFetched={hasFetched}
+
+                    />
+
+                    {selectedTrackingLink && selectedTrackingIsUrl && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => void handleOpenSkdPreview(selectedEntry)}
-                        disabled={isPreparingPreview || isSendingReminder}
-                        className="h-8 gap-1.5 border-border/80"
+                        className="gap-2"
+                        onClick={() => window.open(selectedTrackingLink, "_blank", "noopener,noreferrer")}
                       >
-                        {isPreparingPreview ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <BellRing className="h-3.5 w-3.5" />
-                        )}
-                        Kirim Pengingat SKD
+                        <Pencil className="h-4 w-4" />
+                        Lacak Layanan 
                       </Button>
-                    ) : null}
+                    )}
                   </div>
                 </div>
               </div>
@@ -693,14 +719,10 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                   </div>
                   <div className="rounded-md bg-muted/20 px-3 py-2">
                     <dt className="text-xs text-secondary-color">Tanggal Kunjungan</dt>
-                    <dd>{formatGuestbookDateTime(selectedEntry.createdAt)}</dd>
+                    <dd>{formatDisplayDate(selectedEntry.createdAt)}</dd>
                   </div>
                   <div className="rounded-md bg-muted/20 px-3 py-2">
-                    <dt className="text-xs text-secondary-color">Tanggal selesai pelayanan</dt>
-                    <dd>{selectedCompletedAtLabel}</dd>
-                  </div>
-                  <div className="rounded-md bg-muted/20 px-3 py-2">
-                    <dt className="text-xs text-secondary-color">Monitoring SKD</dt>
+                    <dt className="text-xs text-secondary-color">Status SKD</dt>
                     <dd>
                       <Badge variant="outline" className={selectedSkdClass}>
                         {selectedEntry.filledSKD ? "Sudah" : "Belum"}
@@ -710,95 +732,129 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                 </dl>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border border-border/70 bg-card p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
-                    Data Pengunjung
+              <div className="rounded-lg border-2 border-border/70 bg-muted/20 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary-color">
+                  Monitoring Survei Kebutuhan Data (SKD)
+                </p>
+                <div className="mt-3 flex flex-col gap-4">
+                  <p className="text-sm text-secondary-color">
+                    {selectedEntry.filledSKD
+                      ? "Pengunjung sudah mengisi SKD."
+                      : "Pengunjung belum mengisi SKD."}
                   </p>
-                  <dl className="mt-3 space-y-2 text-sm">
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Nama lengkap</dt>
-                      <dd className="break-words font-semibold text-primary-color">{selectedEntry.fullName}</dd>
+                  {!selectedEntry.filledSKD && (
+                    <Button
+                      onClick={() => void handleOpenSkdPreview(selectedEntry)}
+                      disabled={isPreparingPreview || isSendingReminder}
+                      className="gap-2 h-9 w-full sm:w-auto"
+                    >
+                      <span>{isPreparingPreview ? "Mempersiapkan..." : "Kirim Pengingat"}</span>
+                      {isPreparingPreview ? (
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      ) : (
+                        <Send className="h-4 w-4 shrink-0" />
+                      )}
+                    </Button>
+                  )}
+                  {selectedEntry.filledSKD && (
+                    <div className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-3 py-2">
+                      <svg className="h-5 w-5 text-primary-color" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                      <span className="text-sm font-medium text-primary-color">SKD sudah diisi</span>
                     </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Nomor WA</dt>
-                      <dd>{selectedEntry.phone}</dd>
-                    </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Email</dt>
-                      <dd className="break-all">{selectedEntry.email || "-"}</dd>
-                    </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Asal / Instansi</dt>
-                      <dd className="break-words">{selectedEntry.institution || "-"}</dd>
-                    </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Alamat</dt>
-                      <dd className="break-words">{selectedEntry.address || "-"}</dd>
-                    </div>
-                  </dl>
+                  )}
                 </div>
-                <div className="rounded-lg border border-border/70 bg-card p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
-                    Data Tambahan
-                  </p>
-                  <dl className="mt-3 space-y-2 text-sm">
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Umur</dt>
-                      <dd>{selectedEntry.age ? `${selectedEntry.age} tahun` : "-"}</dd>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="overflow-hidden rounded-lg border border-border/70 bg-card">
+                  <button
+                    onClick={() => setExpandVisitorData(!expandVisitorData)}
+                    className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-muted/20 active:bg-muted/30 transition-all duration-200 ease-out"
+                  >
+                    <p className="line-clamp-1 text-xs font-semibold uppercase tracking-wide text-secondary-color">
+                      Data Pengunjung
+                    </p>
+                    <ChevronDown
+                      className={`flex-shrink-0 ml-2 h-4 w-4 text-secondary-color transition-transform duration-300 ease-out ${
+                        expandVisitorData ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {expandVisitorData && (
+                    <div className="border-t border-border/70 p-4">
+                      <dl className="space-y-3 text-sm">
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Nama lengkap</dt>
+                          <dd className="mt-1 font-semibold text-primary-color break-words">{selectedEntry.fullName}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Nomor WA</dt>
+                          <dd className="mt-1 break-words">{selectedEntry.phone}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Email</dt>
+                          <dd className="mt-1 break-all text-xs">{selectedEntry.email || "-"}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Asal / Instansi</dt>
+                          <dd className="mt-1 break-words">{selectedEntry.institution || "-"}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Alamat</dt>
+                          <dd className="mt-1 break-words">{selectedEntry.address || "-"}</dd>
+                        </div>
+                      </dl>
                     </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Jenis kelamin</dt>
-                      <dd>{selectedEntry.gender ? genderLabels[selectedEntry.gender] : "-"}</dd>
+                  )}
+                </div>
+                <div className="overflow-hidden rounded-lg border border-border/70 bg-card">
+                  <button
+                    onClick={() => setExpandAdditionalData(!expandAdditionalData)}
+                    className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-muted/20 active:bg-muted/30 transition-all duration-200 ease-out"
+                  >
+                    <p className="line-clamp-1 text-xs font-semibold uppercase tracking-wide text-secondary-color">
+                      Data Tambahan
+                    </p>
+                    <ChevronDown
+                      className={`flex-shrink-0 ml-2 h-4 w-4 text-secondary-color transition-transform duration-300 ease-out ${
+                        expandAdditionalData ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {expandAdditionalData && (
+                    <div className="border-t border-border/70 p-4">
+                      <dl className="space-y-3 text-sm">
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Umur</dt>
+                          <dd className="mt-1">{selectedEntry.age ? `${selectedEntry.age} tahun` : "-"}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Jenis kelamin</dt>
+                          <dd className="mt-1">{selectedEntry.gender ? genderLabels[selectedEntry.gender] : "-"}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Pendidikan terakhir</dt>
+                          <dd className="mt-1">
+                            {selectedEntry.lastEducation
+                              ? educationLabels[selectedEntry.lastEducation]
+                              : "-"}
+                          </dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Pekerjaan</dt>
+                          <dd className="mt-1 break-words">{selectedEntry.occupation || "-"}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/20 px-3 py-2">
+                          <dt className="text-xs text-secondary-color font-medium">Layanan</dt>
+                          <dd className="mt-1">
+                            <Badge variant="secondary" className="bg-muted/40 text-primary-color">
+                              {selectedEntry.serviceName || "-"}
+                            </Badge>
+                          </dd>
+                        </div>
+                      </dl>
                     </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Pendidikan terakhir</dt>
-                      <dd>
-                        {selectedEntry.lastEducation
-                          ? educationLabels[selectedEntry.lastEducation]
-                          : "-"}
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Pekerjaan</dt>
-                      <dd className="break-words">{selectedEntry.occupation || "-"}</dd>
-                    </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Keperluan</dt>
-                      {selectedPurposeOption ? (
-                        <dd>
-                          <Badge variant="secondary" className="bg-muted/40 text-primary-color">
-                            {selectedPurposeOption.label}
-                          </Badge>
-                        </dd>
-                      ) : (
-                        <dd>-</dd>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-md bg-muted/20 px-3 py-2">
-                      <dt className="text-xs text-secondary-color">Link monitoring</dt>
-                      {selectedTrackingLink ? (
-                        <dd>
-                          {selectedTrackingIsUrl ? (
-                            <a
-                              href={selectedTrackingLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="break-all text-primary hover:underline"
-                            >
-                              {selectedTrackingLink}
-                            </a>
-                          ) : (
-                            <span className="break-all font-mono text-[13px] text-primary-color">
-                              {selectedTrackingLink}
-                            </span>
-                          )}
-                        </dd>
-                      ) : (
-                        <dd>-</dd>
-                      )}
-                    </div>
-                  </dl>
+                  )}
                 </div>
               </div>
             </div>
@@ -811,34 +867,70 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       </Dialog>
 
       <Dialog open={previewOpen} onOpenChange={handlePreviewOpenChange}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-2xl max-h-[calc(100vh-6rem)] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Preview Pesan</DialogTitle>
+            <div className="flex items-center justify-between gap-2">
+              <DialogTitle>Pratinjau Pesan WhatsApp</DialogTitle>
+              <span className="text-xs font-medium text-secondary-color">{previewMessage.length} karakter</span>
+            </div>
             <DialogDescription>
-              Periksa template pesan sebelum mengirim pengingat SKD ke pengunjung.
+              Periksa penerima dan preview pesan sebelum mengirim.
             </DialogDescription>
           </DialogHeader>
           {previewEntry ? (
-            <div className="space-y-3">
-              <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
-                <p>
-                  Penerima: <strong>{previewEntry.fullName}</strong>
-                </p>
-                <p>
-                  Nomor WA: <strong>{previewPhone || previewEntry.phone}</strong>
-                </p>
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-primary-color">{previewEntry.fullName}</p>
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm text-primary-color">
+                      <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                      <span className="font-medium">{previewPhone || previewEntry.phone}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              {previewMessage.length > 1000 && (
+                <div className="flex gap-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-primary-color mt-0.5" />
+                  <div className="text-sm text-primary-color">
+                    <p className="font-semibold">Pesan terlalu panjang</p>
+                    <p className="text-xs mt-1">Pesan melebihi 1000 karakter ({previewMessage.length} karakter). Pertimbangkan untuk mempersingkat.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
-                <p className="text-sm font-medium text-primary-color">Isi pesan</p>
-                <Textarea
-                  value={previewMessage}
-                  readOnly
-                  className="min-h-44 resize-none bg-background/80"
-                />
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary-color">Pratinjau Pesan</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleOpenTemplateEditor}
+                    disabled={isPreparingPreview || isSendingReminder}
+                    className="gap-2 h-8"
+                    title="Edit template"
+                    aria-label="Edit template"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>Edit</span>
+                  </Button>
+                </div>
+                <div className="flex justify-center rounded-lg border border-border/40 bg-muted/40 p-6">
+                  <div className="max-w-xs space-y-2">
+                    <div className="rounded-lg bg-emerald-500 px-4 py-3 text-white text-sm break-words shadow-sm">
+                      {previewMessage}
+                    </div>
+                    <div className="text-right text-xs text-secondary-color px-4">
+                      Hari ini
+                    </div>
+                  </div>
+                </div>
               </div>
               {previewWhatsAppUrl ? (
-                <p className="text-xs text-secondary-color">
-                  Fallback WhatsApp link sudah disiapkan jika bot tidak tersedia.
+                <p className="text-xs text-secondary-color rounded-md bg-muted/30 p-2">
+                  Jika bot tidak tersedia, pesan akan dibuka melalui tautan WhatsApp.
                 </p>
               ) : null}
             </div>
@@ -853,7 +945,66 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
               className="gap-2"
             >
               {isSendingReminder ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Kirim Pengingat SKD
+              Kirim
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={templateEditOpen} onOpenChange={setTemplateEditOpen}>
+        <DialogContent className="max-w-2xl max-h-[calc(100vh-6rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Template Pesan SKD</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs text-secondary-color">
+              <p className="font-medium mb-2">Variabel yang tersedia:</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>{'{nama}'} - Nama pengunjung</li>
+                <li>{'{link}'} - Link survei SKD</li>
+                <li>{'{tanggal}'} - Tanggal kunjungan</li>
+              </ul>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-primary-color">Template Pesan</label>
+                <span className="text-xs font-medium text-secondary-color">{editableTemplate.length} / 2000 karakter</span>
+              </div>
+              <Textarea
+                value={editableTemplate}
+                onChange={(e) => setEditableTemplate(e.target.value)}
+                placeholder="Tulis template pesan di sini..."
+                className="min-h-48 resize-none"
+                maxLength={2000}
+              />
+              {editableTemplate.trim().length === 0 && (
+                <div className="flex gap-2 rounded-lg border border-border/70 bg-muted/20 p-2 text-xs text-primary-color">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>Template pesan tidak boleh kosong</span>
+                </div>
+              )}
+              {editableTemplate.trim().length > 0 && editableTemplate.trim().length < 10 && (
+                <div className="flex gap-2 rounded-lg border border-border/70 bg-muted/20 p-2 text-xs text-primary-color">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>Template terlalu pendek (minimal 10 karakter)</span>
+                </div>
+              )}
+              <p className="text-xs text-secondary-color">
+                Template ini akan otomatis diisi dengan data pengunjung.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setTemplateEditOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={() => void handleSaveTemplate()}
+              disabled={isSavingTemplate}
+              className="gap-2"
+            >
+              {isSavingTemplate && <Loader2 className="h-4 w-4 animate-spin" />}
+              Simpan
             </Button>
           </DialogFooter>
         </DialogContent>

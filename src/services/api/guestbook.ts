@@ -9,9 +9,6 @@ const buildGuestbookListUrl = (params?: GuestbookListParams) => {
 	if (params?.status && params.status !== "ALL") {
 		searchParams.set("status", params.status);
 	}
-	if (params?.purpose && params.purpose !== "ALL") {
-		searchParams.set("purpose", params.purpose);
-	}
 	if (params?.dateFilter) {
 		searchParams.set("dateFilter", params.dateFilter);
 	}
