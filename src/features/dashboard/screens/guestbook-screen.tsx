@@ -10,7 +10,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   FileSpreadsheet,
-  FileText,
   Loader2,
   RefreshCcw,
   Search,
@@ -138,9 +137,9 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
 
   const summaryCards = [
     {
-      title: "Total Catatan",
+      title: "Total Pengunjung",
       value: summaryData.total,
-      description: "Semua catatan layanan final pada filter aktif.",
+      description: "Semua pengunjung pada filter aktif.",
       valueClassName: "text-primary-color",
     },
     {
@@ -152,13 +151,13 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
     {
       title: "Dibatalkan",
       value: summaryData.canceled,
-      description: "Layanan yang dibatalkan dan tetap tercatat.",
+      description: "Layanan yang dibatalkan oleh petugas.",
       valueClassName: "text-rose-600",
     },
     {
       title: "Belum Isi SKD",
       value: summaryData.skdPending,
-      description: "Pengunjung yang belum mengirim monitoring SKD.",
+      description: "Pengunjung yang belum mengisi SKD.",
       valueClassName: "text-amber-600",
     },
   ];
@@ -301,8 +300,8 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
   return (
     <PageContainer>
       <DashboardPageHeader
-        title="Buku Tamu PST 6502"
-        description="Catatan akhir layanan pengunjung dengan status selesai atau dibatalkan."
+        title="Buku Tamu PST BPS Kabupaten Bulungan"
+        description="Halaman pencatatan layanan pengunjung dengan status selesai atau dibatalkan."
         meta={
           <>
             <span>Terakhir diperbarui: {lastFetchedLabel}</span>
@@ -345,7 +344,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       <Card className="border-border/80 bg-card shadow-none">
         <CardHeader className="gap-2">
           <CardTitle className="text-xl font-semibold text-primary-color">
-            Daftar Buku Tamu
+            Daftar Buku Tamu PST
           </CardTitle>
           <CardDescription className="text-secondary-color">
             Daftar catatan akhir layanan beserta detail pengunjung dan layanan.
@@ -493,12 +492,14 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                 </Select>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="icon"
                   className="border-border"
                   onClick={resetFilters}
                   disabled={!hasActiveFilters}
+                  title="Reset filter"
+                  aria-label="Reset filter"
                 >
-                  Reset
+                  <RefreshCcw className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"
@@ -511,19 +512,6 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                 >
                   <FileSpreadsheet
                     className={`h-4 w-4 ${exportingFormat === "xlsx" ? "animate-pulse" : ""}`}
-                  />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="border-border"
-                  onClick={() => handleExport("pdf")}
-                  disabled={isRefreshing || exportingFormat !== null}
-                  title="Export PDF"
-                  aria-label="Export PDF"
-                >
-                  <FileText
-                    className={`h-4 w-4 ${exportingFormat === "pdf" ? "animate-pulse" : ""}`}
                   />
                 </Button>
               </div>
@@ -655,9 +643,8 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
               <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <p className="text-sm text-secondary-color">Pengunjung</p>
                     <p className="text-lg font-semibold text-primary-color">{selectedEntry.fullName}</p>
-                    <p className="mt-1 text-xs text-secondary-color">No. WA: {selectedEntry.phone}</p>
+                    <p className="mt-1 text-xs text-secondary-color">WhatsApp: <b>{selectedEntry.phone}</b></p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className={selectedSkdClass}>
@@ -705,7 +692,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                     <dd className="break-words">{selectedEntry.officerName || "-"}</dd>
                   </div>
                   <div className="rounded-md bg-muted/20 px-3 py-2">
-                    <dt className="text-xs text-secondary-color">Tanggal datang / antrean dibuat</dt>
+                    <dt className="text-xs text-secondary-color">Tanggal Kunjungan</dt>
                     <dd>{formatGuestbookDateTime(selectedEntry.createdAt)}</dd>
                   </div>
                   <div className="rounded-md bg-muted/20 px-3 py-2">
