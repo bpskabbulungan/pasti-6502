@@ -59,7 +59,7 @@ type GuestbookExportRow = {
   pendidikan_terakhir: string;
   pekerjaan: string;
   layanan: string;
-  tanggal: Date;
+  tanggal: string; // Changed from Date to string for proper formatting
   nomor_antrean: number;
   kode_antrean: string;
   status_layanan: string;
@@ -762,6 +762,19 @@ export async function exportGuestbookEntries({
       const durationMinutes = calculateDurationMinutes(new Date(entry.createdAt), entry.startTime ? new Date(entry.startTime) : null);
 
       const createdDate = new Date(entry.createdAt);
+      
+      // Format tanggal sebagai dd-mm-yyyy
+      let tanggalFormatted = "-";
+      try {
+        if (createdDate && !isNaN(createdDate.getTime())) {
+          const day = String(createdDate.getDate()).padStart(2, "0");
+          const month = String(createdDate.getMonth() + 1).padStart(2, "0");
+          const year = createdDate.getFullYear();
+          tanggalFormatted = `${day}-${month}-${year}`;
+        }
+      } catch {
+        tanggalFormatted = "-";
+      }
 
       return {
         no: index + 1,
@@ -775,7 +788,7 @@ export async function exportGuestbookEntries({
         pendidikan_terakhir: educationLabel,
         pekerjaan: entry.occupation || "-",
         layanan: entry.serviceName,
-        tanggal: createdDate,
+        tanggal: tanggalFormatted,
         nomor_antrean: entry.queueNumber,
         kode_antrean: entry.queueCode,
         status_layanan: statusLabels[entry.status],
@@ -786,21 +799,13 @@ export async function exportGuestbookEntries({
     });
 
     if (exportFormat === "xlsx") {
-      // Helper untuk extract date-only (time set to 00:00:00)
-      const getDateOnly = (date: Date | null): Date | null => {
-        if (!date || !(date instanceof Date) || isNaN(date.getTime())) return null;
-        const dateOnly = new Date(date);
-        dateOnly.setHours(0, 0, 0, 0);
-        return dateOnly;
-      };
-
       // Helper untuk format cell value dengan proper type
       const formatCellValue = (value: unknown, key: keyof GuestbookExportRow) => {
         if (value === null || value === undefined) return "";
         
         if (key === "tanggal") {
-          const dateValue = value instanceof Date ? value : null;
-          return getDateOnly(dateValue);
+          // tanggal sudah dalam format string dd/mm/yyyy
+          return value;
         }
         
         if (key === "nomor_wa") {
@@ -833,7 +838,16 @@ export async function exportGuestbookEntries({
       const summaryData = [
         ["RINGKASAN LAPORAN BUKU TAMU"],
         [],
-        ["Tanggal Export", new Date()],
+        ["Tanggal Export", (() => {
+          const now = new Date();
+          const day = String(now.getDate()).padStart(2, "0");
+          const month = String(now.getMonth() + 1).padStart(2, "0");
+          const year = now.getFullYear();
+          const hours = String(now.getHours()).padStart(2, "0");
+          const minutes = String(now.getMinutes()).padStart(2, "0");
+          const seconds = String(now.getSeconds()).padStart(2, "0");
+          return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
+        })()],
         [],
         ["STATISTIK UTAMA"],
         ["Total Data", totalRows],
@@ -901,8 +915,8 @@ export async function exportGuestbookEntries({
           summaryWorksheet[`A${row}`].s = summaryDataStyle;
           if (summaryWorksheet[`B${row}`]) {
             if (summaryData[i][0] === "Tanggal Export") {
-              summaryWorksheet[`B${row}`].s = { ...summaryDataStyle, numFmt: "yyyy-mm-dd hh:mm:ss" };
-              summaryWorksheet[`B${row}`].t = "d";
+              summaryWorksheet[`B${row}`].s = { ...summaryDataStyle, numFmt: "@" }; // text format
+              summaryWorksheet[`B${row}`].t = "s"; // text type
             } else {
               summaryWorksheet[`B${row}`].s = summaryNumberStyle;
               summaryWorksheet[`B${row}`].t = "n";
@@ -970,8 +984,8 @@ export async function exportGuestbookEntries({
         alignment: { horizontal: "center" as const, vertical: "center" as const, wrapText: true },
       };
 
-      // Date format (date-only)
-      const dateStyle = { ...centerStyle, numFmt: "dd/mm/yyyy" };
+      // Date format (date-only) - using text format to preserve dd-mm-yyyy
+      const dateStyle = { ...centerStyle, numFmt: "@" }; // @ = text format
       // Time format (time-only)
       const timeStyle = { ...centerStyle, numFmt: "hh:mm" };
       // Number format
@@ -1018,7 +1032,7 @@ export async function exportGuestbookEntries({
             }
           } else if (colKey === "tanggal") {
             dataWorksheet[cellRef].s = dateStyle;
-            dataWorksheet[cellRef].t = "d"; // date type
+            dataWorksheet[cellRef].t = "s"; // text type untuk preserve format dd-mm-yyyy
           } else if (colKey === "umur" || colKey === "durasi_pelayanan" || colKey === "nomor_antrean") {
             dataWorksheet[cellRef].s = numberStyle;
             dataWorksheet[cellRef].t = "n"; // number type

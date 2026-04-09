@@ -83,34 +83,23 @@ export async function getDashboardStats(clientHash?: string | null) {
     select: {
       createdAt: true,
       startTime: true,
-      endTime: true,
     },
   });
 
   let totalWaitTimeMs = 0;
-  let totalServiceTimeMs = 0;
   let waitCount = 0;
-  let serviceCount = 0;
 
   completedQueues.forEach((queue) => {
     if (queue.startTime) {
       const waitTimeMs = new Date(queue.startTime).getTime() - new Date(queue.createdAt).getTime();
       totalWaitTimeMs += waitTimeMs;
       waitCount++;
-
-      if (queue.endTime) {
-        const serviceTimeMs =
-          new Date(queue.endTime).getTime() - new Date(queue.startTime).getTime();
-        totalServiceTimeMs += serviceTimeMs;
-        serviceCount++;
-      }
     }
   });
 
   const averages = {
     waitTimeMinutes: waitCount > 0 ? Math.round(totalWaitTimeMs / waitCount / (1000 * 60)) : 0,
-    serviceTimeMinutes:
-      serviceCount > 0 ? Math.round(totalServiceTimeMs / serviceCount / (1000 * 60)) : 0,
+    serviceTimeMinutes: 0, // Service time calculation removed since endTime field was removed
   };
 
   const statsData = {
