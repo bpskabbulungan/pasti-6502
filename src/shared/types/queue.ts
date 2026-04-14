@@ -27,6 +27,7 @@ export type QueueDetail = {
 	filledSKD?: boolean;
 	trackingLink?: string | null;
 	tempUuid?: string | null;
+	guestId?: string | null;
 	service: { name: string };
 	visitor: { name: string; phone: string; institution: string | null };
 	admin: { name: string } | null;

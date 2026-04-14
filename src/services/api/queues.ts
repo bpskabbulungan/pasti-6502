@@ -26,6 +26,8 @@ export const queuesApi = {
 		apiFetch<QueueActionResponse>(`/api/queue/${id}/complete`, { method: "POST" }),
 	cancel: (id: string) =>
 		apiFetch<QueueActionResponse>(`/api/queue/${id}/cancel`, { method: "POST" }),
+	revert: (id: string) =>
+		apiFetch<QueueActionResponse>(`/api/queue/${id}/revert`, { method: "POST" }),
 	previewSkdReminder: (id: string, message?: string) =>
 		apiFetch<ReminderResponse>(`/api/queue/${id}/remind-skd`, {
 			method: "POST",

@@ -441,6 +441,90 @@ export async function cancelQueue(queueId: string, userId: string, role: Role) {
 	return transitionResult;
 }
 
+export async function revertQueueToWaiting(queueId: string, userId: string, role: Role) {
+	const transitionResult = await prisma.$transaction(async (tx) => {
+		const queue = await tx.queue.findUnique({
+			where: { id: queueId },
+			select: {
+				id: true,
+				status: true,
+				adminId: true,
+			},
+		});
+
+		if (!queue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		const revertableStatuses: PrismaQueueStatus[] = [
+			PrismaQueueStatus.COMPLETED,
+			PrismaQueueStatus.CANCELED,
+		];
+
+		if (!revertableStatuses.includes(queue.status)) {
+			return {
+				ok: false as const,
+				status: 400,
+				error: "Queue cannot be reverted in its current state",
+			};
+		}
+
+		const canRevert =
+			role === Role.ADMIN || queue.adminId === userId || queue.adminId === null;
+
+		if (!canRevert) {
+			return {
+				ok: false as const,
+				status: 403,
+				error: "You are not authorized to revert this queue",
+			};
+		}
+
+		const updated = await tx.queue.updateMany({
+			where: {
+				id: queueId,
+				status: queue.status,
+			},
+			data: {
+				status: PrismaQueueStatus.WAITING,
+				startTime: null,
+				endTime: null,
+				adminId: null,
+				dutyStaffId: null,
+			},
+		});
+
+		if (isTransitionConflict(updated.count)) {
+			return getQueueTransitionConflictResult();
+		}
+
+		const updatedQueue = await loadQueueDetail(tx, queueId);
+
+		if (!updatedQueue) {
+			return { ok: false as const, status: 404, error: "Queue not found" };
+		}
+
+		return { ok: true as const, queue: updatedQueue };
+	});
+
+	if (!transitionResult.ok) {
+		return transitionResult;
+	}
+
+	createNotificationAsync({
+		type: "QUEUE_UPDATED",
+		title: "Antrean Dikembalikan",
+		message: `Antrean ${formatQueueLabel(
+			transitionResult.queue.queueNumber,
+			transitionResult.queue.createdAt
+		)} dikembalikan ke status menunggu`,
+		isRead: false,
+		userId,
+	});
+
+	return transitionResult;
+}
+
 export async function prepareSkdReminder(queueId: string, message?: string) {
 	const queue = await prisma.queue.findUnique({
 		where: { id: queueId },

@@ -6,7 +6,11 @@ import { useLiveQuery } from "@/hooks/use-live-query";
 import { guestbookApi } from "@/services/api/guestbook";
 import type { GuestbookEntry, GuestbookListResponse } from "@shared/types/guestbook";
 import { exportGuestbookData } from "./service";
-import { formatGuestbookDateTime, getGuestbookErrorMessage } from "./helper";
+import {
+	formatGuestbookDateTime,
+	getGuestbookErrorLogPayload,
+	getGuestbookErrorMessage,
+} from "./helper";
 import type {
 	DateFilter,
 	SortByFilter,
@@ -114,7 +118,7 @@ export function useGuestbookPageController(
 		fallbackFetchedAt: isUsingInitialData ? initialFetchedAt : null,
 		refreshInterval: 60_000,
 		onError: (error) => {
-			console.error("Error fetching guestbook:", error);
+			console.error("Error fetching guestbook:", getGuestbookErrorLogPayload(error));
 			toast.error(getGuestbookErrorMessage(error, "Terjadi kesalahan saat memuat buku tamu"));
 		},
 	});
@@ -184,8 +188,13 @@ export function useGuestbookPageController(
 	const toggleColumnSort = useCallback((column: SortByFilter) => {
 		if (sortBy !== column) {
 			setSortBy(column);
-			if (column === "createdAt" || column === "queueNumber") {
+			if (column === "createdAt") {
 				setSortOrder("desc");
+				return;
+			}
+			if (column === "filledSKD") {
+				// Belum (false) ditempatkan lebih dulu daripada Sudah (true).
+				setSortOrder("asc");
 				return;
 			}
 			setSortOrder("asc");
@@ -219,7 +228,7 @@ export function useGuestbookPageController(
 				format === "xlsx" ? "Export Excel berhasil diunduh" : "Export PDF berhasil diunduh"
 			);
 		} catch (error) {
-			console.error("Error exporting guestbook:", error);
+			console.error("Error exporting guestbook:", getGuestbookErrorLogPayload(error));
 			toast.error(getGuestbookErrorMessage(error, "Gagal mengekspor data buku tamu"));
 		} finally {
 			setExportingFormat(null);

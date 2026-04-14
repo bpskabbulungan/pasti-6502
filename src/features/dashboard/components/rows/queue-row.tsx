@@ -1,7 +1,13 @@
 import { memo } from "react";
-import { ExternalLink } from "lucide-react";
+import { Ban, CheckCircle2, ExternalLink, MoreVertical, PlayCircle, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { formatDisplayDate } from "@/lib/date-format";
 import type { QueueDetail } from "@shared/types/queue";
@@ -12,6 +18,7 @@ type QueueTableRowProps = {
   onServe: (queueId: string) => void;
   onComplete: (queue: QueueDetail) => void;
   onOpenCancel: (queue: QueueDetail) => void;
+  onRevert: (queue: QueueDetail) => void;
 };
 
 const formatServiceQueueCode = (serviceName: string, queueNumber: number) => {
@@ -19,12 +26,12 @@ const formatServiceQueueCode = (serviceName: string, queueNumber: number) => {
   const prefix = trimmed.includes("dtsen")
     ? "D"
     : trimmed.includes("perpust")
-    ? "P"
-    : trimmed.includes("konsul")
-      ? "K"
-      : trimmed.includes("rekomen")
-        ? "R"
-        : "L";
+      ? "P"
+      : trimmed.includes("konsul")
+        ? "K"
+        : trimmed.includes("rekomen")
+          ? "R"
+          : "L";
   const padded = queueNumber.toString().padStart(3, "0");
   return `${prefix}-${padded}`;
 };
@@ -43,14 +50,77 @@ const queueStatusClass = {
   CANCELED: "border-red-500/30 bg-red-500/10 text-red-700",
 } as const;
 
-const actionButtonTone = {
-  serve:
-    "border-emerald-300/90 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:ring-emerald-300/60 dark:border-emerald-500/40 dark:bg-emerald-500/14 dark:text-emerald-200 dark:hover:bg-emerald-500/22",
-  complete:
-    "border-sky-300/90 bg-sky-50 text-sky-700 hover:bg-sky-100 focus-visible:ring-sky-300/60 dark:border-sky-500/40 dark:bg-sky-500/14 dark:text-sky-200 dark:hover:bg-sky-500/22",
-  cancel:
-    "border-rose-300/90 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:ring-rose-300/60 dark:border-rose-500/40 dark:bg-rose-500/14 dark:text-rose-200 dark:hover:bg-rose-500/22",
-} as const;
+type QueueActionMenuProps = {
+  queue: QueueDetail;
+  onServe: (queueId: string) => void;
+  onComplete: (queue: QueueDetail) => void;
+  onOpenCancel: (queue: QueueDetail) => void;
+  onRevert: (queue: QueueDetail) => void;
+};
+
+function QueueActionMenu({ queue, onServe, onComplete, onOpenCancel, onRevert }: QueueActionMenuProps) {
+  if (
+    queue.status !== "WAITING" &&
+    queue.status !== "SERVING" &&
+    queue.status !== "COMPLETED" &&
+    queue.status !== "CANCELED"
+  ) {
+    return <span className="text-xs text-muted-foreground">-</span>;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="icon"
+          variant="outline"
+          className="h-8 w-8 border-border/70 bg-background/70"
+          aria-label={`Buka aksi antrean ${queue.queueNumber}`}
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        {queue.status === "WAITING" ? (
+          <>
+            <DropdownMenuItem className="gap-2" onSelect={() => onServe(queue.id)}>
+              <PlayCircle className="h-4 w-4 text-emerald-600" />
+              <span>Layani</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-2 text-rose-700 focus:text-rose-700"
+              onSelect={() => onOpenCancel(queue)}
+            >
+              <Ban className="h-4 w-4" />
+              <span>Batalkan</span>
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        {queue.status === "SERVING" ? (
+          <>
+            <DropdownMenuItem className="gap-2" onSelect={() => onComplete(queue)}>
+              <CheckCircle2 className="h-4 w-4 text-sky-600" />
+              <span>Selesaikan</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-2 text-rose-700 focus:text-rose-700"
+              onSelect={() => onOpenCancel(queue)}
+            >
+              <Ban className="h-4 w-4" />
+              <span>Batalkan</span>
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        {(queue.status === "COMPLETED" || queue.status === "CANCELED") ? (
+          <DropdownMenuItem className="gap-2" onSelect={() => onRevert(queue)}>
+            <RotateCcw className="h-4 w-4 text-amber-600" />
+            <span>Kembalikan ke Menunggu</span>
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function QueueTableRowComponent({
   rowNumber,
@@ -58,10 +128,15 @@ function QueueTableRowComponent({
   onServe,
   onComplete,
   onOpenCancel,
+  onRevert,
 }: QueueTableRowProps) {
   const queueCode = formatServiceQueueCode(queue.service.name, queue.queueNumber);
   const queueDate = formatDisplayDate(queue.createdAt);
-  const trackingPath = queue.tempUuid ? `/visitor-form/${queue.tempUuid}` : null;
+  const trackingPath = queue.tempUuid
+    ? `/visitor-form/${queue.tempUuid}`
+    : queue.guestId || queue.trackingLink
+      ? `/guest/queue/${queue.id}`
+      : null;
 
   return (
     <>
@@ -85,9 +160,10 @@ function QueueTableRowComponent({
               href={trackingPath}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              aria-label="Buka link antrean"
+              title="Buka link antrean"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/70 bg-muted/20 text-primary-color transition-colors hover:bg-muted/40"
             >
-              Buka
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           ) : (
@@ -95,54 +171,14 @@ function QueueTableRowComponent({
           )}
         </TableCell>
         <TableCell className="text-center">
-          <div className="flex flex-wrap justify-center gap-1.5">
-            {queue.status === "WAITING" && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={`h-8 shadow-none ${actionButtonTone.serve}`}
-                  onClick={() => onServe(queue.id)}
-                  aria-label="Layani"
-                >
-                  Layani
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={`h-8 shadow-none ${actionButtonTone.cancel}`}
-                  onClick={() => onOpenCancel(queue)}
-                  aria-label="Batalkan"
-                >
-                  Batalkan
-                </Button>
-              </>
-            )}
-            {queue.status === "SERVING" ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={`h-8 shadow-none ${actionButtonTone.complete}`}
-                  onClick={() => onComplete(queue)}
-                  aria-label="Selesaikan"
-                >
-                  Selesaikan
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={`h-8 shadow-none ${actionButtonTone.cancel}`}
-                  onClick={() => onOpenCancel(queue)}
-                  aria-label="Batalkan"
-                >
-                  Batalkan
-                </Button>
-              </>
-            ) : null}
-            {queue.status !== "WAITING" && queue.status !== "SERVING" ? (
-              <span className="text-xs text-muted-foreground">-</span>
-            ) : null}
+          <div className="flex justify-center">
+            <QueueActionMenu
+              queue={queue}
+              onServe={onServe}
+              onComplete={onComplete}
+              onOpenCancel={onOpenCancel}
+              onRevert={onRevert}
+            />
           </div>
         </TableCell>
       </TableRow>
@@ -190,9 +226,10 @@ function QueueTableRowComponent({
                     href={trackingPath}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                    aria-label="Buka link antrean"
+                    title="Buka link antrean"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/70 bg-muted/20 text-primary-color transition-colors hover:bg-muted/40"
                   >
-                    Buka
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 ) : (
@@ -201,51 +238,14 @@ function QueueTableRowComponent({
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              {queue.status === "WAITING" ? (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={`h-8 shadow-none ${actionButtonTone.serve}`}
-                    onClick={() => onServe(queue.id)}
-                    aria-label="Layani"
-                  >
-                    Layani
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={`h-8 shadow-none ${actionButtonTone.cancel}`}
-                    onClick={() => onOpenCancel(queue)}
-                    aria-label="Batalkan"
-                  >
-                    Batalkan
-                  </Button>
-                </>
-              ) : null}
-              {queue.status === "SERVING" ? (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={`h-8 shadow-none ${actionButtonTone.complete}`}
-                    onClick={() => onComplete(queue)}
-                    aria-label="Selesaikan"
-                  >
-                    Selesaikan
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={`h-8 shadow-none ${actionButtonTone.cancel}`}
-                    onClick={() => onOpenCancel(queue)}
-                    aria-label="Batalkan"
-                  >
-                    Batalkan
-                  </Button>
-                </>
-              ) : null}
+            <div className="mt-3 flex justify-end">
+              <QueueActionMenu
+                queue={queue}
+                onServe={onServe}
+                onComplete={onComplete}
+                onOpenCancel={onOpenCancel}
+                onRevert={onRevert}
+              />
             </div>
           </div>
         </TableCell>

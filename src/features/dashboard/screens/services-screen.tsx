@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Clock3, RefreshCcw, Search, Wrench, X, XCircle } from "lucide-react";
+import { CheckCircle2, RefreshCcw, Search, Wrench, X, XCircle } from "lucide-react";
 import { ConfirmActionDialog } from "@/components/shared/dialogs/confirm-action-dialog";
 import { EmptyState } from "@/components/shared/feedback/empty-state";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
@@ -34,8 +34,10 @@ import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ServicesTableRow from "@/features/dashboard/components/rows/services-row";
 import { servicesApi } from "@/services/api/services";
+import { DEFAULT_SERVICE_CATALOG, normalizeServiceCode } from "@/shared/constants/service-catalog";
 import { ServiceStatus } from "@/shared/constants/enums";
 import { formatDisplayDateTime } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import type { ErrorResponse } from "@shared/types/api";
 import type { ServiceSummary } from "@shared/types/service";
 
@@ -55,6 +57,33 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return message || fallback;
 };
 
+const isServiceCodeConflictError = (error: unknown) => {
+  if (typeof error !== "object" || !error) {
+    return false;
+  }
+
+  const status = (error as { status?: number }).status;
+  const message = (error as { message?: string }).message ?? "";
+  return status === 409 && message.toLowerCase().includes("code");
+};
+
+const getCodeBadgeClass = (code: string) => {
+  if (code === "K") {
+    return "border-blue-500/40 bg-blue-500/10 text-blue-700";
+  }
+  if (code === "P") {
+    return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700";
+  }
+  if (code === "R") {
+    return "border-amber-500/40 bg-amber-500/10 text-amber-700";
+  }
+  if (code === "D") {
+    return "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-700";
+  }
+
+  return "border-border/70 bg-muted/60 text-secondary-color";
+};
+
 export default function ServicesPage() {
   const [services, setServices] = useState<ServiceSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +95,7 @@ export default function ServicesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<ServiceSummary | null>(null);
   const [serviceName, setServiceName] = useState("");
+  const [addServiceCode, setAddServiceCode] = useState("");
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>(ServiceStatus.ACTIVE);
 
   const fetchServices = useCallback(async () => {
@@ -75,7 +105,7 @@ export default function ServicesPage() {
       setServices(data.services ?? []);
       setLastFetchedAt(new Date());
     } catch (error) {
-      console.error("Error fetching services:", error);
+      console.error("Error fetching services:", serializeErrorForLog(error));
       toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat layanan"));
     } finally {
       setLoading(false);
@@ -128,19 +158,19 @@ export default function ServicesPage() {
     : loading
       ? "Memuat data..."
       : "Belum ada data";
-  const activeFilterLabel =
-    statusFilter === "ALL"
-      ? "Semua status"
-      : statusFilter === ServiceStatus.ACTIVE
-        ? "Aktif"
-        : "Nonaktif";
   const canResetFilters = Boolean(trimmedSearch) || statusFilter !== "ALL";
+  const resetFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("ALL");
+  };
 
   const isAddDisabled = !serviceName.trim();
   const isEditDisabled = !selectedService || !serviceName.trim();
+  const editServiceCode = selectedService?.code ?? "-";
 
   const resetFormFields = () => {
     setServiceName("");
+    setAddServiceCode("");
     setServiceStatus(ServiceStatus.ACTIVE);
     setSelectedService(null);
   };
@@ -167,13 +197,20 @@ export default function ServicesPage() {
   const handleAddService = async () => {
     if (!serviceName.trim()) return;
     try {
-      await servicesApi.create(serviceName.trim());
+      const customCode = normalizeServiceCode(addServiceCode);
+      await servicesApi.create(serviceName.trim(), customCode || undefined);
       toast.success("Layanan berhasil ditambahkan");
       setAddDialogOpen(false);
       resetFormFields();
       fetchServices();
     } catch (error) {
-      console.error("Error adding service:", error);
+      console.error("Error adding service:", serializeErrorForLog(error));
+      if (isServiceCodeConflictError(error)) {
+        toast.error(
+          `Kode layanan ${normalizeServiceCode(addServiceCode)} sudah dipakai. Gunakan kode lain atau kosongkan agar sistem membuat kode unik otomatis.`
+        );
+        return;
+      }
       toast.error(getErrorMessage(error, "Terjadi kesalahan saat menambahkan layanan"));
     }
   };
@@ -191,7 +228,7 @@ export default function ServicesPage() {
       resetFormFields();
       fetchServices();
     } catch (error) {
-      console.error("Error updating service:", error);
+      console.error("Error updating service:", serializeErrorForLog(error));
       toast.error(getErrorMessage(error, "Terjadi kesalahan saat memperbarui layanan"));
     }
   };
@@ -206,13 +243,13 @@ export default function ServicesPage() {
       resetFormFields();
       fetchServices();
     } catch (error) {
-      console.error("Error deleting service:", error);
+      console.error("Error deleting service:", serializeErrorForLog(error));
       toast.error(getErrorMessage(error, "Terjadi kesalahan saat menghapus layanan"));
     }
   };
 
   return (
-    <PageContainer>
+    <PageContainer className="dashboard-page">
       <DashboardPageHeader
         title="Kelola Layanan"
         description="Pengelolaan layanan aktif/nonaktif beserta pembaruan cepat."
@@ -233,54 +270,12 @@ export default function ServicesPage() {
               <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               {loading ? "Memperbarui..." : "Perbarui Data"}
             </Button>
-            <Dialog
-              open={addDialogOpen}
-              onOpenChange={(open) => {
-                setAddDialogOpen(open);
-                if (!open) resetFormFields();
-              }}
-            >
-              <DialogTrigger asChild>
-                <Button variant="success" className="dashboard-header-action">
-                  <Wrench className="h-4 w-4" />
-                  Tambah Layanan
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Tambah Layanan Baru</DialogTitle>
-                  <DialogDescription>
-                    Lengkapi nama layanan yang ingin ditambahkan.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="service-name">Nama Layanan</Label>
-                    <Input
-                      id="service-name"
-                      value={serviceName}
-                      onChange={(e) => setServiceName(e.target.value)}
-                      placeholder="Masukkan nama layanan"
-                      autoFocus
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                    Batal
-                  </Button>
-                  <Button variant="success" onClick={handleAddService} disabled={isAddDisabled}>
-                    Simpan Layanan
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </div>
         }
       />
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <Card className="border-border/80 bg-card/88">
+        <Card className="border-border/80 border-l-4 border-l-primary/70 bg-card/88">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
               Total Layanan
@@ -290,7 +285,7 @@ export default function ServicesPage() {
             <p className="text-3xl font-bold text-primary-color">{stats.total}</p>
           </CardContent>
         </Card>
-        <Card className="border-border/80 bg-card/88">
+        <Card className="border-border/80 border-l-4 border-l-emerald-500/70 bg-card/88">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
               Layanan Aktif
@@ -300,7 +295,7 @@ export default function ServicesPage() {
             <p className="text-3xl font-bold text-emerald-600">{stats.active}</p>
           </CardContent>
         </Card>
-        <Card className="border-border/80 bg-card/88">
+        <Card className="border-border/80 border-l-4 border-l-destructive/70 bg-card/88">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
               Layanan Nonaktif
@@ -313,13 +308,30 @@ export default function ServicesPage() {
       </section>
 
       <Card className="border-border/80">
-        <CardHeader className="gap-2">
-          <CardTitle className="text-xl font-semibold text-primary-color">Daftar Layanan</CardTitle>
-          <CardDescription className="text-secondary-color">
-            Kelola status dan nama layanan dengan cepat.
-          </CardDescription>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-1">
+            <CardTitle className="text-xl font-semibold text-primary-color">Daftar Layanan</CardTitle>
+            <CardDescription className="text-secondary-color text-justify">
+              Kelola nama layanan, status aktif, dan standar kode antrean agar konsisten di seluruh halaman.
+            </CardDescription>
+          </div>
+          <Button className="shrink-0 gap-2" onClick={() => setAddDialogOpen(true)}>
+            <Wrench className="h-4 w-4" />
+            Tambah Layanan
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-background/70 px-3 py-2">
+            {DEFAULT_SERVICE_CATALOG.map((service) => (
+              <Badge
+                key={service.code}
+                variant="secondary"
+                className="bg-background/80 text-secondary-color"
+              >
+                {service.code}: {service.name}
+              </Badge>
+            ))}
+          </div>
           <div className="dashboard-filter-panel">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="relative w-full lg:w-96">
@@ -370,36 +382,18 @@ export default function ServicesPage() {
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
-                <div className="flex items-center gap-2 text-xs text-secondary-color">
-                  <Clock3 className="h-4 w-4" />
-                  <span>{filteredServices.length} layanan ditampilkan</span>
-                </div>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="icon"
                   className="border-border"
-                  onClick={() => {
-                    setSearchTerm("");
-                    setStatusFilter("ALL");
-                  }}
+                  onClick={resetFilters}
                   disabled={!canResetFilters}
+                  title="Reset filter"
+                  aria-label="Reset filter"
                 >
-                  Reset filter
+                  <RefreshCcw className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-              <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                Filter: {activeFilterLabel}
-              </Badge>
-              {trimmedSearch && (
-                <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                  Pencarian: &quot;{trimmedSearch}&quot;
-                </Badge>
-              )}
-              <span className="text-secondary-color">
-                Menampilkan {filteredServices.length} dari {stats.total} layanan
-              </span>
             </div>
           </div>
 
@@ -408,7 +402,7 @@ export default function ServicesPage() {
               {[...Array(3)].map((_, idx) => (
                 <div
                   key={`skeleton-${idx}`}
-                  className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_minmax(0,0.8fr)] gap-3 rounded-xl border border-border/70 bg-muted/40 p-4"
+                  className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,0.5fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_minmax(0,0.8fr)] gap-3 rounded-xl border border-border/70 bg-muted/40 p-4"
                 >
                   <div className="flex items-center gap-3">
                     <Skeleton className="h-10 w-10 rounded-full" />
@@ -417,6 +411,7 @@ export default function ServicesPage() {
                       <Skeleton className="h-3 w-24" />
                     </div>
                   </div>
+                  <Skeleton className="h-6 w-12" />
                   <Skeleton className="h-6 w-20" />
                   <div className="space-y-2">
                     <Skeleton className="h-4 w-28" />
@@ -445,13 +440,7 @@ export default function ServicesPage() {
                     Tambah Layanan
                   </Button>
                   {services.length > 0 && canResetFilters ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setSearchTerm("");
-                        setStatusFilter("ALL");
-                      }}
-                    >
+                    <Button variant="outline" onClick={resetFilters}>
                       Reset filter
                     </Button>
                   ) : null}
@@ -461,13 +450,14 @@ export default function ServicesPage() {
           ) : (
             <div className="space-y-4">
               <div className="dashboard-table-shell">
-                <Table className="w-full md:min-w-[780px]">
+                <Table className="w-full md:min-w-[880px]">
                   <TableHeader className="hidden bg-muted/50 md:table-header-group">
                     <TableRow>
-                      <TableHead className="w-[38%] text-center">Layanan</TableHead>
+                      <TableHead className="w-[34%] text-center">Layanan</TableHead>
+                      <TableHead className="w-[12%] text-center">Kode</TableHead>
                       <TableHead className="w-[16%] text-center">Status</TableHead>
-                      <TableHead className="w-[20%] text-center">Diperbarui</TableHead>
-                      <TableHead className="w-[28%] text-center">Aksi</TableHead>
+                      <TableHead className="w-[18%] text-center">Diperbarui</TableHead>
+                      <TableHead className="w-[20%] text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -486,6 +476,57 @@ export default function ServicesPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) resetFormFields();
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Tambah Layanan Baru</DialogTitle>
+            <DialogDescription>
+              Lengkapi nama layanan yang ingin ditambahkan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="service-name">Nama Layanan</Label>
+              <Input
+                id="service-name"
+                value={serviceName}
+                onChange={(e) => setServiceName(e.target.value)}
+                placeholder="Masukkan nama layanan"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="service-code">Kode Layanan (opsional)</Label>
+              <Input
+                id="service-code"
+                value={addServiceCode}
+                onChange={(e) => setAddServiceCode(normalizeServiceCode(e.target.value))}
+                placeholder="Contoh: K2, PUSTAKA"
+                maxLength={16}
+              />
+              <p className="text-xs text-secondary-color">
+                Biarkan kosong untuk auto-generate kode unik. Jika diisi, kode akan
+                divalidasi unik oleh backend.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button variant="success" onClick={handleAddService} disabled={isAddDisabled}>
+              Simpan Layanan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={editDialogOpen}
@@ -508,6 +549,31 @@ export default function ServicesPage() {
                 onChange={(e) => setServiceName(e.target.value)}
                 placeholder="Masukkan nama layanan"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-service-code">Kode Layanan</Label>
+              <div
+                id="edit-service-code"
+                className="rounded-md border border-border/70 bg-muted/30 px-3 py-3"
+              >
+                <Badge variant="outline" className={`font-semibold ${getCodeBadgeClass(editServiceCode)}`}>
+                  {editServiceCode}
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {DEFAULT_SERVICE_CATALOG.map((item) => (
+                  <Badge
+                    key={`edit-code-${item.code}`}
+                    variant="outline"
+                    className={getCodeBadgeClass(item.code)}
+                  >
+                    {item.code}: {item.name}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-xs text-secondary-color">
+                Kode otomatis mengikuti mapping layanan standar (K/P/R/D).
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Status Layanan</Label>

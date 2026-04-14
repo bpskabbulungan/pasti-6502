@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import AppLoader from "@/components/shared/app-loader";
+import { serializeErrorForLog } from "@/lib/error-log";
 import { markNavigationPending } from "@/lib/navigation-pending";
 import {
   LOGIN_PASSWORD_MAX_LENGTH,
@@ -66,7 +67,7 @@ export function LoginForm() {
       router.refresh();
     } catch (error) {
       toast.error("Terjadi kesalahan saat login");
-      console.error("Login request failed", error);
+      console.error("Login request failed", serializeErrorForLog(error));
     } finally {
       setIsLoading(false);
     }

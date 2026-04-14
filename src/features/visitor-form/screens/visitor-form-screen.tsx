@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   Card,
   CardContent,
@@ -21,7 +23,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { SelectTrigger } from "@/features/visitor-form/components/visitor-form-select";
-import { ServiceStatus } from "@/shared/constants/enums";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle, Clock, RefreshCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -56,6 +57,7 @@ export default function VisitorFormPage() {
     submitVisitorForm,
     markSkdFilled: markSKDFilled,
   } = useVisitorFormController();
+  const activeServices = useMemo(() => services, [services]);
 
   const getQueueStatusBadge = (status: string) => {
     switch (status) {
@@ -609,14 +611,12 @@ export default function VisitorFormPage() {
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    {services
-                                      .filter((service) => service.status === ServiceStatus.ACTIVE)
-                                      .map((service) => (
-                                        <SelectItem key={service.id} value={service.id}>
-                                          {service.name}
-                                        </SelectItem>
-                                      ))}
-                                    {services.length === 0 && (
+                                    {activeServices.map((service) => (
+                                      <SelectItem key={service.id} value={service.id}>
+                                        {service.name}
+                                      </SelectItem>
+                                    ))}
+                                    {activeServices.length === 0 && (
                                       <SelectItem value="loading" disabled>
                                         Memuat daftar layanan...
                                       </SelectItem>
@@ -705,23 +705,21 @@ export default function VisitorFormPage() {
                       <CardDescription>Pilih sesuai keperluan kunjungan Anda.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {services.length > 0 ? (
-                        services
-                          .filter((service) => service.status === ServiceStatus.ACTIVE)
-                          .map((service) => (
-                            <div
-                              key={service.id}
-                              className="flex items-center justify-between rounded-md border border-dashed border-border/70 px-3 py-2 text-sm"
+                      {activeServices.length > 0 ? (
+                        activeServices.map((service) => (
+                          <div
+                            key={service.id}
+                            className="flex items-center justify-between rounded-md border border-dashed border-border/70 px-3 py-2 text-sm"
+                          >
+                            <span className="font-medium">{service.name}</span>
+                            <Badge
+                              variant="outline"
+                              className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-100"
                             >
-                              <span className="font-medium">{service.name}</span>
-                              <Badge
-                                variant="outline"
-                                className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-100"
-                              >
-                                Aktif
-                              </Badge>
-                            </div>
-                          ))
+                              Aktif
+                            </Badge>
+                          </div>
+                        ))
                       ) : (
                         <p className="text-sm text-muted-foreground">Memuat daftar layanan...</p>
                       )}

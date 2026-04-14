@@ -137,6 +137,25 @@ export async function submitVisitorForm(body: unknown) {
     return { ok: false as const, status: 400, error: "Link has expired" };
   }
 
+  const selectedService = await prisma.service.findFirst({
+    where: {
+      id: sanitized.serviceId,
+      status: ServiceStatus.ACTIVE,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!selectedService) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Layanan tidak tersedia atau tidak aktif",
+    };
+  }
+
   const queueDate = normalizeQueueDate(new Date());
 
   const result = await prisma.$transaction(async (tx) => {
@@ -161,7 +180,7 @@ export async function submitVisitorForm(body: unknown) {
         status: QueueStatus.WAITING,
         queueType: QueueType.ONLINE,
         visitorId: visitor.id,
-        serviceId: sanitized.serviceId,
+        serviceId: selectedService.id,
         tempUuid: sanitized.tempUuid,
         trackingLink,
         filledSKD: false,
@@ -182,7 +201,7 @@ export async function submitVisitorForm(body: unknown) {
         title: "Antrean Baru",
         message: `Antrean baru #${queue.queueNumber}-${formatQueueDate(
           new Date(queue.createdAt)
-        )} dari ${visitor.name} untuk layanan ${queue.service.name}`,
+        )} dari ${visitor.name} untuk layanan ${selectedService.name}`,
         isRead: false,
       },
     });

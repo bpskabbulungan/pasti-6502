@@ -1,4 +1,5 @@
 import { formatDisplayDateTime } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import type { ErrorResponse } from "@shared/types/api";
 
 export const getGuestbookErrorMessage = (error: unknown, fallback: string) => {
@@ -13,6 +14,10 @@ export const getGuestbookErrorMessage = (error: unknown, fallback: string) => {
 
 	const message = (error as { message?: string }).message;
 	return message || fallback;
+};
+
+export const getGuestbookErrorLogPayload = (error: unknown) => {
+	return serializeErrorForLog(error);
 };
 
 export const formatGuestbookDateTime = (value: string | Date) => formatDisplayDateTime(value);

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const endDateParam = body?.endDate || startDateParam;
     const formatParam = body?.format ?? "xlsx";
 
-    if (formatParam !== "xlsx" && formatParam !== "pdf") {
+    if (formatParam !== "xlsx") {
       return NextResponse.json({ error: "Format export tidak didukung" }, { status: 400 });
     }
 

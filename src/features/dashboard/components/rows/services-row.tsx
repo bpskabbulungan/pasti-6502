@@ -3,6 +3,7 @@ import { Pencil, Trash2, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { getServiceCodeByName } from "@/shared/constants/service-catalog";
 import { formatDisplayDate } from "@/lib/date-format";
 import { ServiceStatus } from "@/shared/constants/enums";
 import type { ServiceSummary } from "@shared/types/service";
@@ -43,6 +44,7 @@ function ServicesTableRowComponent({
   const updatedDate = formatDisplayDate(updatedAt);
   const updatedRelative = formatRelativeTime(updatedAt);
   const isActive = service.status === ServiceStatus.ACTIVE;
+  const serviceCode = service.code ?? getServiceCodeByName(service.name);
 
   return (
     <>
@@ -55,10 +57,17 @@ function ServicesTableRowComponent({
             <div className="min-w-0">
               <p className="break-words font-semibold text-primary-color">{service.name}</p>
               <p className="text-xs text-secondary-color">
+                Kode {serviceCode} ·
+                {" "}
                 {isActive ? "Aktif untuk antrean" : "Nonaktif sementara"}
               </p>
             </div>
           </div>
+        </TableCell>
+        <TableCell className="py-4 text-center">
+          <Badge variant="outline" className="font-semibold text-primary-color">
+            {serviceCode}
+          </Badge>
         </TableCell>
         <TableCell className="py-4 text-center">
           <div className="flex justify-center">
@@ -100,7 +109,7 @@ function ServicesTableRowComponent({
       </TableRow>
 
       <TableRow className="border-0 md:hidden hover:bg-transparent">
-        <TableCell colSpan={4} className="p-0 whitespace-normal">
+        <TableCell colSpan={5} className="p-0 whitespace-normal">
           <div className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -109,7 +118,9 @@ function ServicesTableRowComponent({
                 </div>
                 <div className="min-w-0">
                   <p className="break-words font-semibold text-primary-color">{service.name}</p>
-                  <div className="mt-1 text-xs text-secondary-color">{updatedDate}</div>
+                  <div className="mt-1 text-xs text-secondary-color">
+                    Kode {serviceCode} · {updatedDate}
+                  </div>
                 </div>
               </div>
               <Badge variant="outline" className={getStatusBadgeClass(service.status)}>

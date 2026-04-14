@@ -12,7 +12,9 @@ export const guestbookSortBySchema = z.enum([
 	"createdAt",
 	"fullName",
 	"serviceName",
-	"queueNumber",
+	"queueCode",
+	"officerName",
+	"filledSKD",
 ]);
 export const guestbookSortOrderSchema = z.enum(["asc", "desc"]);
 

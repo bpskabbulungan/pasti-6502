@@ -1,16 +1,20 @@
 import type { QueueStatus } from "@/shared/constants/enums";
 
-export type AnalyticsServiceDistribution = {
+export type AnalyticsDistributionItem = {
   name: string;
   count: number;
   percentage: number;
 };
 
-export type AnalyticsQueueTypeDistribution = {
-  name: string;
-  count: number;
-  percentage: number;
-};
+export type AnalyticsServiceDistribution = AnalyticsDistributionItem;
+
+export type AnalyticsQueueTypeDistribution = AnalyticsDistributionItem;
+
+export type AnalyticsVisitorOccupationDistribution = AnalyticsDistributionItem;
+
+export type AnalyticsVisitorGenderDistribution = AnalyticsDistributionItem;
+
+export type AnalyticsVisitorEducationDistribution = AnalyticsDistributionItem;
 
 export type AnalyticsOfficerPerformance = {
   officerId: string;
@@ -32,6 +36,55 @@ export type AnalyticsOfficerTopService = {
   percentage: number;
 };
 
+export type OfficerFeedbackRating = 1 | 2 | 3 | 4 | 5;
+
+export type OfficerFeedbackSentiment = "positive" | "neutral" | "negative";
+
+export type OfficerFeedbackSummary = {
+  averageRating: number;
+  totalReviews: number;
+  latestFeedbackAt: string | null;
+  positiveRate: number | null;
+};
+
+export type OfficerFeedbackCommentItem = {
+  id: string;
+  officerId: string;
+  rating: OfficerFeedbackRating;
+  comment: string;
+  sentiment: OfficerFeedbackSentiment | null;
+  submittedAt: string;
+  serviceName: string | null;
+};
+
+export type OfficerFeedbackListParams = {
+  officerId: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type OfficerFeedbackListResponse = {
+  officerId: string;
+  summary: OfficerFeedbackSummary;
+  items: OfficerFeedbackCommentItem[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+};
+
+export type OfficerFeedbackCreateRequest = {
+  queueId: string;
+  officerId: string;
+  rating: OfficerFeedbackRating;
+  comment?: string;
+};
+
+export type OfficerFeedbackCreateResponse = {
+  feedback: OfficerFeedbackCommentItem;
+};
+
 export type AnalyticsOfficerDetail = {
   officerId: string;
   officerName: string;
@@ -40,6 +93,7 @@ export type AnalyticsOfficerDetail = {
   averageServiceTime: number;
   serviceBreakdown: AnalyticsOfficerServiceFrequency[];
   topService: AnalyticsOfficerTopService | null;
+  feedbackSummary?: OfficerFeedbackSummary | null;
 };
 
 export type AnalyticsTimeAnalysis = {
@@ -90,6 +144,9 @@ export type AnalyticsSummary = {
   };
   serviceDistribution: AnalyticsServiceDistribution[];
   queueTypeDistribution: AnalyticsQueueTypeDistribution[];
+  occupationDistribution: AnalyticsVisitorOccupationDistribution[];
+  genderDistribution: AnalyticsVisitorGenderDistribution[];
+  educationDistribution: AnalyticsVisitorEducationDistribution[];
   officerPerformance: AnalyticsOfficerPerformance[];
   officerDetails: AnalyticsOfficerDetail[];
   insights: AnalyticsInsight;

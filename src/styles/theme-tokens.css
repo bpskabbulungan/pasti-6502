@@ -19,7 +19,7 @@
   --card-foreground: var(--text-primary);
   --popover: var(--surface);
   --popover-foreground: var(--text-primary);
-  --primary-foreground: var(--text-primary);
+  --primary-foreground: #ffffff;
   --secondary-foreground: var(--text-primary);
   --muted: var(--surface);
   --muted-foreground: var(--text-secondary);

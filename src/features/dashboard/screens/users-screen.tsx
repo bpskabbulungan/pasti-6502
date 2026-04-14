@@ -2,38 +2,96 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ConfirmActionDialog } from "@/components/shared/dialogs/confirm-action-dialog";
-import { EmptyState } from "@/components/shared/feedback/empty-state";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
 import { PageContainer } from "@/components/shared/layout/page-container";
 import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Role } from "@/shared/constants/enums";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Clock3, RefreshCcw, Search, Sparkles, UserPlus, X } from "lucide-react";
+import { RefreshCcw, Search, X } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Role } from "@/shared/constants/enums";
 import { usersApi } from "@/services/api/users";
-import UsersTableRow from "@/features/dashboard/components/rows/users-row";
+import { pstOfficersApi } from "@/services/api/pst-officers";
 import { formatDisplayDateTime } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import type { ErrorResponse } from "@shared/types/api";
+import type { PstOfficerCandidateSummary, SigapSyncSummary } from "@shared/types/pst-officers";
 import type { UserSummary } from "@shared/types/users";
 
-type RoleFilter = "ALL" | Role;
-
 type User = UserSummary;
+
+type ManagementRow = {
+  id: string;
+  name: string;
+  username: string;
+  whatsapp: string | null;
+  source: "ADMIN" | "SIGAP";
+  syncStatusLabel: string;
+  isActiveCandidate: boolean | null;
+  employmentStatus: string | null;
+};
+
+const DEFAULT_PASSWORD = "password";
+
+const MANUAL_USERNAME_BY_NAME: Record<string, string> = {
+  "yuda agus irianto": "yuda",
+  warsidi: "warsidi2",
+  muhamadsyah: "muhamadsyah",
+  "dwi prasetyono": "dwipras",
+  idhamsyah: "idhamsyah",
+  "mohammad agusti rahman": "agusti.rahman",
+  "okta wahyu nugraha": "okta.nugraha",
+  "rosetina fini alsera": "finialsera",
+  shafa: "sha.fa",
+  "ari susilowati": "arisusilo",
+  "rifki maulana": "rifki.maulana",
+  "sega purwa wika": "sega.wika",
+  "alphin pratama husada": "alphin.pratama",
+  "bambang luhat": "bambang_luhat",
+  "chafri fajar erwandra": "chafri.fajar",
+  "andi nurdiansyah": "andi.nurdiansyah",
+  "afnita rahma auliya putri": "afnita.rahma",
+  "anissa nurullya fernanda": "anissa.nurullya",
+  "febri fatika sari": "febri.fatika",
+  "marini safa aziza": "marinisafa",
+  "najwa fairus samaya": "najwa.fairus",
+  "fiqah rochmah ningtyas duana putri": "fiqah.putri",
+  "lia aulia hayati": "liaauliahayati",
+  mardiana: "mar.diana",
+  "novanni indi pradana": "novanniindipradana",
+  anuar: "anuar",
+  jusman: "jusman",
+  "marinda saga putra": "marindaputra",
+  zulkifli: "zulkifli",
+  "insan dienuari": "insandienuari",
+  "tsabit bintang herindra": "tsabitbintang",
+};
+
+const normalizeNameKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error !== "object" || !error) {
@@ -51,187 +109,149 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 export default function UsersManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [pstOfficers, setPstOfficers] = useState<PstOfficerCandidateSummary[]>([]);
+  const [syncSummary, setSyncSummary] = useState<SigapSyncSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncingSigap, setSyncingSigap] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const [newUsername, setNewUsername] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  useEffect(() => {
-    void fetchUsers();
+  const fetchUsers = useCallback(async () => {
+    const data = await usersApi.list();
+    setUsers(data.users);
   }, []);
 
-  const fetchUsers = async () => {
+  const fetchPstOfficers = useCallback(async () => {
+    const data = await pstOfficersApi.list();
+    setPstOfficers(data.officers);
+    setSyncSummary(data.syncSummary);
+  }, []);
+
+  const refreshData = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await usersApi.list();
-      setUsers(data.users);
+      await Promise.all([fetchUsers(), fetchPstOfficers()]);
       setLastFetchedAt(new Date());
     } catch (error) {
-      console.error("Error fetching users:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat pengguna"));
+      console.error("Error refreshing users management data:", serializeErrorForLog(error));
+      toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat data pengguna"));
     } finally {
       setLoading(false);
     }
+  }, [fetchPstOfficers, fetchUsers]);
+
+  useEffect(() => {
+    void refreshData();
+  }, [refreshData]);
+
+  const handleSyncSigap = async () => {
+    try {
+      setSyncingSigap(true);
+      const result = await pstOfficersApi.sync();
+      setPstOfficers(result.officers);
+      setSyncSummary(result.syncSummary);
+      setLastFetchedAt(new Date());
+      toast.success(
+        `${result.syncSummary.message || "Sinkronisasi berhasil"} (${result.syncSummary.totalSaved} tersimpan)`
+      );
+    } catch (error) {
+      console.error("Error syncing SIGAP officers:", serializeErrorForLog(error));
+      toast.error(getErrorMessage(error, "Sinkronisasi SIGAP gagal"));
+      await fetchPstOfficers();
+    } finally {
+      setSyncingSigap(false);
+    }
   };
-  const stats = useMemo(() => {
-    const adminCount = users.filter((user) => user.role === Role.ADMIN).length;
-    const petugasCount = users.filter((user) => user.role === Role.PETUGAS).length;
-    const latest = users.reduce<Date | null>((acc, user) => {
-      const createdAt = new Date(user.createdAt);
-      if (!acc) return createdAt;
-      return createdAt.getTime() > acc.getTime() ? createdAt : acc;
-    }, null);
 
-    return {
-      total: users.length,
-      admins: adminCount,
-      petugas: petugasCount,
-      latestCreatedAt: latest,
-    };
-  }, [users]);
+  const handleToggleCandidate = async (officerId: string, nextValue: boolean) => {
+    try {
+      const result = await pstOfficersApi.setActive(officerId, nextValue);
+      setPstOfficers((prev) =>
+        prev.map((officer) => (officer.id === result.officer.id ? result.officer : officer))
+      );
+      toast.success(nextValue ? "Kandidat PST diaktifkan" : "Kandidat PST dinonaktifkan");
+    } catch (error) {
+      console.error("Error toggling candidate activation:", serializeErrorForLog(error));
+      toast.error(getErrorMessage(error, "Gagal memperbarui status kandidat"));
+    }
+  };
 
-  const filteredUsers = useMemo(() => {
+  const adminUser = useMemo(() => users.find((user) => user.role === Role.ADMIN) ?? null, [users]);
+
+  const rows = useMemo<ManagementRow[]>(() => {
+    const mergedRows: ManagementRow[] = [];
+
+    if (adminUser) {
+      const mappedAdminUsername = MANUAL_USERNAME_BY_NAME[normalizeNameKey(adminUser.name)];
+      mergedRows.push({
+        id: `admin-${adminUser.id}`,
+        name: adminUser.name,
+        username: mappedAdminUsername || adminUser.username,
+        whatsapp: adminUser.phone ?? null,
+        source: "ADMIN",
+        syncStatusLabel: "ADMIN",
+        isActiveCandidate: null,
+        employmentStatus: null,
+      });
+    }
+
+    pstOfficers.forEach((officer) => {
+      const mappedUsername = MANUAL_USERNAME_BY_NAME[normalizeNameKey(officer.name)];
+      mergedRows.push({
+        id: officer.id,
+        name: officer.name,
+        username: mappedUsername || officer.sigapUsername || officer.sigapContactId,
+        whatsapp: officer.whatsappNumber || officer.number || null,
+        source: "SIGAP",
+        syncStatusLabel: officer.syncStatus,
+        isActiveCandidate: officer.isActiveCandidate,
+        employmentStatus: officer.employmentStatus,
+      });
+    });
+
+    return mergedRows;
+  }, [adminUser, pstOfficers]);
+
+  const filteredRows = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
+    if (!term) {
+      return rows;
+    }
 
-    return users
-      .filter((user) => (roleFilter === "ALL" ? true : user.role === roleFilter))
-      .filter((user) =>
-        term ? `${user.name} ${user.username}`.toLowerCase().includes(term) : true
-      )
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [users, roleFilter, searchTerm]);
+    return rows.filter((row) => `${row.name} ${row.username}`.toLowerCase().includes(term));
+  }, [rows, searchTerm]);
 
-  const trimmedSearch = searchTerm.trim();
-  const isInitialLoading = loading && users.length === 0;
-  const isRefreshing = loading && users.length > 0;
-  const activeFilterLabel =
-    roleFilter === "ALL" ? "Semua role" : roleFilter === Role.ADMIN ? "Admin" : "Petugas";
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const paginatedRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const canPrevPage = currentPage > 1;
+  const canNextPage = currentPage < totalPages;
+
+  const activePstCandidates = pstOfficers.filter((officer) => officer.isActiveCandidate).length;
+  const lastSyncLabel = syncSummary?.finishedAt
+    ? formatDisplayDateTime(syncSummary.finishedAt)
+    : "Belum pernah sinkronisasi";
+
   const hasFetched = Boolean(lastFetchedAt);
+  const isRefreshing = loading && hasFetched;
   const lastFetchedLabel = lastFetchedAt
     ? formatDisplayDateTime(lastFetchedAt)
     : loading
       ? "Memuat data..."
       : "Belum ada data";
 
-  const passwordMismatch = Boolean(
-    newPassword && confirmPassword && newPassword !== confirmPassword
-  );
-  const isAddDisabled =
-    !newName.trim() || !newUsername.trim() || !newPassword || !confirmPassword || passwordMismatch;
-  const isEditDisabled =
-    !selectedUser ||
-    !newName.trim() ||
-    !newUsername.trim() ||
-    (newPassword ? !confirmPassword || passwordMismatch : false);
-  const handleAddUser = async () => {
-    if (newPassword !== confirmPassword) {
-      toast.error("Password dan konfirmasi password tidak sama");
-      return;
-    }
-
-    try {
-      await usersApi.create({
-        name: newName,
-        username: newUsername,
-        phone: newPhone.trim() || null,
-        password: newPassword,
-        role: Role.PETUGAS,
-      });
-      toast.success("Petugas berhasil ditambahkan");
-      setAddDialogOpen(false);
-      resetFormFields();
-      fetchUsers();
-    } catch (error) {
-      console.error("Error adding user:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat menambahkan petugas"));
-    }
-  };
-
-  const handleEditUser = async () => {
-    if (!selectedUser) return;
-
-    if (newPassword && newPassword !== confirmPassword) {
-      toast.error("Password dan konfirmasi password tidak sama");
-      return;
-    }
-
-    try {
-      await usersApi.update(selectedUser.id, {
-        name: newName || selectedUser.name,
-        username: newUsername || selectedUser.username,
-        phone: newPhone.trim() || null,
-        ...(newPassword ? { password: newPassword } : {}),
-      });
-      toast.success("Pengguna berhasil diperbarui");
-      setEditDialogOpen(false);
-      resetFormFields();
-      fetchUsers();
-    } catch (error) {
-      console.error("Error updating user:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat memperbarui pengguna"));
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!selectedUser) return;
-
-    try {
-      await usersApi.remove(selectedUser.id);
-      toast.success("Pengguna berhasil dihapus");
-      setDeleteDialogOpen(false);
-      fetchUsers();
-    } catch (error) {
-      console.error("Error deleting user:", error);
-      toast.error(getErrorMessage(error, "Terjadi kesalahan saat menghapus pengguna"));
-    }
-  };
-
-  const resetFormFields = () => {
-    setNewUsername("");
-    setNewName("");
-    setNewPhone("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setSelectedUser(null);
-  };
-
-  const openEditDialog = useCallback((user: User) => {
-    setSelectedUser(user);
-    setNewUsername(user.username);
-    setNewName(user.name);
-    setNewPhone(user.phone ?? "");
-    setNewPassword("");
-    setConfirmPassword("");
-    setEditDialogOpen(true);
-  }, []);
-
-  const openDeleteDialog = useCallback((user: User) => {
-    setSelectedUser(user);
-    setDeleteDialogOpen(true);
-  }, []);
-
-  const handleDeleteDialogChange = (open: boolean) => {
-    setDeleteDialogOpen(open);
-    if (!open) {
-      resetFormFields();
-    }
-  };
+  const trimmedSearch = searchTerm.trim();
 
   return (
-    <PageContainer>
+    <PageContainer className="dashboard-page">
       <DashboardPageHeader
-        title="Kelola Pengguna"
-        description="Pengelolaan akun admin dan petugas layanan."
+        title="Kelola Pengguna PASTI"
+        description="Kelola akun petugas PASTI yang terintegrasi dengan SIGAP."
         meta={
           <>
             <span>Terakhir diperbarui: {lastFetchedLabel}</span>
@@ -241,147 +261,93 @@ export default function UsersManagementPage() {
         actions={
           <div className="dashboard-header-actions">
             <Button
-              variant="outline"
-              className="dashboard-header-action border-border"
-              onClick={() => fetchUsers()}
-              disabled={loading}
+              variant="success"
+              className="dashboard-header-action gap-2"
+              onClick={handleSyncSigap}
+              disabled={syncingSigap}
             >
-              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              {loading ? "Memperbarui..." : "Perbarui Data"}
+              <RefreshCcw className={`h-4 w-4 ${syncingSigap ? "animate-spin" : ""}`} />
+              {syncingSigap ? "Sinkronisasi..." : "Sinkronkan SIGAP"}
             </Button>
-            <Dialog
-              open={addDialogOpen}
-              onOpenChange={(open) => {
-                setAddDialogOpen(open);
-                if (!open) resetFormFields();
-              }}
-            >
-              <DialogTrigger asChild>
-                <Button variant="success" className="dashboard-header-action">
-                  <UserPlus className="h-4 w-4" />
-                  Tambah Petugas
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Tambah Petugas Baru</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Nama Lengkap</Label>
-                      <Input
-                        id="name"
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        placeholder="Masukkan nama lengkap"
-                        autoFocus
-                        autoComplete="name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input
-                        id="username"
-                        value={newUsername}
-                        onChange={(e) => setNewUsername(e.target.value)}
-                        placeholder="contoh: adminpst"
-                        autoComplete="username"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Password</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Minimal 8 karakter"
-                        autoComplete="new-password"
-                        minLength={8}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">Konfirmasi Password</Label>
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Ulangi password"
-                        autoComplete="new-password"
-                        minLength={8}
-                        aria-invalid={passwordMismatch}
-                      />
-                      {passwordMismatch && (
-                        <p className="text-xs text-destructive">Password dan konfirmasi tidak sama.</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">No. WhatsApp (opsional)</Label>
-                    <Input
-                      id="phone"
-                      value={newPhone}
-                      onChange={(e) => setNewPhone(e.target.value)}
-                      placeholder="08xxxxxxxxxx"
-                      autoComplete="tel"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                    Batal
-                  </Button>
-                  <Button variant="success" onClick={handleAddUser} disabled={isAddDisabled}>
-                    Simpan Petugas
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </div>
         }
       />
-      <section className="grid gap-3 sm:grid-cols-3">
-        <Card className="border-border/80 bg-card/88">
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-border/80 bg-card/88 border-l-4 border-l-primary/70">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
               Total Pengguna
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-primary-color">{stats.total}</p>
+            <p className="text-3xl font-bold text-primary-color">{rows.length}</p>
           </CardContent>
         </Card>
-        <Card className="border-border/80 bg-card/88">
+        <Card className="border-border/80 bg-card/88 border-l-4 border-l-sky-500/70">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
-              Admin
+              Admin Utama
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-primary-color">{stats.admins}</p>
+            <p className="text-3xl font-bold text-sky-600 dark:text-sky-300">{adminUser ? 1 : 0}</p>
           </CardContent>
         </Card>
-        <Card className="border-border/80 bg-card/88">
+        <Card className="border-border/80 bg-card/88 border-l-4 border-l-emerald-500/70">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
-              Petugas
+              Petugas SIGAP
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-accent">{stats.petugas}</p>
+            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-300">
+              {pstOfficers.length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/80 bg-card/88 border-l-4 border-l-amber-500/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
+              Kandidat Aktif
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-amber-600 dark:text-amber-300">
+              {activePstCandidates}
+            </p>
           </CardContent>
         </Card>
       </section>
+
       <Card className="border-border/80">
-        <CardHeader className="gap-2">
-          <CardTitle className="text-xl font-semibold text-primary-color">
-            Daftar Pengguna
-          </CardTitle>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-1">
+            <CardTitle className="text-xl font-semibold text-primary-color">
+              Daftar Pengguna PASTI
+            </CardTitle>
+            <CardDescription className="text-secondary-color text-justify">
+              Data petugas berasal dari SIGAP. Sistem hanya menampilkan 1 admin utama dari akun
+              internal.
+            </CardDescription>
+          </div>
+          <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-secondary-color">
+            Sinkronisasi terakhir: {lastSyncLabel}
+            <div className="mt-1">
+              <Badge
+                variant={syncSummary?.success ? "outline" : "secondary"}
+                className={
+                  syncSummary?.success
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                }
+              >
+                {syncSummary?.result || "BELUM_SYNC"}
+              </Badge>
+            </div>
+          </div>
         </CardHeader>
+
         <CardContent className="space-y-4">
           <div className="dashboard-filter-panel">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -407,249 +373,132 @@ export default function UsersManagementPage() {
                   </Button>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <Tabs
-                  value={roleFilter}
-                  onValueChange={(value) => setRoleFilter(value as RoleFilter)}
-                >
-                  <TabsList className="w-full border border-border/70 bg-background/80 sm:w-auto">
-                    <TabsTrigger value="ALL">
-                      Semua
-                      <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                        {stats.total}
-                      </span>
-                    </TabsTrigger>
-                    <TabsTrigger value={Role.ADMIN}>
-                      Admin
-                      <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                        {stats.admins}
-                      </span>
-                    </TabsTrigger>
-                    <TabsTrigger value={Role.PETUGAS}>
-                      Petugas
-                      <span className="rounded-full bg-background/80 px-2 py-0.5 text-[11px] text-secondary-color">
-                        {stats.petugas}
-                      </span>
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-                <div className="flex items-center gap-2 text-xs text-secondary-color">
-                  <Clock3 className="h-4 w-4" />
-                  <span>{filteredUsers.length} pengguna ditampilkan</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-border"
-                  onClick={() => {
-                    setSearchTerm("");
-                    setRoleFilter("ALL");
-                  }}
-                  disabled={!trimmedSearch && roleFilter === "ALL"}
-                >
-                  Reset filter
-                </Button>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-secondary-color">
-              <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                Filter: {activeFilterLabel}
-              </Badge>
-              {trimmedSearch && (
-                <Badge variant="secondary" className="bg-background/80 text-secondary-color">
-                  Pencarian: {`"${trimmedSearch}"`}
-                </Badge>
-              )}
-              <span className="text-secondary-color">
-                Menampilkan {filteredUsers.length} dari {stats.total} pengguna
-              </span>
+              <Select
+                value={pageSize.toString()}
+                onValueChange={(value) => setPageSize(Number(value))}
+              >
+                <SelectTrigger className="w-[160px] border-border bg-background/80">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 / Halaman</SelectItem>
+                  <SelectItem value="25">25 / Halaman</SelectItem>
+                  <SelectItem value="50">50 / Halaman</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          {isInitialLoading ? (
-            <div className="space-y-3">
-              {[...Array(3)].map((_, idx) => (
-                <div
-                  key={`skeleton-${idx}`}
-                  className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,0.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] gap-3 rounded-xl border border-border/70 bg-muted/40 p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-40" />
-                      <Skeleton className="h-3 w-24" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-6 w-24" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-28" />
-                    <Skeleton className="h-3 w-20" />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Skeleton className="h-9 w-20 rounded-md" />
-                    <Skeleton className="h-9 w-20 rounded-md" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : filteredUsers.length === 0 ? (
-            <EmptyState
-              icon={Sparkles}
-              title="Belum ada pengguna yang sesuai"
-              description="Gunakan tombol tambah petugas atau reset filter pencarian."
-              action={
-                <>
-                  <Button variant="success" onClick={() => setAddDialogOpen(true)} className="gap-2">
-                    <UserPlus className="h-4 w-4" />
-                    Tambah Petugas
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSearchTerm("");
-                      setRoleFilter("ALL");
-                      fetchUsers();
-                    }}
-                  >
-                    Reset filter
-                  </Button>
-                </>
-              }
-            />
-          ) : (
-            <div className="space-y-4">
-              <div className="dashboard-table-shell">
-                <Table className="w-full md:min-w-[720px]">
-                  <TableHeader className="hidden bg-muted/50 md:table-header-group">
-                    <TableRow>
-                      <TableHead className="text-center">Pengelola</TableHead>
-                      <TableHead className="text-center">Username</TableHead>
-                      <TableHead className="text-center">WhatsApp</TableHead>
-                      <TableHead className="text-center">Role</TableHead>
-                      <TableHead className="text-center">Dibuat</TableHead>
-                      <TableHead className="w-[120px] text-center">Aksi</TableHead>
+          <div className="dashboard-table-shell">
+            <Table className="w-full md:min-w-[980px]">
+              <TableHeader className="hidden bg-muted/50 md:table-header-group">
+                <TableRow>
+                  <TableHead className="w-[28%] text-left">Nama</TableHead>
+                  <TableHead className="w-[18%] text-left">Username</TableHead>
+                  <TableHead className="w-[18%] text-center">WhatsApp</TableHead>
+                  <TableHead className="w-[12%] text-center">Sumber</TableHead>
+                  <TableHead className="w-[12%] text-center">Status</TableHead>
+                  <TableHead className="w-[12%] text-center">Aktif Kandidat</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-6 text-center text-secondary-color">
+                      Tidak ada data pengguna yang sesuai.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedRows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="text-left font-medium text-primary-color">
+                        {row.name}
+                      </TableCell>
+                      <TableCell className="text-left text-xs text-secondary-color">
+                        {row.username}
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-secondary-color">
+                        {row.whatsapp || "-"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant="outline"
+                          className={
+                            row.source === "ADMIN"
+                              ? "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                              : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                          }
+                        >
+                          {row.source}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant="outline"
+                          className={
+                            row.syncStatusLabel === "SYNCED"
+                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : row.syncStatusLabel === "FAILED"
+                                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                                : row.source === "ADMIN"
+                                  ? "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                                  : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                          }
+                        >
+                          {row.syncStatusLabel}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {row.source === "SIGAP" && row.isActiveCandidate !== null ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <Switch
+                              checked={row.isActiveCandidate}
+                              onCheckedChange={(checked) => handleToggleCandidate(row.id, checked)}
+                              disabled={syncingSigap}
+                              aria-label={`Aktifkan kandidat ${row.name}`}
+                            />
+                            <span className="text-xs text-secondary-color">
+                              {row.isActiveCandidate ? "Aktif" : "Nonaktif"}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-center text-xs text-secondary-color">Tetap</div>
+                        )}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredUsers.map((user) => (
-                      <UsersTableRow
-                        key={user.id}
-                        user={user}
-                        onEdit={openEditDialog}
-                        onDelete={openDeleteDialog}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Dialog
-        open={editDialogOpen}
-        onOpenChange={(open) => {
-          setEditDialogOpen(open);
-          if (!open) resetFormFields();
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Pengguna</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Nama Lengkap</Label>
-              <Input
-                id="edit-name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Masukkan nama lengkap"
-                autoComplete="name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-username">Username</Label>
-              <Input
-                id="edit-username"
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                placeholder="Masukkan username"
-                autoComplete="username"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-password">Password Baru (opsional)</Label>
-              <Input
-                id="edit-password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Biarkan kosong jika tidak ingin mengubah"
-                autoComplete="new-password"
-                minLength={8}
-              />
-              <p className="text-xs text-secondary-color">
-                Biarkan kosong bila tidak ada perubahan.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-phone">No. WhatsApp (opsional)</Label>
-              <Input
-                id="edit-phone"
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                placeholder="08xxxxxxxxxx"
-                autoComplete="tel"
-              />
-            </div>
-            {newPassword && (
-              <div className="space-y-2">
-                <Label htmlFor="edit-confirmPassword">Konfirmasi Password</Label>
-                <Input
-                  id="edit-confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Konfirmasi password baru"
-                  autoComplete="new-password"
-                  minLength={8}
-                  aria-invalid={passwordMismatch}
-                />
-                {passwordMismatch && (
-                  <p className="text-xs text-destructive">Password dan konfirmasi tidak sama.</p>
+                  ))
                 )}
-              </div>
-            )}
+              </TableBody>
+            </Table>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="success" onClick={handleEditUser} disabled={isEditDisabled}>
-              Simpan Perubahan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </CardContent>
 
-      <ConfirmActionDialog
-        open={deleteDialogOpen}
-        onOpenChange={handleDeleteDialogChange}
-        title="Hapus Pengguna"
-        description="Tindakan ini tidak dapat dibatalkan. Pastikan pengguna ini memang perlu dihapus."
-        confirmLabel="Hapus Pengguna"
-        confirmVariant="destructive"
-        onConfirm={handleDeleteUser}
-        body={
-          <p>
-            Pengguna <strong>{selectedUser?.name}</strong> akan dihapus dari sistem. Pastikan tidak
-            ada antrean aktif yang masih ditangani olehnya.
-          </p>
-        }
-      />
+        {filteredRows.length > 0 && (
+          <CardFooter className="flex-col gap-2 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-xs text-muted-foreground">
+              Halaman {currentPage} dari {totalPages} ({filteredRows.length} data)
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={!canPrevPage}
+              >
+                Sebelumnya
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={!canNextPage}
+              >
+                Berikutnya
+              </Button>
+            </div>
+          </CardFooter>
+        )}
+      </Card>
     </PageContainer>
   );
 }
-
-

@@ -1,4 +1,6 @@
 import { createHash } from "crypto";
+import { existsSync } from "node:fs";
+import path from "path";
 import { QueueStatus, Prisma, Gender, LastEducation } from "@prisma/client";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
@@ -14,8 +16,39 @@ import {
 } from "@shared/utils/date-boundary";
 import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
+const PDF_FONT_PATH = (() => {
+  const candidates = [
+    path.join(process.cwd(), "public", "fonts", "noto-sans-regular.ttf"),
+    path.join(
+      process.cwd(),
+      "node_modules",
+      "next",
+      "dist",
+      "compiled",
+      "@vercel",
+      "og",
+      "noto-sans-v27-latin-regular.ttf"
+    ),
+  ];
+
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (found) {
+    return found;
+  }
+
+  throw new Error(
+    "Font PDF tidak ditemukan. Pastikan file public/fonts/noto-sans-regular.ttf tersedia."
+  );
+})();
+
 type DateFilter = "today" | "all" | "year" | "month" | "quarter" | "semester";
-type GuestbookSortBy = "createdAt" | "fullName" | "serviceName" | "queueNumber";
+type GuestbookSortBy =
+  | "createdAt"
+  | "fullName"
+  | "serviceName"
+  | "queueCode"
+  | "officerName"
+  | "filledSKD";
 type GuestbookSortOrder = "asc" | "desc";
 type ExportFormat = "xlsx" | "pdf";
 
@@ -60,7 +93,6 @@ type GuestbookExportRow = {
   pekerjaan: string;
   layanan: string;
   tanggal: string; // Changed from Date to string for proper formatting
-  nomor_antrean: number;
   kode_antrean: string;
   status_layanan: string;
   durasi_pelayanan: number | null;
@@ -108,7 +140,6 @@ const EXPORT_COLUMNS: Array<{ key: keyof GuestbookExportRow; label: string }> = 
   { key: "pekerjaan", label: "Pekerjaan" },
   { key: "layanan", label: "Layanan" },
   { key: "tanggal", label: "Tanggal" },
-  { key: "nomor_antrean", label: "Nomor Antrean" },
   { key: "kode_antrean", label: "Kode Antrean" },
   { key: "status_layanan", label: "Status Layanan" },
   { key: "durasi_pelayanan", label: "Durasi Pelayanan" },
@@ -203,7 +234,9 @@ const parseSortBy = (value?: string | null): GuestbookSortBy => {
     value === "createdAt" ||
     value === "fullName" ||
     value === "serviceName" ||
-    value === "queueNumber"
+    value === "queueCode" ||
+    value === "officerName" ||
+    value === "filledSKD"
   ) {
     return value;
   }
@@ -327,8 +360,21 @@ const buildOrderBy = ({
     return [{ service: { name: sortOrder } }, { createdAt: "desc" }, { id: "asc" }];
   }
 
-  if (sortBy === "queueNumber") {
-    return [{ queueNumber: sortOrder }, { createdAt: "desc" }, { id: "asc" }];
+  if (sortBy === "queueCode") {
+    return [{ service: { name: sortOrder } }, { queueNumber: sortOrder }, { createdAt: "desc" }, { id: "asc" }];
+  }
+
+  if (sortBy === "officerName") {
+    return [
+      { dutyStaff: { name: sortOrder } },
+      { admin: { name: sortOrder } },
+      { createdAt: "desc" },
+      { id: "asc" },
+    ];
+  }
+
+  if (sortBy === "filledSKD") {
+    return [{ filledSKD: sortOrder }, { createdAt: "desc" }, { id: "asc" }];
   }
 
   return [{ createdAt: sortOrder }, { id: sortOrder }];
@@ -436,7 +482,6 @@ const toGuestbookEntry = (queue: GuestbookQueueWithRelations): GuestbookEntry =>
     gender: guest?.gender ?? null,
     lastEducation: guest?.lastEducation ?? null,
     occupation: guest?.occupation ?? null,
-    queueNumber: queue.queueNumber,
     queueCode: formatGuestQueueCode(queue.service, queue.queueNumber),
     status: queue.status,
     serviceName: queue.service.name,
@@ -453,6 +498,7 @@ const buildPdfBuffer = async (rows: GuestbookExportRow[]) => {
     size: "A4",
     layout: "landscape",
     margin: 36,
+    font: PDF_FONT_PATH,
   });
   const chunks: Buffer[] = [];
   const done = new Promise<Buffer>((resolve, reject) => {
@@ -481,7 +527,7 @@ const buildPdfBuffer = async (rows: GuestbookExportRow[]) => {
   let y = doc.y;
 
   const drawHeader = () => {
-    doc.font("Helvetica-Bold").fontSize(8).fillColor("#111827");
+    doc.font(PDF_FONT_PATH).fontSize(8).fillColor("#111827");
     let x = startX;
     columns.forEach((col) => {
       doc.text(col.label, x, y + 3, {
@@ -497,7 +543,7 @@ const buildPdfBuffer = async (rows: GuestbookExportRow[]) => {
       .lineTo(startX + pageWidth, y - 2)
       .strokeColor("#E5E7EB")
       .stroke();
-    doc.font("Helvetica").fontSize(8).fillColor("#111827");
+    doc.font(PDF_FONT_PATH).fontSize(8).fillColor("#111827");
   };
 
   const ensureSpace = () => {
@@ -789,7 +835,6 @@ export async function exportGuestbookEntries({
         pekerjaan: entry.occupation || "-",
         layanan: entry.serviceName,
         tanggal: tanggalFormatted,
-        nomor_antrean: entry.queueNumber,
         kode_antrean: entry.queueCode,
         status_layanan: statusLabels[entry.status],
         durasi_pelayanan: durationMinutes,
@@ -812,7 +857,7 @@ export async function exportGuestbookEntries({
           return String(value);
         }
         
-        if (key === "umur" || key === "durasi_pelayanan" || key === "nomor_antrean" || key === "no") {
+        if (key === "umur" || key === "durasi_pelayanan" || key === "no") {
           return typeof value === "number" ? value : "";
         }
         
@@ -931,7 +976,7 @@ export async function exportGuestbookEntries({
       // === SHEET 2: Data Sheet dengan Table ===
       const dataWorksheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
 
-      // Define column widths for the new 18-column export
+      // Define column widths for the new 17-column export
       const columnWidths: Array<{ wch: number }> = [
         { wch: 5 },   // No
         { wch: 18 },  // Nama Lengkap
@@ -945,7 +990,6 @@ export async function exportGuestbookEntries({
         { wch: 14 },  // Pekerjaan
         { wch: 16 },  // Layanan
         { wch: 13 },  // Tanggal
-        { wch: 10 },  // Nomor Antrean
         { wch: 12 },  // Kode Antrean
         { wch: 14 },  // Status Layanan
         { wch: 12 },  // Durasi Pelayanan
@@ -1033,7 +1077,7 @@ export async function exportGuestbookEntries({
           } else if (colKey === "tanggal") {
             dataWorksheet[cellRef].s = dateStyle;
             dataWorksheet[cellRef].t = "s"; // text type untuk preserve format dd-mm-yyyy
-          } else if (colKey === "umur" || colKey === "durasi_pelayanan" || colKey === "nomor_antrean") {
+          } else if (colKey === "umur" || colKey === "durasi_pelayanan") {
             dataWorksheet[cellRef].s = numberStyle;
             dataWorksheet[cellRef].t = "n"; // number type
           } else if (colKey === "no") {
@@ -1103,3 +1147,4 @@ export async function exportGuestbookEntries({
     };
   }
 }
+

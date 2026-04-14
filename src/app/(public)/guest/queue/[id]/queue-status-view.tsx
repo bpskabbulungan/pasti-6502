@@ -10,6 +10,7 @@ import PageBackground from "@/components/shared/page-background";
 import { RefreshCcw, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { markNavigationPending } from "@/lib/navigation-pending";
 import { queuesApi } from "@/services/api/queues";
+import { serializeErrorForLog } from "@/lib/error-log";
 import type { ErrorResponse } from "@shared/types/api";
 import type { QueueDetail } from "@shared/types/queue";
 
@@ -126,7 +127,7 @@ export default function QueueStatusView({ queueId }: { queueId: string }) {
         setError(null);
         setLastUpdated(new Date());
       } catch (err) {
-        console.error("Error fetching queue status", err);
+        console.error("Error fetching queue status", serializeErrorForLog(err));
         setError(getErrorMessage(err, "Terjadi kesalahan saat memuat status"));
       } finally {
         if (showLoading) {

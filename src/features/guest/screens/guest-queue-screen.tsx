@@ -160,7 +160,7 @@ export default function GuestQueuePage({
     }
   }, [queue]);
 
-  const goToGuestBook = () => {
+  const goToQueueHome = () => {
     markNavigationPending();
     router.push("/guest");
   };
@@ -170,13 +170,13 @@ export default function GuestQueuePage({
   const submittedRating =
     queue && typeof queue.serviceRating === "number" ? queue.serviceRating : null;
 
-  const handleBackToGuestBook = () => {
+  const handleBackToQueue = () => {
     if (shouldConfirmBeforeLeave) {
       setIsBackConfirmOpen(true);
       return;
     }
 
-    goToGuestBook();
+    goToQueueHome();
   };
 
   const handleRefresh = async () => {
@@ -428,24 +428,24 @@ export default function GuestQueuePage({
               </div>
             ) : null}
           </CardContent>
-          <CardFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <CardFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+            <Button
+              type="button"
+              className="w-full text-white sm:w-auto sm:min-w-52"
+              onClick={handleBackToQueue}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Kembali ke Antrean
+            </Button>
             <Button
               type="button"
               variant="outline"
-              className="w-full sm:w-auto"
+              className="w-full sm:ml-auto sm:w-auto"
               onClick={() => void handleRefresh()}
               disabled={!queueId || isRefreshing}
             >
               <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
               {isRefreshing ? "Memuat..." : "Muat Ulang"}
-            </Button>
-            <Button
-              type="button"
-              className="w-full text-white sm:w-auto sm:min-w-52"
-              onClick={handleBackToGuestBook}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Kembali ke Buku Tamu
             </Button>
           </CardFooter>
         </Card>
@@ -453,11 +453,11 @@ export default function GuestQueuePage({
       <ConfirmActionDialog
         open={isBackConfirmOpen}
         onOpenChange={setIsBackConfirmOpen}
-        title="Kembali ke Buku Tamu?"
-        description="Nomor antrean tetap tersimpan. Anda bisa kembali lagi melalui tombol Lanjutkan Antrean Terakhir."
+        title="Kembali ke Antrean?"
+        description="Nomor antrean tetap tersimpan. Anda bisa membuka antrean terakhir kapan saja."
         confirmLabel="Ya, kembali"
         confirmVariant="default"
-        onConfirm={goToGuestBook}
+        onConfirm={goToQueueHome}
       />
     </main>
   );

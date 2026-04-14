@@ -16,7 +16,6 @@ export type GuestbookEntry = {
   gender: Gender | null;
   lastEducation: LastEducation | null;
   occupation: string | null;
-  queueNumber: number;
   queueCode: string;
   status: QueueStatus;
   serviceName: string;
@@ -54,7 +53,13 @@ export type GuestbookListParams = {
   month?: number;
   quarter?: number;
   semester?: number;
-  sortBy?: "createdAt" | "fullName" | "serviceName" | "queueNumber";
+  sortBy?:
+    | "createdAt"
+    | "fullName"
+    | "serviceName"
+    | "queueCode"
+    | "officerName"
+    | "filledSKD";
   sortOrder?: "asc" | "desc";
   search?: string;
   limit?: number;

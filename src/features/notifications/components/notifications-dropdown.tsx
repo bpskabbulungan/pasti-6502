@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { notificationsApi } from "@/services/api/notifications";
 import { formatDisplayDateTime } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import { markNavigationPending } from "@/lib/navigation-pending";
 import type { Notification } from "@shared/types/notification";
 
@@ -45,7 +46,7 @@ export default function NotificationsDropdown({ userId }: NotificationsDropdownP
         if (data.hash) dataHashRef.current = data.hash;
       }
     } catch (error) {
-      console.error("Error fetching notifications:", error);
+      console.error("Error fetching notifications:", serializeErrorForLog(error));
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -60,7 +61,7 @@ export default function NotificationsDropdown({ userId }: NotificationsDropdownP
       if (data.hash) dataHashRef.current = data.hash;
       touch("Semua notifikasi telah dibaca");
     } catch (error) {
-      console.error("Error marking notifications as read:", error);
+      console.error("Error marking notifications as read:", serializeErrorForLog(error));
       toast.error("Terjadi kesalahan");
     }
   };
@@ -77,7 +78,7 @@ export default function NotificationsDropdown({ userId }: NotificationsDropdownP
       if (data.hash) dataHashRef.current = data.hash;
       touch("Notifikasi telah dibaca");
     } catch (error) {
-      console.error("Error marking notification as read:", error);
+      console.error("Error marking notification as read:", serializeErrorForLog(error));
       toast.error("Terjadi kesalahan saat menandai notifikasi");
     } finally {
       setMarkingAsRead(null);

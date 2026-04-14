@@ -30,8 +30,9 @@ import { RefreshCcw, Inbox } from "lucide-react";
 import { queuesApi } from "@/services/api/queues";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import TableSkeleton from "@/features/dashboard/components/skeletons/table-skeleton";
-import QueueTableRow from "@/features/dashboard/components/rows/queue-row";
+import QueueTableRow from "../components/rows/queue-row";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import type { QueueDetail, QueueListResponse } from "@shared/types/queue";
 
 const queueStatusParamValues = new Set(["WAITING", "SERVING", "COMPLETED", "CANCELED"]);
@@ -77,10 +78,13 @@ export default function QueueManagementPage({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [showRevertDialog, setShowRevertDialog] = useState(false);
   const [queueToCancel, setQueueToCancel] = useState<Queue | null>(null);
   const [queueToComplete, setQueueToComplete] = useState<Queue | null>(null);
+  const [queueToRevert, setQueueToRevert] = useState<Queue | null>(null);
   const [isCancelingQueue, setIsCancelingQueue] = useState(false);
   const [isCompletingQueue, setIsCompletingQueue] = useState(false);
+  const [isRevertingQueue, setIsRevertingQueue] = useState(false);
 
   useEffect(() => {
     const nextStatus = parseStatusParam(statusParam) ?? "WAITING";
@@ -118,7 +122,7 @@ export default function QueueManagementPage({
     fallbackFetchedAt: isUsingInitialPageData ? initialFetchedAt : null,
     refreshInterval: 30_000,
     onError: (error) => {
-      console.error("Error fetching queues:", error);
+      console.error("Error fetching queues:", serializeErrorForLog(error));
       toast.error("Terjadi kesalahan saat memuat antrean");
     },
   });
@@ -133,7 +137,7 @@ export default function QueueManagementPage({
         toast.success("Antrean sedang dilayani");
         await refresh();
       } catch (error) {
-        console.error("Error serving queue:", error);
+        console.error("Error serving queue:", serializeErrorForLog(error));
         toast.error("Terjadi kesalahan saat melayani antrean");
       }
     },
@@ -149,7 +153,7 @@ export default function QueueManagementPage({
       setQueueToCancel(null);
       await refresh();
     } catch (error) {
-      console.error("Error canceling queue:", error);
+      console.error("Error canceling queue:", serializeErrorForLog(error));
       toast.error("Terjadi kesalahan");
     } finally {
       setIsCancelingQueue(false);
@@ -165,10 +169,26 @@ export default function QueueManagementPage({
       setQueueToComplete(null);
       await refresh();
     } catch (error) {
-      console.error("Error completing queue:", error);
+      console.error("Error completing queue:", serializeErrorForLog(error));
       toast.error("Terjadi kesalahan saat menyelesaikan antrean");
     } finally {
       setIsCompletingQueue(false);
+    }
+  };
+
+  const handleRevertQueue = async (queueId: string) => {
+    try {
+      setIsRevertingQueue(true);
+      await queuesApi.revert(queueId);
+      toast.success("Status antrean dikembalikan ke Menunggu");
+      setShowRevertDialog(false);
+      setQueueToRevert(null);
+      await refresh();
+    } catch (error) {
+      console.error("Error reverting queue:", serializeErrorForLog(error));
+      toast.error("Terjadi kesalahan saat mengembalikan status antrean");
+    } finally {
+      setIsRevertingQueue(false);
     }
   };
 
@@ -182,6 +202,11 @@ export default function QueueManagementPage({
     setShowCompleteDialog(true);
   }, []);
 
+  const openRevertDialog = useCallback((queue: Queue) => {
+    setQueueToRevert(queue);
+    setShowRevertDialog(true);
+  }, []);
+
   const getTableColumns = () => (
     <>
       <TableHead className="w-20 text-center">No</TableHead>
@@ -192,7 +217,7 @@ export default function QueueManagementPage({
       <TableHead className="text-center">Tanggal</TableHead>
       <TableHead className="text-center">Petugas</TableHead>
       <TableHead className="text-center">Tracking</TableHead>
-      <TableHead className="w-[240px] text-center">Aksi</TableHead>
+      <TableHead className="w-[140px] text-center">Aksi</TableHead>
     </>
   );
 
@@ -267,6 +292,13 @@ export default function QueueManagementPage({
     }
   };
 
+  const handleRevertDialogChange = (open: boolean) => {
+    setShowRevertDialog(open);
+    if (!open) {
+      setQueueToRevert(null);
+    }
+  };
+
   const confirmCancelQueue = async () => {
     if (!queueToCancel) return;
     await handleCancelQueue(queueToCancel.id);
@@ -277,11 +309,16 @@ export default function QueueManagementPage({
     await handleCompleteQueue(queueToComplete.id);
   };
 
+  const confirmRevertQueue = async () => {
+    if (!queueToRevert) return;
+    await handleRevertQueue(queueToRevert.id);
+  };
+
   return (
     <PageContainer>
       <DashboardPageHeader
         title="Manajemen Antrean"
-        description="Halaman kelola status antrean sesuai layanan petugas PASTI 6502."
+        description="Halaman kelola antrean sesuai layanan petugas PST BPS Kabupaten Bulungan."
         meta={
           <>
             <span>Data per: {updatedLabel}</span>
@@ -390,6 +427,7 @@ export default function QueueManagementPage({
                       onServe={handleServeQueue}
                       onComplete={openCompleteDialog}
                       onOpenCancel={openCancelDialog}
+                      onRevert={openRevertDialog}
                     />
                   ))}
                 </TableBody>
@@ -472,6 +510,31 @@ export default function QueueManagementPage({
               </p>
               <p>
                 Layanan: <strong>{queueToComplete.service.name}</strong>
+              </p>
+            </>
+          ) : null
+        }
+      />
+      <ConfirmActionDialog
+        open={showRevertDialog}
+        onOpenChange={handleRevertDialogChange}
+        title="Konfirmasi Kembalikan Antrean"
+        description="Tindakan ini akan mengubah status antrean kembali ke Menunggu agar bisa diproses ulang oleh petugas."
+        confirmLabel="Ya, Kembalikan"
+        confirmVariant="warning"
+        isProcessing={isRevertingQueue}
+        onConfirm={confirmRevertQueue}
+        body={
+          queueToRevert ? (
+            <>
+              <p>
+                Pengunjung: <strong>{queueToRevert.visitor.name}</strong>
+              </p>
+              <p>
+                Nomor antrean: <strong>{queueToRevert.queueNumber}</strong>
+              </p>
+              <p>
+                Layanan: <strong>{queueToRevert.service.name}</strong>
               </p>
             </>
           ) : null

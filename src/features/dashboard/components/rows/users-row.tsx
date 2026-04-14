@@ -64,7 +64,7 @@ function UsersTableRowComponent({ user, onEdit, onDelete }: UsersTableRowProps) 
         <TableCell className="text-center">
           <Badge
             variant={isAdmin ? "secondary" : "outline"}
-            className={`border-border ${isAdmin ? "bg-primary/10 text-primary-color" : "bg-accent/10 text-accent"}`}
+            className={`border-border ${isAdmin ? "bg-sky-500/10 text-sky-700 dark:text-sky-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}
           >
             {roleLabel}
           </Badge>
@@ -80,6 +80,7 @@ function UsersTableRowComponent({ user, onEdit, onDelete }: UsersTableRowProps) 
             <Button
               variant="outline"
               size="icon"
+              className="size-9"
               onClick={() => onEdit(user)}
               disabled={isAdmin}
               title={isAdmin ? "Akun admin tidak dapat diedit" : "Edit pengguna"}
@@ -90,6 +91,7 @@ function UsersTableRowComponent({ user, onEdit, onDelete }: UsersTableRowProps) 
             <Button
               variant="destructive"
               size="icon"
+              className="size-9"
               onClick={() => onDelete(user)}
               disabled={isAdmin}
               title={isAdmin ? "Akun admin tidak dapat dihapus" : "Hapus pengguna"}
@@ -109,15 +111,17 @@ function UsersTableRowComponent({ user, onEdit, onDelete }: UsersTableRowProps) 
                 <Avatar className="bg-primary/10 text-primary-color">
                   <AvatarFallback>{getInitials(user.name || user.username)}</AvatarFallback>
                 </Avatar>
-              <div>
+                <div>
                   <p className="break-words font-semibold text-primary-color">{user.name}</p>
                   <p className="break-all text-xs text-secondary-color">@{user.username}</p>
-                  <p className="break-all text-xs text-secondary-color">{user.phone || "No. WA belum diisi"}</p>
+                  <p className="break-all text-xs text-secondary-color">
+                    {user.phone || "No. WA belum diisi"}
+                  </p>
                 </div>
               </div>
               <Badge
                 variant={isAdmin ? "secondary" : "outline"}
-                className={`border-border ${isAdmin ? "bg-primary/10 text-primary-color" : "bg-accent/10 text-accent"}`}
+                className={`border-border ${isAdmin ? "bg-sky-500/10 text-sky-700 dark:text-sky-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}
               >
                 {roleLabel}
               </Badge>
@@ -130,6 +134,7 @@ function UsersTableRowComponent({ user, onEdit, onDelete }: UsersTableRowProps) 
               <Button
                 variant="outline"
                 size="icon"
+                className="size-9"
                 onClick={() => onEdit(user)}
                 disabled={isAdmin}
                 title={isAdmin ? "Akun admin tidak dapat diedit" : "Edit pengguna"}
@@ -140,6 +145,7 @@ function UsersTableRowComponent({ user, onEdit, onDelete }: UsersTableRowProps) 
               <Button
                 variant="destructive"
                 size="icon"
+                className="size-9"
                 onClick={() => onDelete(user)}
                 disabled={isAdmin}
                 title={isAdmin ? "Akun admin tidak dapat dihapus" : "Hapus pengguna"}

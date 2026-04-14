@@ -66,12 +66,16 @@ export const sortOptions: Array<{
 }> = [
 	{ value: "createdAt.desc", label: "Tanggal datang terbaru" },
 	{ value: "createdAt.asc", label: "Tanggal datang terlama" },
-	{ value: "queueNumber.asc", label: "Nomor antrean terkecil" },
-	{ value: "queueNumber.desc", label: "Nomor antrean terbesar" },
+	{ value: "queueCode.asc", label: "Kode antrean A-Z" },
+	{ value: "queueCode.desc", label: "Kode antrean Z-A" },
 	{ value: "fullName.asc", label: "Nama A-Z" },
 	{ value: "fullName.desc", label: "Nama Z-A" },
 	{ value: "serviceName.asc", label: "Layanan A-Z" },
 	{ value: "serviceName.desc", label: "Layanan Z-A" },
+	{ value: "officerName.asc", label: "Petugas A-Z" },
+	{ value: "officerName.desc", label: "Petugas Z-A" },
+	{ value: "filledSKD.asc", label: "Monitoring SKD: Belum -> Sudah" },
+	{ value: "filledSKD.desc", label: "Monitoring SKD: Sudah -> Belum" },
 ];
 
 export const getDateFilterLabel = ({

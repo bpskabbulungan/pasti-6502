@@ -13,6 +13,7 @@ import PageBackground from "@/components/shared/page-background";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { markNavigationPending } from "@/lib/navigation-pending";
+import { serializeErrorForLog } from "@/lib/error-log";
 import { visitorFormApi } from "@/services/api/visitor-form";
 
 const isApiError = (error: unknown): error is { status: number } => {
@@ -64,7 +65,7 @@ export default function VisitorFormPreloadPage() {
 					return;
 				}
 
-				console.error("Error during preload check:", error);
+				console.error("Error during preload check:", serializeErrorForLog(error));
 				toast.error("Terjadi kesalahan saat memuat data");
 				markNavigationPending();
 				router.push("/");

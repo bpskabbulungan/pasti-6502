@@ -30,8 +30,8 @@ import {
   Gender,
   LastEducation,
   type QueueStatus as QueueStatusType,
-  ServiceStatus,
 } from "@/shared/constants/enums";
+import { filterActiveServices } from "@/shared/constants/service-catalog";
 import { guestSchema } from "@/shared/schemas/guest";
 import type { GuestServiceOption } from "@/shared/types/guest";
 import { guestApi } from "@/services/api/guest";
@@ -41,6 +41,7 @@ import {
   type LastGuestQueue,
 } from "@/features/guest/utils/last-queue";
 import { markNavigationPending } from "@/lib/navigation-pending";
+import { serializeErrorForLog } from "@/lib/error-log";
 import type { ErrorResponse } from "@shared/types/api";
 
 type GuestFormValues = z.output<typeof guestSchema>;
@@ -119,7 +120,7 @@ export default function GuestForm() {
   });
 
   const activeServices = useMemo(
-    () => services.filter((service) => service.status === ServiceStatus.ACTIVE),
+    () => filterActiveServices(services),
     [services]
   );
 
@@ -138,9 +139,7 @@ export default function GuestForm() {
 
         const nextServices = response.services ?? [];
         setServices(nextServices);
-        const nextActiveServices = nextServices.filter(
-          (service) => service.status === ServiceStatus.ACTIVE
-        );
+        const nextActiveServices = filterActiveServices(nextServices);
 
         const currentServiceId = form.getValues("serviceId");
         const selectedStillAvailable = nextActiveServices.some(
@@ -155,7 +154,7 @@ export default function GuestForm() {
           });
         }
       } catch (error) {
-        console.error("Error fetching guest services", error);
+        console.error("Error fetching guest services", serializeErrorForLog(error));
         if (!cancelled) {
           setServices([]);
           form.setValue("serviceId", "", {
@@ -220,7 +219,7 @@ export default function GuestForm() {
         toast.error("Nomor antrean belum tersedia, silakan coba lagi.");
       }
     } catch (error) {
-      console.error("Error submitting guest form", error);
+      console.error("Error submitting guest form", serializeErrorForLog(error));
       toast.error(getErrorMessage(error, "Terjadi kesalahan, coba lagi sebentar lagi"));
     }
   };

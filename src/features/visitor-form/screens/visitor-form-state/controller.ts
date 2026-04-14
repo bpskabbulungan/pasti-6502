@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { markNavigationPending } from "@/lib/navigation-pending";
+import { serializeErrorForLog } from "@/lib/error-log";
+import { filterActiveServices } from "@/shared/constants/service-catalog";
 import type { QueueTracking } from "@shared/types/queue";
 import type { VisitorFormService } from "@shared/types/visitor-form";
 import { getVisitorFormErrorMessage, isVisitorFormApiError } from "./helper";
@@ -79,7 +81,7 @@ export function useVisitorFormController() {
 					}
 				}
 			} catch (error) {
-				console.error("Error checking tracking status", error);
+				console.error("Error checking tracking status", serializeErrorForLog(error));
 				if (!trackingInfo || !isTracking) {
 					setIsTracking(false);
 					setTrackingStatus(null);
@@ -108,7 +110,7 @@ export function useVisitorFormController() {
 
 				try {
 					const data = await visitorFormPageService.getServices(uuid);
-					setServices(data.services);
+					setServices(filterActiveServices(data.services ?? []));
 					setIsValid(true);
 					setShowForm(true);
 					setIsLoading(false);
@@ -132,7 +134,7 @@ export function useVisitorFormController() {
 
 				setIsValid(false);
 			} catch (error) {
-				console.error("Error validating UUID", error);
+				console.error("Error validating UUID", serializeErrorForLog(error));
 				setIsValid(false);
 				toast.error("Terjadi kesalahan, silakan coba lagi");
 			} finally {
@@ -235,7 +237,7 @@ export function useVisitorFormController() {
 
 			await checkTrackingStatus();
 		} catch (error) {
-			console.error("Error submitting form:", error);
+			console.error("Error submitting form:", serializeErrorForLog(error));
 			toast.error(getVisitorFormErrorMessage(error, "Terjadi kesalahan saat mengirim formulir"));
 		} finally {
 			setIsLoading(false);
@@ -252,7 +254,7 @@ export function useVisitorFormController() {
 			await checkTrackingStatus();
 			setLastUpdatedAt(new Date());
 		} catch (error) {
-			console.error("Error updating SKD status:", error);
+			console.error("Error updating SKD status:", serializeErrorForLog(error));
 			toast.error(
 				getVisitorFormErrorMessage(error, "Terjadi kesalahan saat memperbarui status SKD")
 			);

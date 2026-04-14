@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
+import type { SWRConfiguration } from "swr";
 
 type ApiError = {
   status: number;
@@ -174,20 +175,25 @@ export function useLiveQuery<TData>(
     }
   }, [initialEnvelope, url]);
 
+  const swrOptions: SWRConfiguration<LiveEnvelope<TData>, ApiError> = {
+    fallbackData: initialEnvelope,
+    refreshInterval,
+    refreshWhenHidden: false,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    keepPreviousData: true,
+    dedupingInterval: 5_000,
+    shouldRetryOnError: false,
+  };
+
+  if (typeof onError === "function") {
+    swrOptions.onError = onError;
+  }
+
   const swr = useSWR<LiveEnvelope<TData>>(
     enabled && url ? url : null,
     (key) => fetchLiveJson<TData>(key, previousRef.current),
-    {
-      fallbackData: initialEnvelope,
-      refreshInterval,
-      refreshWhenHidden: false,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-      keepPreviousData: true,
-      dedupingInterval: 5_000,
-      shouldRetryOnError: false,
-      onError,
-    }
+    swrOptions
   );
 
   useEffect(() => {

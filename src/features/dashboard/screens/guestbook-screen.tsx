@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -60,6 +60,7 @@ import {
   getGuestbookErrorMessage,
 } from "@/features/dashboard/screens/guestbook-state/helper";
 import { formatDisplayDate } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import {
   educationLabels,
   genderLabels,
@@ -75,6 +76,35 @@ type GuestbookPageProps = {
   initialFetchedAt: string;
 };
 
+const getSkdBadgeClass = (filledSKD: boolean) =>
+  filledSKD
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/35 dark:bg-emerald-400/10 dark:text-emerald-200"
+    : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-amber-300/35 dark:bg-amber-400/10 dark:text-amber-200";
+
+const serviceStatusLabel = {
+  WAITING: "Menunggu",
+  SERVING: "Sedang Dilayani",
+  COMPLETED: "Selesai",
+  CANCELED: "Dibatalkan",
+} as const;
+
+const serviceStatusClass = {
+  WAITING:
+    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-amber-300/35 dark:bg-amber-400/10 dark:text-amber-200",
+  SERVING:
+    "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:border-sky-300/35 dark:bg-sky-400/10 dark:text-sky-200",
+  COMPLETED:
+    "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/35 dark:bg-emerald-400/10 dark:text-emerald-200",
+  CANCELED:
+    "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-300/35 dark:bg-rose-400/10 dark:text-rose-200",
+} as const;
+
+const filterChipClass =
+  "border-border/70 bg-muted/35 text-secondary-color dark:border-border/70 dark:bg-muted/25 dark:text-secondary-color";
+
+const serviceInfoBadgeClass =
+  "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:border-sky-300/35 dark:bg-sky-400/10 dark:text-sky-200";
+
 export default function GuestbookPage({ initialData, initialFetchedAt }: GuestbookPageProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewEntry, setPreviewEntry] = useState<GuestbookEntry | null>(null);
@@ -88,6 +118,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
   const [templateEditOpen, setTemplateEditOpen] = useState(false);
   const [editableTemplate, setEditableTemplate] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const previewRequestSeqRef = useRef(0);
 
   const {
     searchTerm,
@@ -165,9 +196,13 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       valueClassName: "text-primary-color",
     },
   ];
-  const selectedSkdClass = selectedEntry?.filledSKD
-    ? "border-border/70 bg-muted/20 text-primary-color"
-    : "border-border/70 bg-muted/20 text-primary-color";
+  const selectedSkdClass = getSkdBadgeClass(Boolean(selectedEntry?.filledSKD));
+  const selectedServiceStatusClass = selectedEntry
+    ? serviceStatusClass[selectedEntry.status]
+    : serviceStatusClass.COMPLETED;
+  const selectedServiceStatusLabel = selectedEntry
+    ? serviceStatusLabel[selectedEntry.status]
+    : serviceStatusLabel.COMPLETED;
   const selectedTrackingLink = selectedEntry?.trackingLink ?? null;
   const selectedTrackingIsUrl = selectedTrackingLink
     ? /^https?:\/\//i.test(selectedTrackingLink)
@@ -216,6 +251,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
   const handlePreviewOpenChange = (open: boolean) => {
     setPreviewOpen(open);
     if (!open) {
+      previewRequestSeqRef.current += 1;
       resetPreviewState();
     }
   };
@@ -228,9 +264,37 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       setEditableTemplate(template);
       setTemplateEditOpen(true);
     } catch (error) {
-      console.error("Error loading template:", error);
+      console.error("Error loading template:", serializeErrorForLog(error));
       toast.error(getGuestbookErrorMessage(error, "Gagal memuat template"));
     }
+  };
+
+  const fetchSkdPreviewWithRetry = async (queueId: string) => {
+    const requestPreview = async () => {
+      const previewResponse = await queuesApi.previewSkdReminder(queueId);
+      const previewData = previewResponse.data ?? {};
+      const previewMessageValue =
+        typeof previewData.message === "string" ? previewData.message : "";
+      const previewPhoneValue =
+        typeof previewData.phone === "string" ? previewData.phone : "";
+      const previewWhatsappUrl =
+        typeof previewData.whatsappUrl === "string" ? previewData.whatsappUrl : null;
+
+      return {
+        previewMessageValue,
+        previewPhoneValue,
+        previewWhatsappUrl,
+      };
+    };
+
+    let result = await requestPreview();
+    if (!result.previewMessageValue.trim()) {
+      // Retry sekali untuk mengurangi efek respons kosong yang intermittent.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      result = await requestPreview();
+    }
+
+    return result;
   };
 
   const handleSaveTemplate = async () => {
@@ -245,15 +309,18 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       
       // Refresh preview dengan template baru yang baru disave
       if (previewEntry) {
+        const requestSeq = ++previewRequestSeqRef.current;
         setIsPreparingPreview(true);
         try {
-          const previewResponse = await queuesApi.previewSkdReminder(previewEntry.id);
-          const previewData = previewResponse.data ?? {};
-          const previewMessageValue =
-            typeof previewData.message === "string" ? previewData.message : "";
+          const { previewMessageValue } = await fetchSkdPreviewWithRetry(previewEntry.id);
+          if (requestSeq !== previewRequestSeqRef.current) {
+            return;
+          }
           setPreviewMessage(previewMessageValue);
         } finally {
-          setIsPreparingPreview(false);
+          if (requestSeq === previewRequestSeqRef.current) {
+            setIsPreparingPreview(false);
+          }
         }
       }
       
@@ -261,7 +328,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       setTemplateEditOpen(false);
       toast.success("Template pesan berhasil diperbarui.");
     } catch (error) {
-      console.error("Error saving template:", error);
+      console.error("Error saving template:", serializeErrorForLog(error));
       toast.error(getGuestbookErrorMessage(error, "Gagal menyimpan template"));
     } finally {
       setIsSavingTemplate(false);
@@ -274,34 +341,40 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       return;
     }
 
+    const requestSeq = ++previewRequestSeqRef.current;
+
     try {
       setPreviewEntry(entry);
+      setPreviewMessage("");
+      setPreviewPhone(entry.phone);
+      setPreviewWhatsAppUrl(null);
       setPreviewOpen(true);
       setIsPreparingPreview(true);
 
-      const previewResponse = await queuesApi.previewSkdReminder(entry.id);
-      const previewData = previewResponse.data ?? {};
-      const previewMessageValue =
-        typeof previewData.message === "string" ? previewData.message : "";
+      const {
+        previewMessageValue,
+        previewPhoneValue,
+        previewWhatsappUrl,
+      } = await fetchSkdPreviewWithRetry(entry.id);
+      if (requestSeq !== previewRequestSeqRef.current) {
+        return;
+      }
 
       if (!previewMessageValue.trim()) {
         throw new Error("Template pesan pengingat tidak tersedia.");
       }
 
-      const previewPhoneValue =
-        typeof previewData.phone === "string" ? previewData.phone : entry.phone;
-      const previewWhatsappUrl =
-        typeof previewData.whatsappUrl === "string" ? previewData.whatsappUrl : null;
-
       setPreviewMessage(previewMessageValue);
-      setPreviewPhone(previewPhoneValue);
+      setPreviewPhone(previewPhoneValue || entry.phone);
       setPreviewWhatsAppUrl(previewWhatsappUrl);
     } catch (error) {
-      console.error("Error preparing SKD reminder preview:", error);
+      console.error("Error preparing SKD reminder preview:", serializeErrorForLog(error));
       handlePreviewOpenChange(false);
       toast.error(getGuestbookErrorMessage(error, "Gagal menyiapkan preview pesan"));
     } finally {
-      setIsPreparingPreview(false);
+      if (requestSeq === previewRequestSeqRef.current) {
+        setIsPreparingPreview(false);
+      }
     }
   };
 
@@ -318,7 +391,10 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
         await queuesApi.remindSkdBot(previewEntry.id, previewMessage);
         toast.success("Pengingat SKD berhasil dikirim.");
       } catch (botError) {
-        console.warn("Bot reminder failed, falling back to manual WhatsApp link:", botError);
+        console.warn(
+          "Bot reminder failed, falling back to manual WhatsApp link:",
+          serializeErrorForLog(botError)
+        );
 
         const fallbackResponse = await queuesApi.remindSkd(previewEntry.id, previewMessage);
         const whatsappUrl =
@@ -336,7 +412,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
 
       handlePreviewOpenChange(false);
     } catch (error) {
-      console.error("Error sending SKD reminder:", error);
+      console.error("Error sending SKD reminder:", serializeErrorForLog(error));
       toast.error(getGuestbookErrorMessage(error, "Gagal mengirim pengingat SKD"));
     } finally {
       setIsSendingReminder(false);
@@ -537,12 +613,14 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                   className="border-border"
                   onClick={() => handleExport("xlsx")}
                   disabled={isRefreshing || exportingFormat !== null}
-                  title="Export Excel"
-                  aria-label="Export Excel"
+                  title={exportingFormat === "xlsx" ? "Menyusun export Excel" : "Export Excel"}
+                  aria-label={exportingFormat === "xlsx" ? "Menyusun export Excel" : "Export Excel"}
                 >
-                  <FileSpreadsheet
-                    className={`h-4 w-4 ${exportingFormat === "xlsx" ? "animate-pulse" : ""}`}
-                  />
+                  {exportingFormat === "xlsx" ? (
+                    <RefreshCcw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
@@ -557,17 +635,17 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
             {hasActiveFilters && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-secondary-color">
                 {dateFilter !== "today" && (
-                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                  <Badge variant="outline" className={filterChipClass}>
                     Periode: {dateFilterLabel}
                   </Badge>
                 )}
                 {!isDefaultSort && (
-                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                  <Badge variant="outline" className={filterChipClass}>
                     Urutkan: {sortLabel}
                   </Badge>
                 )}
                 {debouncedSearch && (
-                  <Badge variant="secondary" className="bg-background/80 text-secondary-color">
+                  <Badge variant="outline" className={filterChipClass}>
                     Pencarian: &quot;{debouncedSearch}&quot;
                   </Badge>
                 )}
@@ -610,11 +688,11 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                     <TableRow>
                       <TableHead className="w-20 text-center">No</TableHead>
                       {renderSortableHeader("Pengunjung", "fullName", "text-center")}
-                      {renderSortableHeader("Nomor Antrean", "queueNumber", "text-center")}
+                      {renderSortableHeader("Nomor Antrean", "queueCode", "text-center")}
                       {renderSortableHeader("Layanan", "serviceName", "text-center")}
                       {renderSortableHeader("Tanggal Datang", "createdAt", "text-center")}
-                      <TableHead className="text-center">Petugas</TableHead>
-                      <TableHead className="text-center">Monitoring SKD</TableHead>
+                      {renderSortableHeader("Petugas", "officerName", "text-center")}
+                      {renderSortableHeader("Monitoring SKD", "filledSKD", "text-center")}
                       <TableHead className="w-[140px] text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -706,12 +784,16 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                     <dd className="font-semibold text-primary-color">{selectedEntry.queueCode}</dd>
                   </div>
                   <div className="rounded-md bg-muted/20 px-3 py-2">
-                    <dt className="text-xs text-secondary-color">Nomor urut sistem</dt>
-                    <dd>{selectedEntry.queueNumber}</dd>
-                  </div>
-                  <div className="rounded-md bg-muted/20 px-3 py-2">
                     <dt className="text-xs text-secondary-color">Layanan</dt>
                     <dd className="break-words font-medium">{selectedEntry.serviceName}</dd>
+                  </div>
+                  <div className="rounded-md bg-muted/20 px-3 py-2">
+                    <dt className="text-xs text-secondary-color">Status layanan</dt>
+                    <dd>
+                      <Badge variant="outline" className={selectedServiceStatusClass}>
+                        {selectedServiceStatusLabel}
+                      </Badge>
+                    </dd>
                   </div>
                   <div className="rounded-md bg-muted/20 px-3 py-2">
                     <dt className="text-xs text-secondary-color">Petugas</dt>
@@ -847,7 +929,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                         <div className="rounded-md bg-muted/20 px-3 py-2">
                           <dt className="text-xs text-secondary-color font-medium">Layanan</dt>
                           <dd className="mt-1">
-                            <Badge variant="secondary" className="bg-muted/40 text-primary-color">
+                            <Badge variant="outline" className={serviceInfoBadgeClass}>
                               {selectedEntry.serviceName || "-"}
                             </Badge>
                           </dd>
@@ -871,7 +953,9 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
           <DialogHeader>
             <div className="flex items-center justify-between gap-2">
               <DialogTitle>Pratinjau Pesan WhatsApp</DialogTitle>
-              <span className="text-xs font-medium text-secondary-color">{previewMessage.length} karakter</span>
+              <span className="text-xs font-medium text-secondary-color">
+                {isPreparingPreview ? "Memuat pesan..." : `${previewMessage.length} karakter`}
+              </span>
             </div>
             <DialogDescription>
               Periksa penerima dan preview pesan sebelum mengirim.
@@ -919,9 +1003,16 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                 </div>
                 <div className="flex justify-center rounded-lg border border-border/40 bg-muted/40 p-6">
                   <div className="max-w-xs space-y-2">
-                    <div className="rounded-lg bg-emerald-500 px-4 py-3 text-white text-sm break-words shadow-sm">
-                      {previewMessage}
-                    </div>
+                    {isPreparingPreview ? (
+                      <div className="flex min-h-12 items-center gap-2 rounded-lg bg-muted px-4 py-3 text-sm text-secondary-color shadow-sm">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Menyiapkan pesan pengingat...</span>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-emerald-500 px-4 py-3 text-white text-sm break-words shadow-sm">
+                        {previewMessage}
+                      </div>
+                    )}
                     <div className="text-right text-xs text-secondary-color px-4">
                       Hari ini
                     </div>

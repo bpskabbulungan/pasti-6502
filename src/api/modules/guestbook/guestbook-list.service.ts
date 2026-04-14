@@ -10,7 +10,13 @@ import {
 import { formatGuestQueueCode } from "@shared/utils/guest-queue-code";
 
 type DateFilter = "today" | "all" | "year" | "month" | "quarter" | "semester";
-type GuestbookSortBy = "createdAt" | "fullName" | "serviceName" | "queueNumber";
+type GuestbookSortBy =
+  | "createdAt"
+  | "fullName"
+  | "serviceName"
+  | "queueCode"
+  | "officerName"
+  | "filledSKD";
 type GuestbookSortOrder = "asc" | "desc";
 
 type GuestbookListParams = {
@@ -102,7 +108,9 @@ const parseSortBy = (value?: string | null): GuestbookSortBy => {
     value === "createdAt" ||
     value === "fullName" ||
     value === "serviceName" ||
-    value === "queueNumber"
+    value === "queueCode" ||
+    value === "officerName" ||
+    value === "filledSKD"
   ) {
     return value;
   }
@@ -226,8 +234,21 @@ const buildOrderBy = ({
     return [{ service: { name: sortOrder } }, { createdAt: "desc" }, { id: "asc" }];
   }
 
-  if (sortBy === "queueNumber") {
-    return [{ queueNumber: sortOrder }, { createdAt: "desc" }, { id: "asc" }];
+  if (sortBy === "queueCode") {
+    return [{ service: { name: sortOrder } }, { queueNumber: sortOrder }, { createdAt: "desc" }, { id: "asc" }];
+  }
+
+  if (sortBy === "officerName") {
+    return [
+      { dutyStaff: { name: sortOrder } },
+      { admin: { name: sortOrder } },
+      { createdAt: "desc" },
+      { id: "asc" },
+    ];
+  }
+
+  if (sortBy === "filledSKD") {
+    return [{ filledSKD: sortOrder }, { createdAt: "desc" }, { id: "asc" }];
   }
 
   return [{ createdAt: sortOrder }, { id: sortOrder }];
@@ -335,7 +356,6 @@ const toGuestbookEntry = (queue: GuestbookQueueWithRelations): GuestbookEntry =>
     gender: guest?.gender ?? null,
     lastEducation: guest?.lastEducation ?? null,
     occupation: guest?.occupation ?? null,
-    queueNumber: queue.queueNumber,
     queueCode: formatGuestQueueCode(queue.service, queue.queueNumber),
     status: queue.status,
     serviceName: queue.service.name,

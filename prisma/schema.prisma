@@ -26,26 +26,33 @@ enum ServiceStatus {
 }
 
 model User {
-  id               String               @id @default(uuid())
-  username         String               @unique
-  password         String
-  name             String
-  phone            String?
-  role             Role                 @default(PETUGAS)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  queues           Queue[]              @relation("AdminQueue")
-  dutyQueues       Queue[]              @relation("DutyStaffQueueUser")
-  dutySchedules    DutySchedule[]       @relation("DutyScheduleStaff")
-  dutyReminderLogs DutyReminderLog[]    @relation("DutyReminderLogStaff")
-  analyticsExports AnalyticsExportJob[]
-  notifications    Notification[]
-  notificationReads NotificationRead[]
+  id                         String                @id @default(uuid())
+  username                   String                @unique
+  password                   String
+  name                       String
+  phone                      String?
+  role                       Role                  @default(PETUGAS)
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  queues                     Queue[]               @relation("AdminQueue")
+  dutyQueues                 Queue[]               @relation("DutyStaffQueueUser")
+  dutySchedules              DutySchedule[]        @relation("DutyScheduleStaff")
+  dutyReminderLogs           DutyReminderLog[]     @relation("DutyReminderLogStaff")
+  analyticsExports           AnalyticsExportJob[]
+  notifications              Notification[]
+  notificationReads          NotificationRead[]
+  sigapSyncLogsTriggered     SigapSyncLog[]        @relation("SigapSyncTriggeredBy")
+  monthlySchedulesGenerated  MonthlySchedule[]     @relation("MonthlyScheduleGeneratedBy")
+  officerAvailabilityCreated OfficerAvailability[] @relation("OfficerAvailabilityCreatedBy")
+  reshuffleLogsPerformed     ReshuffleLog[]        @relation("ReshufflePerformedBy")
+  swapRequestsRequested      SwapRequest[]         @relation("SwapRequestedBy")
+  swapRequestsApproved       SwapRequest[]         @relation("SwapApprovedBy")
 }
 
 model Service {
   id        String        @id @default(uuid())
   name      String
+  code      String        @unique
   status    ServiceStatus @default(ACTIVE)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -113,30 +120,88 @@ enum AnalyticsExportFormat {
   PDF
 }
 
+enum PstOfficerEmploymentStatus {
+  MASUK
+  CUTI
+  SAKIT
+  DINAS
+  NONAKTIF
+  UNKNOWN
+}
+
+enum PstOfficerSyncStatus {
+  SYNCED
+  FAILED
+  SKIPPED
+}
+
+enum SigapSyncResult {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum PstScheduleStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum PstSlotRole {
+  PST
+  WFO
+}
+
+enum PstScheduleDetailStatus {
+  ASSIGNED
+  UNASSIGNED
+  SWAPPED
+  REPLACED
+}
+
+enum OfficerUnavailableType {
+  CUTI
+  SAKIT
+  DINAS
+  LAINNYA
+}
+
+enum ReshuffleActionType {
+  AUTO_REPLACE
+  SWAP
+  MANUAL_OVERRIDE
+}
+
+enum SwapRequestStatus {
+  PENDING
+  APPLIED
+  REJECTED
+}
+
 model Queue {
-  id           String      @id @default(uuid())
-  queueNumber  Int
-  status       QueueStatus @default(WAITING)
-  queueDate    DateTime    @default(now())
-  visitorId    String
-  visitor      Visitor     @relation(fields: [visitorId], references: [id])
-  guestId      String?
-  guest        Guest?      @relation(fields: [guestId], references: [id])
-  serviceId    String
-  service      Service     @relation(fields: [serviceId], references: [id])
-  adminId      String?
-  admin        User?       @relation("AdminQueue", fields: [adminId], references: [id])
-  dutyStaffId  String?
-  dutyStaff    User?       @relation("DutyStaffQueueUser", fields: [dutyStaffId], references: [id])
-  startTime    DateTime?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  tempUuid     String?     @unique
-  filledSKD    Boolean     @default(false)
-  serviceRating Int?
-  serviceFeedback String?  @db.Text
+  id                  String      @id @default(uuid())
+  queueNumber         Int
+  status              QueueStatus @default(WAITING)
+  queueDate           DateTime    @default(now())
+  visitorId           String
+  visitor             Visitor     @relation(fields: [visitorId], references: [id])
+  guestId             String?
+  guest               Guest?      @relation(fields: [guestId], references: [id])
+  serviceId           String
+  service             Service     @relation(fields: [serviceId], references: [id])
+  adminId             String?
+  admin               User?       @relation("AdminQueue", fields: [adminId], references: [id])
+  dutyStaffId         String?
+  dutyStaff           User?       @relation("DutyStaffQueueUser", fields: [dutyStaffId], references: [id])
+  startTime           DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  tempUuid            String?     @unique
+  filledSKD           Boolean     @default(false)
+  serviceRating       Int?
+  serviceFeedback     String?     @db.Text
   feedbackSubmittedAt DateTime?
-  trackingLink String?     @unique
+  trackingLink        String?     @unique
 
   @@unique([queueDate, queueNumber])
   @@index([visitorId])
@@ -276,15 +341,15 @@ model TempVisitorLink {
 }
 
 model Notification {
-  id        String   @id @default(uuid())
+  id        String             @id @default(uuid())
   type      String // NEW_QUEUE, REMINDER_SKD, etc.
   title     String
   message   String
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isRead    Boolean            @default(false)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
   userId    String? // Optional, if notification is targeted to specific user
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User?              @relation(fields: [userId], references: [id])
   reads     NotificationRead[]
 
   @@index([userId])
@@ -325,4 +390,176 @@ model Guest {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   queues        Queue[]
+}
+
+model PstOfficerCandidate {
+  id                String                     @id @default(uuid())
+  sigapContactId    String                     @unique
+  sigapUsername     String?
+  name              String
+  whatsappNumber    String?
+  employmentStatus  PstOfficerEmploymentStatus @default(UNKNOWN)
+  sourceStatusRaw   String?
+  isActiveCandidate Boolean                    @default(true)
+  syncStatus        PstOfficerSyncStatus       @default(SYNCED)
+  syncMessage       String?
+  lastSyncedAt      DateTime?
+  priorityNextMonth Boolean                    @default(false)
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  availabilities    OfficerAvailability[]
+  scheduleDetails   ScheduleDetail[]
+  assignmentHistory AssignmentHistory[]
+  reshuffleOldLogs  ReshuffleLog[]             @relation("ReshuffleOldOfficer")
+  reshuffleNewLogs  ReshuffleLog[]             @relation("ReshuffleNewOfficer")
+
+  @@index([isActiveCandidate, employmentStatus])
+  @@index([sigapUsername])
+}
+
+model SigapSyncLog {
+  id              String          @id @default(uuid())
+  startedAt       DateTime        @default(now())
+  finishedAt      DateTime?
+  success         Boolean         @default(false)
+  result          SigapSyncResult @default(FAILED)
+  totalFetched    Int             @default(0)
+  totalProcessed  Int             @default(0)
+  totalSaved      Int             @default(0)
+  totalFailed     Int             @default(0)
+  totalDuplicates Int             @default(0)
+  message         String?
+  errorDetail     String?
+  rawSummary      Json?
+  triggeredById   String?
+  triggeredBy     User?           @relation("SigapSyncTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([createdAt])
+}
+
+model MonthlySchedule {
+  id                  String              @id @default(uuid())
+  month               Int
+  year                Int
+  status              PstScheduleStatus   @default(DRAFT)
+  generatedAt         DateTime            @default(now())
+  generatedById       String?
+  generatedBy         User?               @relation("MonthlyScheduleGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  holidayCalendar     Json
+  summary             Json?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  details             ScheduleDetail[]
+  assignmentHistories AssignmentHistory[]
+  reshuffleLogs       ReshuffleLog[]
+  swapRequests        SwapRequest[]
+
+  @@unique([month, year])
+  @@index([year, month])
+}
+
+model ScheduleDetail {
+  id                  String                  @id @default(uuid())
+  monthlyScheduleId   String
+  monthlySchedule     MonthlySchedule         @relation(fields: [monthlyScheduleId], references: [id], onDelete: Cascade)
+  scheduleDate        DateTime
+  weekOfMonth         Int
+  weekday             Int
+  slotRole            PstSlotRole
+  status              PstScheduleDetailStatus @default(ASSIGNED)
+  officerId           String?
+  officer             PstOfficerCandidate?    @relation(fields: [officerId], references: [id], onDelete: SetNull)
+  isHoliday           Boolean                 @default(false)
+  holidayName         String?
+  notes               String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  assignmentHistory   AssignmentHistory[]
+  reshuffleFirstLogs  ReshuffleLog[]          @relation("ReshuffleFirstScheduleDetail")
+  reshuffleSecondLogs ReshuffleLog[]          @relation("ReshuffleSecondScheduleDetail")
+  firstSwapRequests   SwapRequest[]           @relation("FirstSwapScheduleDetail")
+  secondSwapRequests  SwapRequest[]           @relation("SecondSwapScheduleDetail")
+
+  @@unique([monthlyScheduleId, scheduleDate, slotRole])
+  @@index([officerId, scheduleDate])
+  @@index([scheduleDate])
+}
+
+model OfficerAvailability {
+  id          String                 @id @default(uuid())
+  officerId   String
+  officer     PstOfficerCandidate    @relation(fields: [officerId], references: [id], onDelete: Cascade)
+  date        DateTime
+  type        OfficerUnavailableType @default(LAINNYA)
+  reason      String?
+  createdById String?
+  createdBy   User?                  @relation("OfficerAvailabilityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([officerId, date])
+  @@index([date])
+}
+
+model AssignmentHistory {
+  id                String              @id @default(uuid())
+  officerId         String
+  officer           PstOfficerCandidate @relation(fields: [officerId], references: [id], onDelete: Cascade)
+  monthlyScheduleId String?
+  monthlySchedule   MonthlySchedule?    @relation(fields: [monthlyScheduleId], references: [id], onDelete: SetNull)
+  scheduleDetailId  String?
+  scheduleDetail    ScheduleDetail?     @relation(fields: [scheduleDetailId], references: [id], onDelete: SetNull)
+  scheduleDate      DateTime
+  month             Int
+  year              Int
+  slotRole          PstSlotRole
+  score             Float?
+  createdAt         DateTime            @default(now())
+
+  @@index([officerId, scheduleDate])
+  @@index([year, month])
+}
+
+model ReshuffleLog {
+  id                     String               @id @default(uuid())
+  monthlyScheduleId      String
+  monthlySchedule        MonthlySchedule      @relation(fields: [monthlyScheduleId], references: [id], onDelete: Cascade)
+  actionType             ReshuffleActionType
+  firstScheduleDetailId  String?
+  firstScheduleDetail    ScheduleDetail?      @relation("ReshuffleFirstScheduleDetail", fields: [firstScheduleDetailId], references: [id], onDelete: SetNull)
+  secondScheduleDetailId String?
+  secondScheduleDetail   ScheduleDetail?      @relation("ReshuffleSecondScheduleDetail", fields: [secondScheduleDetailId], references: [id], onDelete: SetNull)
+  oldOfficerId           String?
+  oldOfficer             PstOfficerCandidate? @relation("ReshuffleOldOfficer", fields: [oldOfficerId], references: [id], onDelete: SetNull)
+  newOfficerId           String?
+  newOfficer             PstOfficerCandidate? @relation("ReshuffleNewOfficer", fields: [newOfficerId], references: [id], onDelete: SetNull)
+  reason                 String?
+  performedById          String?
+  performedBy            User?                @relation("ReshufflePerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+  createdAt              DateTime             @default(now())
+
+  @@index([monthlyScheduleId, createdAt])
+}
+
+model SwapRequest {
+  id                     String            @id @default(uuid())
+  monthlyScheduleId      String
+  monthlySchedule        MonthlySchedule   @relation(fields: [monthlyScheduleId], references: [id], onDelete: Cascade)
+  firstScheduleDetailId  String
+  firstScheduleDetail    ScheduleDetail    @relation("FirstSwapScheduleDetail", fields: [firstScheduleDetailId], references: [id], onDelete: Cascade)
+  secondScheduleDetailId String
+  secondScheduleDetail   ScheduleDetail    @relation("SecondSwapScheduleDetail", fields: [secondScheduleDetailId], references: [id], onDelete: Cascade)
+  status                 SwapRequestStatus @default(PENDING)
+  requestedById          String?
+  requestedBy            User?             @relation("SwapRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  approvedById           String?
+  approvedBy             User?             @relation("SwapApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  reason                 String?
+  appliedAt              DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  @@index([monthlyScheduleId, status])
 }

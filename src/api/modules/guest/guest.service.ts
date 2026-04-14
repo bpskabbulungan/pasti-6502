@@ -33,6 +33,9 @@ type GuestFeedbackInput = {
   comment?: string;
 };
 
+const hashPayload = (payload: unknown) =>
+  createHash("sha1").update(JSON.stringify(payload)).digest("hex");
+
 export async function listActiveGuestServices() {
   const services = await prisma.service.findMany({
     where: { status: ServiceStatus.ACTIVE },

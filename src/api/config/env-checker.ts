@@ -17,3 +17,22 @@ export const checkWhatsAppBotEnv = (): {
 
 	return { isValid: true, message: "" };
 };
+
+export const checkSigapEnv = (): {
+	isValid: boolean;
+	message: string;
+} => {
+	const baseUrl = process.env.SIGAP_BASE_URL;
+	const username = process.env.SIGAP_USERNAME;
+	const password = process.env.SIGAP_PASSWORD;
+
+	if (!baseUrl || !username || !password) {
+		return {
+			isValid: false,
+			message:
+				"Variabel lingkungan SIGAP belum lengkap. Tambahkan SIGAP_BASE_URL, SIGAP_USERNAME, dan SIGAP_PASSWORD pada environment server.",
+		};
+	}
+
+	return { isValid: true, message: "" };
+};

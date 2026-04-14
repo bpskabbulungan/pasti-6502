@@ -1,15 +1,22 @@
-type ServiceInfo = { name?: string } | null | undefined;
+import {
+	DEFAULT_SERVICE_CODE,
+	getServiceCodeByName,
+	normalizeServiceCode,
+} from "@/shared/constants/service-catalog";
 
-const DEFAULT_PREFIX = "K";
+type ServiceInfo = { name?: string; code?: string } | null | undefined;
 
 export function getQueuePrefix(serviceName: ServiceInfo): string {
-	if (!serviceName?.name) {
-		return DEFAULT_PREFIX;
+	const persistedCode = serviceName?.code ? normalizeServiceCode(serviceName.code) : "";
+	if (persistedCode) {
+		return persistedCode;
 	}
 
-	// Use first letter of service name as prefix
-	const firstLetter = serviceName.name.charAt(0).toUpperCase();
-	return /^[A-Z]$/.test(firstLetter) ? firstLetter : DEFAULT_PREFIX;
+	if (!serviceName?.name) {
+		return DEFAULT_SERVICE_CODE;
+	}
+
+	return getServiceCodeByName(serviceName.name);
 }
 
 export function formatGuestQueueCode(

@@ -5,14 +5,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Role } from "@/shared/constants/enums";
 import Link from "next/link";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { LiveStatusBadge } from "@/components/shared/feedback/live-status-badge";
+import { DashboardMetricCard } from "@/features/dashboard/components/dashboard-metric-card";
 import { DashboardPageHeader } from "@/features/dashboard/components/layout/dashboard-page-header";
 import { CheckCircle, Clock3, Hourglass, RefreshCcw, Settings, Users, XCircle } from "lucide-react";
 import DashboardSkeleton from "@/features/dashboard/components/skeletons/dashboard-skeleton";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { dashboardApi } from "@/services/api/dashboard";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import type { DashboardStatsResponse } from "@shared/types/dashboard";
 import type { ErrorResponse } from "@shared/types/api";
 
@@ -54,7 +56,7 @@ export default function DashboardPage({
     fallbackFetchedAt: initialFetchedAt,
     refreshInterval: 30_000,
     onError: (error) => {
-      console.error("Error fetching stats:", error);
+      console.error("Error fetching stats:", serializeErrorForLog(error));
       toast.error(getErrorMessage(error, "Terjadi kesalahan saat memuat statistik"));
     },
   });
@@ -193,28 +195,16 @@ export default function DashboardPage({
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {metricCards.map((card) => {
-          const Icon = card.icon;
           return (
-            <Card key={card.title} className="h-full border-border/80 bg-card shadow-none">
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                <div className="space-y-1">
-                  <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
-                    {card.title}
-                  </CardTitle>
-                  <div className="text-2xl font-bold text-primary-color md:text-3xl">
-                    {card.value}
-                  </div>
-                </div>
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg border ${card.iconBadgeClassName}`}
-                >
-                  <Icon className={`h-5 w-5 ${card.iconClassName}`} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-secondary-color">{card.description}</p>
-              </CardContent>
-              <CardFooter className="border-t border-border/70 pt-3">
+            <DashboardMetricCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              description={card.description}
+              icon={card.icon}
+              iconClassName={card.iconClassName}
+              iconBadgeClassName={card.iconBadgeClassName}
+              footer={
                 <Button
                   asChild
                   variant="ghost"
@@ -223,75 +213,62 @@ export default function DashboardPage({
                 >
                   <Link href={card.link}>{card.linkLabel}</Link>
                 </Button>
-              </CardFooter>
-            </Card>
+              }
+            />
           );
         })}
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
         {averageCards.map((card) => {
-          const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-border/80 bg-card shadow-none">
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                <div>
-                  <CardTitle className="text-sm font-semibold text-primary-color">
-                    {card.title}
-                  </CardTitle>
-                </div>
-                <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg border ${card.iconBadgeClassName}`}
-                >
-                  <Icon className={`h-4 w-4 ${card.iconClassName}`} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-primary-color md:text-3xl">
+            <DashboardMetricCard
+              key={card.title}
+              title={card.title}
+              value={
+                <>
                   {card.value}{" "}
                   <span className="text-sm font-normal text-secondary-color">menit</span>
-                </div>
-                <p className="mt-2 text-xs text-secondary-color">{card.description}</p>
-              </CardContent>
-            </Card>
+                </>
+              }
+              description={card.description}
+              icon={card.icon}
+              iconClassName={card.iconClassName}
+              iconBadgeClassName={card.iconBadgeClassName}
+              titleClassName="text-sm normal-case tracking-normal text-primary-color"
+              badgeClassName="h-9 w-9"
+              iconSizeClassName="h-4 w-4"
+              contentClassName="pt-0"
+              descriptionClassName="mt-2"
+            />
           );
         })}
       </section>
 
       {currentUser.role === Role.ADMIN && (
         <section className="grid gap-4 md:grid-cols-2">
-          <Card className="border-border/80 bg-card shadow-none">
-            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-semibold text-primary-color">
-                Total Pengunjung Hari Ini
-              </CardTitle>
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-indigo-400/35 bg-indigo-500/10">
-                <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary-color md:text-3xl">
+          <DashboardMetricCard
+            title="Total Pengunjung Hari Ini"
+            value={
+              <>
                 {stats.counts.total}{" "}
                 <span className="text-sm font-normal text-secondary-color">pengunjung</span>
-              </div>
-              <p className="mt-2 text-xs text-secondary-color">
-                Jumlah total pengunjung yang terdaftar hari ini
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="border-border/80 bg-card shadow-none">
-            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-semibold text-primary-color">
-                Pengaturan Sistem
-              </CardTitle>
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-fuchsia-400/35 bg-fuchsia-500/10">
-                <Settings className="h-4 w-4 text-fuchsia-600 dark:text-fuchsia-300" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-xs text-secondary-color">
-                Akses cepat ke halaman konfigurasi sistem
-              </p>
+              </>
+            }
+            description="Jumlah total pengunjung yang terdaftar hari ini"
+            icon={Users}
+            iconClassName="text-indigo-600 dark:text-indigo-300"
+            iconBadgeClassName="border-indigo-400/35 bg-indigo-500/10"
+            titleClassName="text-sm normal-case tracking-normal text-primary-color"
+            badgeClassName="h-9 w-9"
+            iconSizeClassName="h-4 w-4"
+            contentClassName="pt-0"
+            descriptionClassName="mt-2"
+          />
+          <DashboardMetricCard
+            title="Pengaturan Sistem"
+            description="Akses cepat ke halaman konfigurasi sistem"
+            content={
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button asChild variant="outline" size="sm" className="border-border/80 text-xs">
                   <Link href="/dashboard/services">Kelola Layanan</Link>
@@ -309,8 +286,15 @@ export default function DashboardPage({
                   <Link href="/dashboard/analytics">Analisis</Link>
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            }
+            icon={Settings}
+            iconClassName="text-fuchsia-600 dark:text-fuchsia-300"
+            iconBadgeClassName="border-fuchsia-400/35 bg-fuchsia-500/10"
+            titleClassName="text-sm normal-case tracking-normal text-primary-color"
+            badgeClassName="h-9 w-9"
+            iconSizeClassName="h-4 w-4"
+            contentClassName="pt-0"
+          />
         </section>
       )}
     </div>

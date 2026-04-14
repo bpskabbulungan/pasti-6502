@@ -180,14 +180,13 @@ export async function processAnalyticsExportJob(jobId: string) {
   }
 
   try {
-    const exportFormat = job.format === PrismaAnalyticsExportFormat.PDF ? "pdf" : "xlsx";
-    const result = await exportAnalytics(
-      {
-        startDate: job.startDate,
-        endDate: job.endDate,
-      },
-      exportFormat
-    );
+    const exportFormat =
+      job.format === PrismaAnalyticsExportFormat.PDF ? "pdf" : "xlsx";
+
+    const result = await exportAnalytics({
+      startDate: job.startDate,
+      endDate: job.endDate,
+    });
 
     if (!result.ok) {
       await markAnalyticsExportAsFailed(jobId, result.error);
@@ -279,7 +278,7 @@ export async function triggerAnalyticsExportJob(jobId: string) {
 export async function createAnalyticsExportJob(
   requestedById: string,
   range: DateRange,
-  format: "xlsx" | "pdf"
+  format: "xlsx"
 ) {
   if (
     Number.isNaN(range.startDate.getTime()) ||
@@ -320,25 +319,65 @@ export async function createAnalyticsExportJob(
     };
   }
 
-  const job = await prisma.analyticsExportJob.create({
-    data: {
-      requestedById,
-      startDate: range.startDate,
-      endDate: range.endDate,
-      format: format === "pdf" ? PrismaAnalyticsExportFormat.PDF : PrismaAnalyticsExportFormat.XLSX,
-    },
-    select: {
-      id: true,
-      status: true,
-      format: true,
-      createdAt: true,
-      updatedAt: true,
-      completedAt: true,
-      expiresAt: true,
-      errorMessage: true,
-      fileName: true,
-    },
+  const requester = await prisma.user.findUnique({
+    where: { id: requestedById },
+    select: { id: true },
   });
+
+  if (!requester) {
+    return {
+      ok: false as const,
+      status: 401,
+      error: "Sesi pengguna tidak valid. Silakan login ulang.",
+    };
+  }
+
+  let job: {
+    id: string;
+    status: AnalyticsExportStatus;
+    format: PrismaAnalyticsExportFormat;
+    createdAt: Date;
+    updatedAt: Date;
+    completedAt: Date | null;
+    expiresAt: Date | null;
+    errorMessage: string | null;
+    fileName: string | null;
+  };
+
+  try {
+    job = await prisma.analyticsExportJob.create({
+      data: {
+        requestedById,
+        startDate: range.startDate,
+        endDate: range.endDate,
+        format: PrismaAnalyticsExportFormat.XLSX,
+      },
+      select: {
+        id: true,
+        status: true,
+        format: true,
+        createdAt: true,
+        updatedAt: true,
+        completedAt: true,
+        expiresAt: true,
+        errorMessage: true,
+        fileName: true,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "Sesi pengguna tidak valid. Silakan login ulang.",
+      };
+    }
+
+    throw error;
+  }
 
   const enqueueResult = await triggerAnalyticsExportJob(job.id);
   if (!enqueueResult.ok) {

@@ -17,6 +17,7 @@ import * as fs from "fs";
 import * as path from "path";
 import QRCode from "qrcode";
 import crypto from "crypto";
+import { DEFAULT_SERVICE_CATALOG } from "../src/shared/constants/service-catalog";
 
 const prisma = new PrismaClient();
 const staticUuid = process.env.NEXT_PUBLIC_STATIC_UUID;
@@ -468,12 +469,11 @@ async function seedUsers(): Promise<SeededUsers> {
 }
 
 async function seedServices(): Promise<ServiceInfo> {
-  const serviceSeeds = [
-    { name: "Perpustakaan", status: ServiceStatus.ACTIVE },
-    { name: "Konsultasi Statistik", status: ServiceStatus.ACTIVE },
-    { name: "Rekomendasi Statistik", status: ServiceStatus.ACTIVE },
-    { name: "Pelayanan DTSEN", status: ServiceStatus.ACTIVE },
-  ];
+  const serviceSeeds = DEFAULT_SERVICE_CATALOG.map((service) => ({
+    name: service.name,
+    code: service.code,
+    status: ServiceStatus.ACTIVE,
+  }));
 
   await prisma.service.deleteMany({
     where: {
@@ -492,6 +492,7 @@ async function seedServices(): Promise<ServiceInfo> {
       const service = await prisma.service.update({
         where: { id: existingService.id },
         data: {
+          code: seed.code,
           status: seed.status,
         },
         select: {
@@ -503,6 +504,7 @@ async function seedServices(): Promise<ServiceInfo> {
       const service = await prisma.service.create({
         data: {
           name: seed.name,
+          code: seed.code,
           status: seed.status,
         },
         select: {

@@ -59,7 +59,7 @@ export async function PATCH(
 		}
 
 		const body = await req.json();
-		const { name, status } = body;
+		const { name, code, status } = body;
 
 		const statusValue =
 			status === undefined
@@ -68,7 +68,7 @@ export async function PATCH(
 					? "ACTIVE"
 					: "INACTIVE";
 
-		const result = await updateService(id, { name, status: statusValue });
+		const result = await updateService(id, { name, code, status: statusValue });
 
 		if (!result.ok) {
 			return NextResponse.json({ error: result.error }, { status: result.status });

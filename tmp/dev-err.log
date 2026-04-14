@@ -1,0 +1,2 @@
+$ next dev --turbopack
+ ⚠ Port 3000 is in use by process 4612, using available port 3002 instead.

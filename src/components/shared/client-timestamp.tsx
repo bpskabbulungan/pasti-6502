@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { serializeErrorForLog } from "@/lib/error-log";
 
 type ClientTimestampProps = {
     timestamp?: Date | string | null;
@@ -57,7 +58,7 @@ export function ClientTimestamp({
                     setFormattedTime(date.toLocaleString(locale, defaultOptions));
                 }
             } catch (error) {
-                console.error("Error formatting date:", error);
+                console.error("Error formatting date:", serializeErrorForLog(error));
                 setFormattedTime(fallback);
             }
         };

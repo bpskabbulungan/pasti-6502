@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { format } from "date-fns";
 import prisma from "@api/infrastructure/database/prisma";
-import { Prisma } from "@prisma/client";
+import { Gender, LastEducation, Prisma, ServiceStatus } from "@prisma/client";
 import type {
   AnalyticsOfficerServiceFrequency,
   AnalyticsSummary,
@@ -14,6 +14,25 @@ type DateRange = {
 };
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const EMPTY_CATEGORY_LABEL = "Tidak diisi";
+
+const genderLabels: Record<Gender, string> = {
+  [Gender.MALE]: "Laki-Laki",
+  [Gender.FEMALE]: "Perempuan",
+};
+
+const educationLabels: Record<LastEducation, string> = {
+  [LastEducation.SD]: "SD",
+  [LastEducation.SMP]: "SMP",
+  [LastEducation.SMA_SMK]: "SMA / SMK",
+  [LastEducation.D1]: "D1",
+  [LastEducation.D2]: "D2",
+  [LastEducation.D3]: "D3",
+  [LastEducation.D4_S1]: "D4 / S1",
+  [LastEducation.S2]: "S2",
+  [LastEducation.S3]: "S3",
+  [LastEducation.LAINNYA]: "Lainnya",
+};
 
 const hashPayload = (payload: unknown) =>
   createHash("sha256").update(JSON.stringify(payload)).digest("hex");
@@ -79,7 +98,18 @@ export async function getAnalyticsSummary(
   endDate: Date,
   clientHash?: string | null
 ): Promise<AnalyticsSummary> {
-  const [summaryRows, serviceRows, queueTypeRows, officerRows, officerServiceRows, timeRows, dailyRows] =
+  const [
+    summaryRows,
+    serviceRows,
+    queueTypeRows,
+    occupationRows,
+    genderRows,
+    educationRows,
+    officerRows,
+    officerServiceRows,
+    timeRows,
+    dailyRows,
+  ] =
     await Promise.all([
       prisma.$queryRaw<
         Array<{
@@ -100,8 +130,8 @@ export async function getAnalyticsSummary(
             ELSE NULL
           END), 0)) AS averageWaitTimeMinutes,
           ROUND(COALESCE(AVG(CASE
-            WHEN status = 'COMPLETED' AND startTime IS NOT NULL AND endTime IS NOT NULL
-              THEN TIMESTAMPDIFF(MINUTE, startTime, endTime)
+            WHEN status = 'COMPLETED' AND startTime IS NOT NULL
+              THEN TIMESTAMPDIFF(MINUTE, startTime, updatedAt)
             ELSE NULL
           END), 0)) AS averageServiceTimeMinutes,
           MAX(updatedAt) AS dataLastUpdatedAt
@@ -109,19 +139,44 @@ export async function getAnalyticsSummary(
         WHERE queueDate >= ${startDate} AND queueDate < ${endDate}
       `),
       prisma.$queryRaw<Array<{ name: string; count: bigint | number }>>(Prisma.sql`
-        SELECT s.name AS name, COUNT(*) AS count
-        FROM \`Queue\` q
-        INNER JOIN \`Service\` s ON s.id = q.serviceId
-        WHERE q.queueDate >= ${startDate} AND q.queueDate < ${endDate}
-        GROUP BY q.serviceId, s.name
+        SELECT s.name AS name, COUNT(q.id) AS count
+        FROM \`Service\` s
+        LEFT JOIN \`Queue\` q
+          ON q.serviceId = s.id
+          AND q.queueDate >= ${startDate}
+          AND q.queueDate < ${endDate}
+        WHERE s.status = ${ServiceStatus.ACTIVE}
+        GROUP BY s.id, s.name
         ORDER BY count DESC, s.name ASC
       `),
       prisma.$queryRaw<Array<{ queueType: string; count: bigint | number }>>(Prisma.sql`
-        SELECT queueType, COUNT(*) AS count
+        SELECT 'OFFLINE' AS queueType, COUNT(*) AS count
         FROM \`Queue\`
         WHERE queueDate >= ${startDate} AND queueDate < ${endDate}
-        GROUP BY queueType
-        ORDER BY count DESC
+      `),
+      prisma.$queryRaw<Array<{ name: string | null; count: bigint | number }>>(Prisma.sql`
+        SELECT NULLIF(TRIM(v.occupation), '') AS name, COUNT(*) AS count
+        FROM \`Queue\` q
+        INNER JOIN \`Visitor\` v ON v.id = q.visitorId
+        WHERE q.queueDate >= ${startDate} AND q.queueDate < ${endDate}
+        GROUP BY NULLIF(TRIM(v.occupation), '')
+        ORDER BY count DESC, name ASC
+      `),
+      prisma.$queryRaw<Array<{ gender: Gender | null; count: bigint | number }>>(Prisma.sql`
+        SELECT v.gender AS gender, COUNT(*) AS count
+        FROM \`Queue\` q
+        INNER JOIN \`Visitor\` v ON v.id = q.visitorId
+        WHERE q.queueDate >= ${startDate} AND q.queueDate < ${endDate}
+        GROUP BY v.gender
+        ORDER BY count DESC, gender ASC
+      `),
+      prisma.$queryRaw<Array<{ education: LastEducation | null; count: bigint | number }>>(Prisma.sql`
+        SELECT v.lastEducation AS education, COUNT(*) AS count
+        FROM \`Queue\` q
+        INNER JOIN \`Visitor\` v ON v.id = q.visitorId
+        WHERE q.queueDate >= ${startDate} AND q.queueDate < ${endDate}
+        GROUP BY v.lastEducation
+        ORDER BY count DESC, education ASC
       `),
       prisma.$queryRaw<
         Array<{
@@ -137,8 +192,8 @@ export async function getAnalyticsSummary(
           u.name AS officerName,
           COUNT(*) AS completedCount,
           ROUND(COALESCE(AVG(CASE
-            WHEN q.startTime IS NOT NULL AND q.endTime IS NOT NULL
-              THEN TIMESTAMPDIFF(MINUTE, q.startTime, q.endTime)
+            WHEN q.startTime IS NOT NULL
+              THEN TIMESTAMPDIFF(MINUTE, q.startTime, q.updatedAt)
             ELSE NULL
           END), 0)) AS averageServiceTime,
           ROUND(COALESCE(AVG(CASE
@@ -221,60 +276,17 @@ export async function getAnalyticsSummary(
   const completedServices = toNumber(summaryRow.completedServices);
   const canceledServices = toNumber(summaryRow.canceledServices);
   const dataLastUpdatedAt = summaryRow.dataLastUpdatedAt?.toISOString();
+  const averageWaitTimeMinutes = toNumber(summaryRow.averageWaitTimeMinutes);
+  const averageServiceTimeMinutes = toNumber(summaryRow.averageServiceTimeMinutes);
 
-  const hash = hashPayload({
-    range: {
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    },
-    summary: {
-      totalVisitors,
-      completedServices,
-      canceledServices,
-    },
-    dataLastUpdatedAt,
-  });
-  const hasChanges = !clientHash || clientHash !== hash;
-
-  if (!hasChanges) {
-    return {
-      summary: {
-        totalVisitors,
-        completedServices,
-        canceledServices,
-        averageWaitTimeMinutes: 0,
-        averageServiceTimeMinutes: 0,
-      },
-      serviceDistribution: [],
-      queueTypeDistribution: [],
-      officerPerformance: [],
-      officerDetails: [],
-      insights: {
-        mostPopularService: null,
-        mostActiveOfficer: null,
-        onlineVsOffline: {
-          online: 0,
-          offline: 0,
-          onlinePercentage: 0,
-          offlinePercentage: 0,
-        },
-        averageServicesPerOfficer: 0,
-      },
-      selectedPeriod,
-      timeAnalysis: [],
-      dailyTrends: [],
-      dataLastUpdatedAt,
-      hash,
-      hasChanges,
-    };
-  }
+  const serviceDistributionTotal = serviceRows.reduce((total, row) => total + toNumber(row.count), 0);
 
   const serviceDistribution = serviceRows.map((row) => {
     const count = toNumber(row.count);
     return {
       name: row.name,
       count,
-      percentage: toPercentage(count, totalVisitors),
+      percentage: toPercentage(count, serviceDistributionTotal),
     };
   });
 
@@ -282,6 +294,33 @@ export async function getAnalyticsSummary(
     const count = toNumber(row.count);
     return {
       name: row.queueType === "ONLINE" ? "Online" : "Offline",
+      count,
+      percentage: toPercentage(count, totalVisitors),
+    };
+  });
+
+  const occupationDistribution = occupationRows.map((row) => {
+    const count = toNumber(row.count);
+    return {
+      name: row.name?.trim() || EMPTY_CATEGORY_LABEL,
+      count,
+      percentage: toPercentage(count, totalVisitors),
+    };
+  });
+
+  const genderDistribution = genderRows.map((row) => {
+    const count = toNumber(row.count);
+    return {
+      name: row.gender ? genderLabels[row.gender] : EMPTY_CATEGORY_LABEL,
+      count,
+      percentage: toPercentage(count, totalVisitors),
+    };
+  });
+
+  const educationDistribution = educationRows.map((row) => {
+    const count = toNumber(row.count);
+    return {
+      name: row.education ? educationLabels[row.education] : EMPTY_CATEGORY_LABEL,
       count,
       percentage: toPercentage(count, totalVisitors),
     };
@@ -344,25 +383,101 @@ export async function getAnalyticsSummary(
   const queueTypeTotal = onlineCount + offlineCount;
 
   const activeOfficerCount = officerPerformance.filter((item) => item.completedCount > 0).length;
+  const mostPopularService = serviceDistribution.find((item) => item.count > 0) ?? null;
+  const timeAnalysis = timeRows.map((row) => ({
+    hourOfDay: toNumber(row.hourOfDay),
+    count: toNumber(row.count),
+  }));
+  const dailyTrends = dailyRows.map((row) => ({
+    date: format(new Date(row.date), "yyyy-MM-dd"),
+    waiting: toNumber(row.waiting),
+    completed: toNumber(row.completed),
+    canceled: toNumber(row.canceled),
+  }));
+
+  const hash = hashPayload({
+    range: {
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+    },
+    selectedPeriod,
+    summary: {
+      totalVisitors,
+      completedServices,
+      canceledServices,
+      averageWaitTimeMinutes,
+      averageServiceTimeMinutes,
+    },
+    serviceDistribution,
+    queueTypeDistribution,
+    occupationDistribution,
+    genderDistribution,
+    educationDistribution,
+    officerPerformance,
+    officerDetails,
+    timeAnalysis,
+    dailyTrends,
+    dataLastUpdatedAt,
+  });
+  const hasChanges = !clientHash || clientHash !== hash;
+
+  if (!hasChanges) {
+    return {
+      summary: {
+        totalVisitors,
+        completedServices,
+        canceledServices,
+        averageWaitTimeMinutes,
+        averageServiceTimeMinutes,
+      },
+      serviceDistribution: [],
+      queueTypeDistribution: [],
+      occupationDistribution: [],
+      genderDistribution: [],
+      educationDistribution: [],
+      officerPerformance: [],
+      officerDetails: [],
+      insights: {
+        mostPopularService: null,
+        mostActiveOfficer: null,
+        onlineVsOffline: {
+          online: 0,
+          offline: 0,
+          onlinePercentage: 0,
+          offlinePercentage: 0,
+        },
+        averageServicesPerOfficer: 0,
+      },
+      selectedPeriod,
+      timeAnalysis: [],
+      dailyTrends: [],
+      dataLastUpdatedAt,
+      hash,
+      hasChanges,
+    };
+  }
 
   return {
     summary: {
       totalVisitors,
       completedServices,
       canceledServices,
-      averageWaitTimeMinutes: toNumber(summaryRow.averageWaitTimeMinutes),
-      averageServiceTimeMinutes: toNumber(summaryRow.averageServiceTimeMinutes),
+      averageWaitTimeMinutes,
+      averageServiceTimeMinutes,
     },
     serviceDistribution,
     queueTypeDistribution,
+    occupationDistribution,
+    genderDistribution,
+    educationDistribution,
     officerPerformance,
     officerDetails,
     insights: {
-      mostPopularService: serviceDistribution[0]
+      mostPopularService: mostPopularService
         ? {
-            serviceName: serviceDistribution[0].name,
-            count: serviceDistribution[0].count,
-            percentage: serviceDistribution[0].percentage,
+            serviceName: mostPopularService.name,
+            count: mostPopularService.count,
+            percentage: mostPopularService.percentage,
           }
         : null,
       mostActiveOfficer: officerPerformance[0]
@@ -382,16 +497,8 @@ export async function getAnalyticsSummary(
         activeOfficerCount > 0 ? Number((completedServices / activeOfficerCount).toFixed(2)) : 0,
     },
     selectedPeriod,
-    timeAnalysis: timeRows.map((row) => ({
-      hourOfDay: toNumber(row.hourOfDay),
-      count: toNumber(row.count),
-    })),
-    dailyTrends: dailyRows.map((row) => ({
-      date: format(new Date(row.date), "yyyy-MM-dd"),
-      waiting: toNumber(row.waiting),
-      completed: toNumber(row.completed),
-      canceled: toNumber(row.canceled),
-    })),
+    timeAnalysis,
+    dailyTrends,
     dataLastUpdatedAt,
     hash,
     hasChanges,

@@ -4,16 +4,13 @@ import { getToken } from "next-auth/jwt";
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
+  if (path.startsWith("/api/auth/")) {
+    return NextResponse.next();
+  }
+
   if (path.startsWith("/api/")) {
     const traceId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-request-id", traceId);
-
-    const response = NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    });
+    const response = NextResponse.next();
     response.headers.set("x-request-id", traceId);
     return response;
   }

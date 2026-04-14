@@ -9,6 +9,7 @@ import { QueueDisplayControls } from "@/features/queue-display/components/queue-
 import { ServingQueuesPanel } from "@/features/queue-display/components/serving-queues-panel";
 import { useQueueDisplay } from "@/features/queue-display/hooks/use-queue-display";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
+import { serializeErrorForLog } from "@/lib/error-log";
 import { cn } from "@/lib/utils";
 import type { QueueDisplayResponse } from "@shared/types/queue";
 
@@ -97,7 +98,7 @@ export default function QueueDisplayPage() {
         await document.exitFullscreen();
       }
     } catch (fullscreenError) {
-      console.error("Fullscreen toggle failed", fullscreenError);
+      console.error("Fullscreen toggle failed", serializeErrorForLog(fullscreenError));
       toast.error("Browser tidak mendukung mode fullscreen.");
     }
   }, []);

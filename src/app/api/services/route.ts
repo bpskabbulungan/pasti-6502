@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
 		}
 
 		const body = await req.json();
-		const { name } = body;
+		const { name, code } = body;
 
-		const result = await createService({ name });
+		const result = await createService({ name, code });
 
 		if (!result.ok) {
 			return NextResponse.json({ error: result.error }, { status: result.status });
