@@ -317,7 +317,7 @@ export default function QueueManagementPage({
   return (
     <PageContainer>
       <DashboardPageHeader
-        title="Manajemen Antrean"
+        title="Antrean PST BPS Kabupaten Bulungan"
         description="Halaman kelola antrean sesuai layanan petugas PST BPS Kabupaten Bulungan."
         meta={
           <>

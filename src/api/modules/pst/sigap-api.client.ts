@@ -160,6 +160,9 @@ const extractContactsPayload = (payload: unknown): unknown[] => {
   return [];
 };
 
+const looksLikeHtml = (value: unknown) =>
+  typeof value === "string" && /<\s*html|<!doctype html/i.test(value);
+
 const readErrorMessage = (payload: unknown, fallback: string) => {
   const record = asRecord(payload);
   const message = record?.message ?? record?.error;
@@ -211,11 +214,13 @@ export class SigapApiClient {
   private readonly baseUrl: string;
   private readonly loginPath: string;
   private readonly contactsPath: string;
+  private readonly holidaysPath: string;
 
   constructor() {
     this.baseUrl = process.env.SIGAP_BASE_URL?.trim() || "https://sigap.databenuanta.id";
     this.loginPath = process.env.SIGAP_LOGIN_PATH?.trim() || "/api/auth/login";
     this.contactsPath = process.env.SIGAP_CONTACTS_PATH?.trim() || "/api/admin/contacts";
+    this.holidaysPath = process.env.SIGAP_HOLIDAYS_PATH?.trim() || "/api/admin/calendar";
   }
 
   private buildUrl(path: string) {
@@ -300,6 +305,45 @@ export class SigapApiClient {
     });
 
     return extractContactsPayload(payload);
+  }
+
+  async fetchHolidays(auth: SigapLoginResponse): Promise<unknown> {
+    const headers: Record<string, string> = {};
+    if (auth.token) {
+      headers.Authorization = `Bearer ${auth.token}`;
+    }
+    if (auth.cookieHeader) {
+      headers.Cookie = auth.cookieHeader;
+    }
+    const candidates = Array.from(
+      new Set([this.holidaysPath, "/api/admin/calendar", "/api/admin/holidays", "/admin/holidays"])
+    );
+
+    let lastError: unknown = null;
+    for (const path of candidates) {
+      try {
+        const payload = await this.requestJson(this.buildUrl(path), {
+          method: "GET",
+          headers,
+        });
+
+        if (looksLikeHtml(payload)) {
+          continue;
+        }
+
+        return payload;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(
+      "Gagal mengambil kalender hari libur/cuti dari SIGAP. Periksa SIGAP_HOLIDAYS_PATH."
+    );
   }
 }
 

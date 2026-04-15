@@ -19,9 +19,9 @@ export default function GuestThemeSwitch() {
   );
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-xl border border-border/80 bg-background/90 p-1 shadow-sm backdrop-blur">
-      <span className="hidden px-2 text-[11px] font-semibold tracking-wide text-muted-foreground sm:inline">
-        Tampilan
+    <div className="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-background/85 p-1">
+      <span className="hidden px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-secondary-color sm:inline">
+        Tema
       </span>
       <button
         type="button"
@@ -31,7 +31,7 @@ export default function GuestThemeSwitch() {
           "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors",
           mounted && activeTheme === "light"
             ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-secondary-color hover:bg-muted"
+            : "text-secondary-color hover:bg-muted/80"
         )}
       >
         <Sun className="h-3.5 w-3.5" />
@@ -45,7 +45,7 @@ export default function GuestThemeSwitch() {
           "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors",
           mounted && activeTheme === "dark"
             ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-secondary-color hover:bg-muted"
+            : "text-secondary-color hover:bg-muted/80"
         )}
       >
         <Moon className="h-3.5 w-3.5" />

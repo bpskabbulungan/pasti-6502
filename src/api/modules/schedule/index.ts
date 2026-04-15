@@ -10,5 +10,6 @@ export {
   listSchedules,
   removeDutyDayOff,
   runDutyReminder,
+  syncDutyDayOffsFromSigapNow,
   updateDutySettings,
 } from "./schedule.controller";

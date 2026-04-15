@@ -225,9 +225,13 @@ export default function GuestForm() {
   };
 
   const requiredLabelClass = "after:ml-1 after:text-red-500 after:content-['*']";
+  const sectionClassName = "space-y-4 rounded-xl border border-border/80 bg-card/70 p-4 md:p-5";
+  const sectionTitleClassName = "text-sm font-semibold uppercase tracking-wide text-primary-color";
+  const sectionHintClassName = "text-xs text-secondary-color";
   const isSubmitDisabled =
     form.formState.isSubmitting || isServicesLoading || activeServices.length === 0;
-  const canResumeLastQueue = lastQueue && lastQueue.status !== "COMPLETED";
+  const canResumeLastQueue =
+    lastQueue && lastQueue.status !== "COMPLETED" ? lastQueue : null;
 
   const handleResumeLastQueue = () => {
     if (!canResumeLastQueue?.queueId) {
@@ -241,17 +245,17 @@ export default function GuestForm() {
 
   return (
     <div className="space-y-4">
-      <Card className="border border-border/40 bg-card/90 shadow-2xl backdrop-blur">
-        <CardContent>
+      <Card className="border border-border/90 bg-card/92 shadow-[var(--shadow-soft)]">
+        <CardContent className="space-y-6 pb-6 sm:pb-7">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {canResumeLastQueue ? (
-                <section className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4 md:p-5">
+                <section className="space-y-3 rounded-xl border border-primary/25 bg-primary/5 p-4 md:p-5">
                   <div className="space-y-1">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-primary-color">
                       Lanjutkan Antrean
                     </h3>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-secondary-color">
                       Nomor terakhir:{" "}
                       <span className="font-semibold text-foreground">
                         {canResumeLastQueue.queueCode ?? canResumeLastQueue.queueId}
@@ -267,12 +271,12 @@ export default function GuestForm() {
                 </section>
               ) : null}
 
-              <section className="space-y-4 rounded-xl border border-border/70 bg-background/55 p-4 md:p-5">
+              <section className={sectionClassName}>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-color">
+                  <h3 className={sectionTitleClassName}>
                     Data Pribadi
                   </h3>
-                  <p className="text-xs text-muted-foreground">
+                  <p className={sectionHintClassName}>
                     Isi identitas sesuai dokumen resmi untuk memudahkan verifikasi.
                   </p>
                 </div>
@@ -355,12 +359,12 @@ export default function GuestForm() {
                 />
               </section>
 
-              <section className="space-y-4 rounded-xl border border-border/70 bg-background/55 p-4 md:p-5">
+              <section className={sectionClassName}>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-color">
+                  <h3 className={sectionTitleClassName}>
                     Profil Pengunjung
                   </h3>
-                  <p className="text-xs text-muted-foreground">
+                  <p className={sectionHintClassName}>
                     Informasi ini membantu petugas memahami kebutuhan layanan Anda.
                   </p>
                 </div>
@@ -474,12 +478,12 @@ export default function GuestForm() {
                 />
               </section>
 
-              <section className="space-y-4 rounded-xl border border-border/70 bg-background/55 p-4 md:p-5">
+              <section className={sectionClassName}>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-color">
+                  <h3 className={sectionTitleClassName}>
                     Keperluan Kunjungan
                   </h3>
-                  <p className="text-xs text-muted-foreground">
+                  <p className={sectionHintClassName}>
                     {isServicesLoading
                       ? "Memuat daftar pelayanan aktif..."
                       : `Menampilkan ${activeServices.length} pelayanan aktif.`}
@@ -526,11 +530,11 @@ export default function GuestForm() {
                       ) : null}
                       <FormMessage />
                     </FormItem>
-                  )}
+                    )}
                 />
-                <div className="flex flex-col gap-3 rounded-lg border border-border/70 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Pastikan data sudah benar sebelum mengirim agar antrean diproses.
+                <div className="flex flex-col gap-3 rounded-lg border border-border/80 bg-muted/25 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-secondary-color">
+                    Pastikan seluruh data sudah benar sebelum dikirim agar antrean dapat diproses.
                   </p>
                   <Button
                     type="submit"

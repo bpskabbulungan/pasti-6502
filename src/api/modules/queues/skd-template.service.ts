@@ -10,7 +10,7 @@ export async function getSkdTemplate() {
 
 		if (existing) {
 			return {
-				ok: true,
+				ok: true as const,
 				template: existing.template,
 			};
 		}
@@ -24,13 +24,13 @@ export async function getSkdTemplate() {
 		});
 
 		return {
-			ok: true,
+			ok: true as const,
 			template: created.template,
 		};
 	} catch (error) {
 		console.error("Error fetching SKD template:", error);
 		return {
-			ok: false,
+			ok: false as const,
 			error: "Failed to fetch SKD template",
 		};
 	}
@@ -39,7 +39,7 @@ export async function getSkdTemplate() {
 export async function updateSkdTemplate(template: string) {
 	if (!template || !template.trim()) {
 		return {
-			ok: false,
+			ok: false as const,
 			error: "Template cannot be empty",
 		};
 	}
@@ -55,13 +55,13 @@ export async function updateSkdTemplate(template: string) {
 		});
 
 		return {
-			ok: true,
+			ok: true as const,
 			template: updated.template,
 		};
 	} catch (error) {
 		console.error("Error updating SKD template:", error);
 		return {
-			ok: false,
+			ok: false as const,
 			error: "Failed to update SKD template",
 		};
 	}

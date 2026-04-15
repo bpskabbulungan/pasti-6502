@@ -251,7 +251,7 @@ export default function UsersManagementPage() {
     <PageContainer className="dashboard-page">
       <DashboardPageHeader
         title="Kelola Pengguna PASTI"
-        description="Kelola akun petugas PASTI yang terintegrasi dengan SIGAP."
+        description="Halaman untuk mengelola akun petugas PASTI yang terintegrasi dengan SIGAP."
         meta={
           <>
             <span>Terakhir diperbarui: {lastFetchedLabel}</span>

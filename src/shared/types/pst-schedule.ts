@@ -1,6 +1,8 @@
 export type PstSlotRole = "PST" | "WFO";
 export type PstScheduleDetailStatus = "ASSIGNED" | "UNASSIGNED" | "SWAPPED" | "REPLACED";
 export type PstScheduleStatus = "DRAFT" | "PUBLISHED" | "CANCELLED";
+export type PstDocumentStatus = "DRAFT" | "FINAL" | "REVISI";
+export type PstValidationLevel = "OK" | "WARNING" | "ERROR";
 
 export type PstHolidayCalendar = {
   calendar: {
@@ -23,6 +25,7 @@ export type WeeklyScheduleSlot = {
   officerUsername: string | null;
   officerWhatsapp: string | null;
   status: PstScheduleDetailStatus;
+  note: string | null;
 };
 
 export type WeeklyScheduleGroup = {
@@ -39,6 +42,34 @@ export type MonthlyScheduleSummary = {
   unassignedOfficerCount: number;
   unassignedOfficerIds: string[];
   generatedMessage: string;
+  validation?: {
+    overallStatus: PstValidationLevel;
+    items: Array<{
+      code: string;
+      rule: string;
+      status: PstValidationLevel;
+      detail: string;
+    }>;
+  };
+  fairness?: {
+    historyWindowMonths: number;
+    distributionSpread: number;
+    fridaySpread: number;
+    assignedOfficerCount: number;
+    eligibleOfficerCount: number;
+    coverageRate: number;
+    note: string;
+  };
+  audit?: {
+    generatedAt: string;
+    generatedById: string | null;
+    generatedByName: string | null;
+    documentVersion: number;
+    documentStatus: PstDocumentStatus;
+    changeNotes: string;
+    previousScheduleId: string | null;
+    algorithmVersion: string;
+  };
 };
 
 export type MonthlyScheduleResponse = {
@@ -62,6 +93,26 @@ export type MonthlySchedulePdfMeta = {
   generatedAt: string | Date;
   generatedById: string | null;
   downloadUrl: string;
+};
+
+export type PstGenerateAttemptStatus = "PROCESSING" | "SUCCESS" | "FAILED";
+
+export type PstGenerateAttemptLog = {
+  id: string;
+  month: number;
+  year: number;
+  downloadPdf: boolean;
+  forceRegenerate: boolean;
+  allowSameFridayAssignee: boolean;
+  status: PstGenerateAttemptStatus;
+  alreadyExists: boolean | null;
+  errorMessage: string | null;
+  requestedById: string | null;
+  requestedByName: string | null;
+  monthlyScheduleId: string | null;
+  startedAt: string | Date;
+  finishedAt: string | Date | null;
+  createdAt: string | Date;
 };
 
 export type GenerateMonthlyScheduleResponse = {

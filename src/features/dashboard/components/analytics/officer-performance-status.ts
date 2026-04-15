@@ -46,8 +46,11 @@ const STATUS_BY_TONE: Record<OfficerPerformanceTone, OfficerPerformanceStatus> =
   },
 };
 
-const isValidMetric = (value: number | null | undefined) =>
+const isValidMetric = (value: number | null | undefined): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
+
+const isPositiveMetric = (value: number | null | undefined): value is number =>
+  isValidMetric(value) && value > 0;
 
 export const getOfficerPerformanceStatus = (
   input: OfficerPerformanceAssessmentInput
@@ -62,16 +65,19 @@ export const getOfficerPerformanceStatus = (
   if (
     !isValidMetric(averageWaitTime) ||
     !isValidMetric(averageServiceTime) ||
-    !isValidMetric(teamAverageWaitTime) ||
-    !isValidMetric(teamAverageServiceTime) ||
-    teamAverageWaitTime <= 0 ||
-    teamAverageServiceTime <= 0
+    !isPositiveMetric(teamAverageWaitTime) ||
+    !isPositiveMetric(teamAverageServiceTime)
   ) {
     return STATUS_BY_TONE.unknown;
   }
 
-  const waitRatio = averageWaitTime / teamAverageWaitTime;
-  const serviceRatio = averageServiceTime / teamAverageServiceTime;
+  const safeAverageWaitTime = averageWaitTime as number;
+  const safeAverageServiceTime = averageServiceTime as number;
+  const safeTeamAverageWaitTime = teamAverageWaitTime as number;
+  const safeTeamAverageServiceTime = teamAverageServiceTime as number;
+
+  const waitRatio = safeAverageWaitTime / safeTeamAverageWaitTime;
+  const serviceRatio = safeAverageServiceTime / safeTeamAverageServiceTime;
   const combinedRatio = (waitRatio + serviceRatio) / 2;
 
   if (combinedRatio <= 0.9 && waitRatio <= 1 && serviceRatio <= 1) {

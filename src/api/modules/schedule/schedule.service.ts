@@ -1,6 +1,7 @@
 import { DayOffType, DutyCycleStatus, Prisma, ReminderChannel, Role } from "@prisma/client";
 import prisma from "@api/infrastructure/database/prisma";
 import { sendWhatsAppFonnteReminder } from "@api/modules/reminders";
+import { getSigapApiClient, loginToSigap } from "@api/modules/pst/sigap-auth.service";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
 	addOneDayAtStartOfDay,
@@ -20,6 +21,36 @@ import {
 } from "./schedule.helper";
 import { dayOffSchema, scheduleSettingsSchema } from "./schedule.schema";
 import { toDutySettingsViewModel, toDutySummaryViewModel } from "./schedule.view-model";
+
+type SigapHolidayCalendar = {
+  LIBURAN: string[];
+  CUTI_BERSAMA: string[];
+};
+
+type DutyDayOffSyncSummary = {
+  inserted: number;
+  updated: number;
+  removed: number;
+  total: number;
+  sourceTotal: number;
+  skipped: boolean;
+};
+
+const SIGAP_SYNC_DAY_OFF_NOTE = "Sumber data: API SIGAP";
+const SIGAP_HOLIDAY_LABEL = "Libur Nasional";
+const SIGAP_LEAVE_LABEL = "Cuti Bersama";
+const SIGAP_CALENDAR_CACHE_TTL_MS = 10 * 60 * 1000;
+const DUTY_DAY_OFF_SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+let sigapHolidayCalendarCache:
+  | {
+      calendar: SigapHolidayCalendar;
+      expiresAt: number;
+    }
+  | null = null;
+let sigapHolidayCalendarRequest: Promise<SigapHolidayCalendar> | null = null;
+let dutyDayOffSyncRequest: Promise<DutyDayOffSyncSummary> | null = null;
+let lastDutyDayOffSyncAt = 0;
 
 async function getOrCreateDutySettings() {
   const existing = await prisma.dutySettings.findUnique({
@@ -41,7 +72,324 @@ async function getOrCreateDutySettings() {
   });
 }
 
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+};
+
+const tryParseJsonString = (value: unknown): unknown => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return value;
+  }
+
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+};
+
+const toHolidayDateString = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const keys = ["date", "tanggal", "holidayDate", "day", "value"];
+  for (const key of keys) {
+    const raw = record[key];
+    if (typeof raw === "string" && raw.trim()) {
+      return raw.trim();
+    }
+  }
+
+  return null;
+};
+
+const normalizeHolidayValues = (value: unknown): string[] => {
+  const parsed = tryParseJsonString(value);
+
+  if (Array.isArray(parsed)) {
+    return parsed
+      .map((item) => toHolidayDateString(item))
+      .filter((item): item is string => Boolean(item));
+  }
+
+  if (typeof parsed === "string") {
+    return parsed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const parseSigapHolidayCalendar = (payload: unknown): SigapHolidayCalendar => {
+  const normalizedPayload = tryParseJsonString(payload);
+  const rootRecord = asRecord(normalizedPayload);
+  const dataRecord = asRecord(rootRecord?.data);
+  const resultRecord = asRecord(rootRecord?.result);
+  const calendarFromRoot = asRecord(tryParseJsonString(rootRecord?.calendar));
+  const calendarFromData = asRecord(tryParseJsonString(dataRecord?.calendar));
+  const calendarFromResult = asRecord(tryParseJsonString(resultRecord?.calendar));
+
+  const candidates = [
+    rootRecord,
+    calendarFromRoot,
+    dataRecord,
+    calendarFromData,
+    resultRecord,
+    calendarFromResult,
+  ].filter(Boolean) as Array<Record<string, unknown>>;
+
+  let liburan: string[] = [];
+  let cutiBersama: string[] = [];
+
+  for (const candidate of candidates) {
+    liburan = normalizeHolidayValues(candidate.LIBURAN ?? candidate.liburan);
+    cutiBersama = normalizeHolidayValues(
+      candidate.CUTI_BERSAMA ?? candidate.cuti_bersama ?? candidate.cutiBersama
+    );
+
+    if (liburan.length > 0 || cutiBersama.length > 0) {
+      break;
+    }
+  }
+
+  if (liburan.length === 0 && cutiBersama.length === 0) {
+    const sampleKeys = Object.keys(rootRecord ?? {}).slice(0, 8).join(", ");
+    throw new Error(
+      `Format data hari libur/cuti dari SIGAP tidak valid${
+        sampleKeys ? ` (keys: ${sampleKeys})` : ""
+      }`
+    );
+  }
+
+  return {
+    LIBURAN: liburan,
+    CUTI_BERSAMA: cutiBersama,
+  };
+};
+
+const normalizeDmyToIso = (value: string): string | null => {
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+
+  if (day < 1 || month < 1 || month > 12) {
+    return null;
+  }
+
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+
+const getSigapHolidayCalendar = async (options?: { force?: boolean }): Promise<SigapHolidayCalendar> => {
+  const force = Boolean(options?.force);
+  const now = Date.now();
+  if (!force && sigapHolidayCalendarCache && sigapHolidayCalendarCache.expiresAt > now) {
+    return sigapHolidayCalendarCache.calendar;
+  }
+
+  if (sigapHolidayCalendarRequest) {
+    return sigapHolidayCalendarRequest;
+  }
+
+  sigapHolidayCalendarRequest = (async () => {
+    const auth = await loginToSigap();
+    const payload = await getSigapApiClient().fetchHolidays(auth);
+    const calendar = parseSigapHolidayCalendar(payload);
+    sigapHolidayCalendarCache = {
+      calendar,
+      expiresAt: Date.now() + SIGAP_CALENDAR_CACHE_TTL_MS,
+    };
+    return calendar;
+  })().finally(() => {
+    sigapHolidayCalendarRequest = null;
+  });
+
+  return sigapHolidayCalendarRequest;
+};
+
+async function syncDutyDayOffsFromSigap(options?: { force?: boolean }) {
+  const force = Boolean(options?.force);
+  const now = Date.now();
+  if (!force && now - lastDutyDayOffSyncAt < DUTY_DAY_OFF_SYNC_MIN_INTERVAL_MS) {
+    const total = await prisma.dutyDayOff.count();
+    return {
+      inserted: 0,
+      updated: 0,
+      removed: 0,
+      total,
+      sourceTotal: total,
+      skipped: true,
+    } satisfies DutyDayOffSyncSummary;
+  }
+
+  if (dutyDayOffSyncRequest) {
+    return dutyDayOffSyncRequest;
+  }
+
+  dutyDayOffSyncRequest = (async () => {
+    const calendar = await getSigapHolidayCalendar({ force });
+    const settings = await getOrCreateDutySettings();
+
+    const expectedByIsoDate = new Map<
+      string,
+      {
+        type: DayOffType;
+        name: string;
+      }
+    >();
+
+    for (const value of calendar.LIBURAN) {
+      const isoDate = normalizeDmyToIso(value);
+      if (!isoDate) continue;
+      expectedByIsoDate.set(isoDate, {
+        type: DayOffType.HOLIDAY,
+        name: SIGAP_HOLIDAY_LABEL,
+      });
+    }
+
+    for (const value of calendar.CUTI_BERSAMA) {
+      const isoDate = normalizeDmyToIso(value);
+      if (!isoDate) continue;
+      expectedByIsoDate.set(isoDate, {
+        type: DayOffType.LEAVE,
+        name: SIGAP_LEAVE_LABEL,
+      });
+    }
+
+    const expectedEntries = [...expectedByIsoDate.entries()].sort(([left], [right]) =>
+      left.localeCompare(right)
+    );
+    if (expectedEntries.length === 0) {
+      throw new Error("Kalender hari libur/cuti SIGAP kosong");
+    }
+
+    const expectedIsoDates = new Set(expectedEntries.map(([isoDate]) => isoDate));
+
+    const summary = await prisma.$transaction(async (tx) => {
+      const existing = await tx.dutyDayOff.findMany({
+        where: { settingsId: settings.id },
+        select: { id: true, date: true, name: true, type: true, note: true },
+      });
+      const existingByIsoDate = new Map(existing.map((item) => [toIsoDate(item.date), item]));
+      const todayStart = ensureDateAtStartOfDay(new Date());
+
+      const staleIds = existing
+        .filter((item) => {
+          const isoDate = toIsoDate(item.date);
+          if (expectedIsoDates.has(isoDate)) {
+            return false;
+          }
+          // Simpan histori libur/cuti yang sudah lewat agar generate periode lama tetap konsisten.
+          return ensureDateAtStartOfDay(new Date(item.date)).getTime() >= todayStart.getTime();
+        })
+        .map((item) => item.id);
+      const removed = staleIds.length;
+
+      if (staleIds.length > 0) {
+        await tx.dutyDayOff.deleteMany({
+          where: { id: { in: staleIds } },
+        });
+      }
+
+      let inserted = 0;
+      let updated = 0;
+
+      for (const [isoDate, item] of expectedEntries) {
+        const parsed = parseInputDate(isoDate);
+        if (Number.isNaN(parsed.getTime())) {
+          continue;
+        }
+
+        const existingItem = existingByIsoDate.get(isoDate);
+        if (!existingItem) {
+          inserted += 1;
+        } else if (
+          existingItem.name !== item.name ||
+          existingItem.type !== item.type ||
+          existingItem.note !== SIGAP_SYNC_DAY_OFF_NOTE
+        ) {
+          updated += 1;
+        }
+
+        const normalizedDate = ensureDateAtStartOfDay(parsed);
+        await tx.dutyDayOff.upsert({
+          where: { date: normalizedDate },
+          update: {
+            name: item.name,
+            type: item.type,
+            note: SIGAP_SYNC_DAY_OFF_NOTE,
+            settingsId: settings.id,
+          },
+          create: {
+            date: normalizedDate,
+            name: item.name,
+            type: item.type,
+            note: SIGAP_SYNC_DAY_OFF_NOTE,
+            settingsId: settings.id,
+          },
+        });
+      }
+
+      return {
+        inserted,
+        updated,
+        removed,
+        total: expectedEntries.length,
+        sourceTotal: expectedEntries.length,
+        skipped: false,
+      } satisfies DutyDayOffSyncSummary;
+    });
+    lastDutyDayOffSyncAt = Date.now();
+    return summary;
+  })().finally(() => {
+    dutyDayOffSyncRequest = null;
+  });
+
+  return dutyDayOffSyncRequest;
+}
+
 async function checkScheduleDateEligibility(scheduleDate: Date) {
+  try {
+    await syncDutyDayOffsFromSigap();
+  } catch (error) {
+    console.error("Error syncing duty day offs from SIGAP:", error);
+  }
+
   const settings = await getOrCreateDutySettings();
   const workDays = normalizeWorkDays(settings.workDays);
   const weekday = toIsoWeekday(scheduleDate);
@@ -326,6 +674,12 @@ export async function updateDutySettings(payload: unknown) {
 }
 
 export async function listDutyDayOffs(fromParam?: string | null, toParam?: string | null) {
+  try {
+    await syncDutyDayOffsFromSigap();
+  } catch (error) {
+    console.error("Error syncing duty day offs from SIGAP:", error);
+  }
+
   const whereClause: Prisma.DutyDayOffWhereInput = {};
 
   if (fromParam || toParam) {
@@ -350,6 +704,15 @@ export async function listDutyDayOffs(fromParam?: string | null, toParam?: strin
   });
 
   return { ok: true as const, dayOffs };
+}
+
+export async function syncDutyDayOffsFromSigapNow() {
+  const summary = await syncDutyDayOffsFromSigap({ force: true });
+  const dayOffs = await prisma.dutyDayOff.findMany({
+    orderBy: { date: "asc" },
+  });
+
+  return { ok: true as const, summary, dayOffs };
 }
 
 export async function createDutyDayOff(payload: unknown) {

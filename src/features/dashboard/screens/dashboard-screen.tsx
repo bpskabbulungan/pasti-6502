@@ -153,8 +153,8 @@ export default function DashboardPage({
   return (
     <div className="dashboard-page">
       <DashboardPageHeader
-        title="Dashboard"
-        description="Statistik antrean harian dan ringkasan performa layanan."
+        title="Dashboard PASTI"
+        description="Halaman statistik dan ringkasan performa layanan."
         meta={
           <>
             <div className="flex items-center gap-2">

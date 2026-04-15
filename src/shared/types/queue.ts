@@ -28,7 +28,7 @@ export type QueueDetail = {
 	trackingLink?: string | null;
 	tempUuid?: string | null;
 	guestId?: string | null;
-	service: { name: string };
+	service: { name: string; code?: string | null };
 	visitor: { name: string; phone: string; institution: string | null };
 	admin: { name: string } | null;
 	dutyStaff: { name: string } | null;
@@ -60,7 +60,7 @@ export type QueueDisplayResponse = {
 		queueNumber: number;
 		status: QueueStatus;
 		queueType: QueueType;
-		service: { name: string };
+		service: { name: string; code?: string | null };
 		admin: { name: string } | null;
 		dutyStaff?: { name: string } | null;
 		visitor?: { name: string } | null;
@@ -74,7 +74,7 @@ export type QueueDisplayResponse = {
 		queueNumber: number;
 		status: QueueStatus;
 		queueType: QueueType;
-		service: { name: string };
+		service: { name: string; code?: string | null };
 		admin?: { name: string } | null;
 		dutyStaff?: { name: string } | null;
 		visitor?: { name: string } | null;

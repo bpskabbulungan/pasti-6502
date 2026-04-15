@@ -1,11 +1,12 @@
 export type PstSchedulePdfValidationItem = {
   rule: string;
-  passed: boolean;
+  status: "OK" | "WARNING" | "ERROR";
   detail: string;
 };
 
 export type PstSchedulePdfWeekRow = {
   week: number;
+  dateIso: string;
   dayName: string;
   dateLabel: string;
   pstOfficer: string;
@@ -15,17 +16,34 @@ export type PstSchedulePdfWeekRow = {
   hasIssue: boolean;
 };
 
+export type PstSchedulePdfFairnessOfficerRow = {
+  name: string;
+  totalAssignments: string;
+  pstAssignments: string;
+  wfoAssignments: string;
+  fridayAssignments: string;
+  lastAssignedLabel: string;
+};
+
 export type PstSchedulePdfViewModel = {
   title: string;
   monthYearLabel: string;
   generatedAtLabel: string;
   generatedByLabel: string;
-  infoRows: Array<{ label: string; value: string }>;
+  documentVersionLabel: string;
+  revisionCodeLabel: string;
+  documentStatusLabel: string;
+  changeNotes: string;
+  executiveSummaryRows: Array<{ label: string; value: string }>;
   validations: PstSchedulePdfValidationItem[];
   weekRows: PstSchedulePdfWeekRow[];
   selectedOfficerNames: string[];
   unselectedOfficerNames: string[];
+  priorityOfficerNames: string[];
   fairnessNote: string;
+  fairnessSummaryRows: Array<{ label: string; value: string }>;
+  fairnessOfficerRows: PstSchedulePdfFairnessOfficerRow[];
+  rules: string[];
 };
 
 const escapeHtml = (value: string) =>
@@ -36,25 +54,12 @@ const escapeHtml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
-const renderInfoRows = (rows: PstSchedulePdfViewModel["infoRows"]) =>
+const renderSummaryRows = (rows: PstSchedulePdfViewModel["executiveSummaryRows"]) =>
   rows
     .map(
       (row) =>
         `<tr><td class="label">${escapeHtml(row.label)}</td><td class="value">${escapeHtml(row.value)}</td></tr>`
     )
-    .join("");
-
-const renderValidationRows = (rows: PstSchedulePdfValidationItem[]) =>
-  rows
-    .map((row) => {
-      const statusLabel = row.passed ? "OK" : "PERLU TINDAKAN";
-      const statusClass = row.passed ? "status-ok" : "status-issue";
-      return `<tr>
-  <td>${escapeHtml(row.rule)}</td>
-  <td class="${statusClass}">${statusLabel}</td>
-  <td>${escapeHtml(row.detail)}</td>
-</tr>`;
-    })
     .join("");
 
 const renderWeekRows = (rows: PstSchedulePdfWeekRow[]) =>
@@ -85,51 +90,37 @@ export const buildPstSchedulePdfHtmlTemplate = (view: PstSchedulePdfViewModel) =
   <style>
     body { font-family: Arial, sans-serif; font-size: 12px; color: #111827; margin: 20px; }
     h1, h2, h3 { margin: 0; }
-    .subtitle { margin: 6px 0 14px 0; color: #4b5563; }
+    p { margin: 6px 0 0 0; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     th, td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: top; }
     th { background: #e5e7eb; text-align: left; }
-    .meta { margin-bottom: 14px; }
-    .meta td.label { width: 190px; color: #4b5563; font-weight: 600; }
+    .section { margin-top: 18px; }
+    .meta td.label { width: 220px; color: #4b5563; font-weight: 600; }
     .meta td.value { font-weight: 700; }
     .status-ok { color: #065f46; font-weight: 700; }
-    .status-issue { color: #991b1b; font-weight: 700; }
+    .status-warning { color: #92400e; font-weight: 700; }
+    .status-error { color: #991b1b; font-weight: 700; }
     .holiday td { background: #f3f4f6; }
-    .issue td { background: #fff1f2; }
-    .section { margin-top: 18px; }
+    .issue td { background: #fff7ed; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     ol { margin: 6px 0 0 20px; }
-    p { margin: 6px 0 0 0; }
   </style>
 </head>
 <body>
   <h1>${escapeHtml(view.title)}</h1>
-  <p class="subtitle">Bulan/Tahun: ${escapeHtml(view.monthYearLabel)} | Generate: ${escapeHtml(view.generatedAtLabel)} | Oleh: ${escapeHtml(view.generatedByLabel)}</p>
-
-  <table class="meta">
-    <tbody>
-      ${renderInfoRows(view.infoRows)}
-    </tbody>
-  </table>
+  <p>Generate: ${escapeHtml(view.generatedAtLabel)}</p>
 
   <div class="section">
-    <h2>Validasi Otomatis</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Rule</th>
-          <th>Status</th>
-          <th>Detail</th>
-        </tr>
-      </thead>
+    <h2>Ringkasan</h2>
+    <table class="meta">
       <tbody>
-        ${renderValidationRows(view.validations)}
+        ${renderSummaryRows(view.executiveSummaryRows)}
       </tbody>
     </table>
   </div>
 
   <div class="section">
-    <h2>Kalender Jadwal Per Minggu</h2>
+    <h2>Tabel Jadwal</h2>
     <table>
       <thead>
         <tr>
@@ -159,6 +150,8 @@ export const buildPstSchedulePdfHtmlTemplate = (view: PstSchedulePdfViewModel) =
         ${renderNameList(view.unselectedOfficerNames, "Semua petugas aktif sudah terpilih")}
       </div>
     </div>
+    <h3>Prioritas Bulan Berikutnya</h3>
+    ${renderNameList(view.priorityOfficerNames, "Tidak ada prioritas tambahan")}
     <p><strong>Catatan fairness:</strong> ${escapeHtml(view.fairnessNote)}</p>
   </div>
 </body>

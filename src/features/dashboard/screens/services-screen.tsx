@@ -251,8 +251,8 @@ export default function ServicesPage() {
   return (
     <PageContainer className="dashboard-page">
       <DashboardPageHeader
-        title="Kelola Layanan"
-        description="Pengelolaan layanan aktif/nonaktif beserta pembaruan cepat."
+        title="Kelola Layanan PASTI"
+        description="Halaman untuk mengelola layanan PASTI."
         meta={
           <>
             <span>Terakhir diperbarui: {lastFetchedLabel}</span>

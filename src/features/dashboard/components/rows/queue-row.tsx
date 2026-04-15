@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { formatDisplayDate } from "@/lib/date-format";
+import { formatGuestQueueCode } from "@/shared/utils/guest-queue-code";
 import type { QueueDetail } from "@shared/types/queue";
 
 type QueueTableRowProps = {
@@ -19,21 +20,6 @@ type QueueTableRowProps = {
   onComplete: (queue: QueueDetail) => void;
   onOpenCancel: (queue: QueueDetail) => void;
   onRevert: (queue: QueueDetail) => void;
-};
-
-const formatServiceQueueCode = (serviceName: string, queueNumber: number) => {
-  const trimmed = serviceName.toLowerCase();
-  const prefix = trimmed.includes("dtsen")
-    ? "D"
-    : trimmed.includes("perpust")
-      ? "P"
-      : trimmed.includes("konsul")
-        ? "K"
-        : trimmed.includes("rekomen")
-          ? "R"
-          : "L";
-  const padded = queueNumber.toString().padStart(3, "0");
-  return `${prefix}-${padded}`;
 };
 
 const queueStatusLabel = {
@@ -130,7 +116,13 @@ function QueueTableRowComponent({
   onOpenCancel,
   onRevert,
 }: QueueTableRowProps) {
-  const queueCode = formatServiceQueueCode(queue.service.name, queue.queueNumber);
+  const queueCode = formatGuestQueueCode(
+    {
+      name: queue.service.name,
+      code: queue.service.code ?? undefined,
+    },
+    queue.queueNumber
+  );
   const queueDate = formatDisplayDate(queue.createdAt);
   const trackingPath = queue.tempUuid
     ? `/visitor-form/${queue.tempUuid}`

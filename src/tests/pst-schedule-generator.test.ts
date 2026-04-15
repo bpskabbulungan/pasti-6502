@@ -43,15 +43,27 @@ test("scoreCandidate penalizes dense assignment history", () => {
 
   const lowLoadScore = scoreCandidate(candidate, slot, {
     monthlyAssignmentCount: 0,
-    fridayRoleCount: 0,
-    totalHistoryCount: 0,
+    monthlyRoleCount: 0,
+    monthlyFridayRoleCount: 0,
+    monthlyFridayTotalCount: 0,
+    threeMonthAssignmentCount: 0,
+    threeMonthFridayCount: 0,
+    previouslyAssignedLastMonth: true,
+    historicalPriorityFlag: false,
+    closestAssignmentDistanceDays: null,
     lastAssignedAt: null,
   });
 
   const highLoadScore = scoreCandidate(candidate, slot, {
     monthlyAssignmentCount: 3,
-    fridayRoleCount: 2,
-    totalHistoryCount: 8,
+    monthlyRoleCount: 2,
+    monthlyFridayRoleCount: 2,
+    monthlyFridayTotalCount: 2,
+    threeMonthAssignmentCount: 8,
+    threeMonthFridayCount: 4,
+    previouslyAssignedLastMonth: true,
+    historicalPriorityFlag: false,
+    closestAssignmentDistanceDays: 1,
     lastAssignedAt: new Date("2026-05-19T00:00:00.000Z"),
   });
 
@@ -73,6 +85,18 @@ test("pickCandidateWeightedRandom handles empty and non-empty candidates", () =>
       },
       score: 10,
       weight: 10,
+      context: {
+        monthlyAssignmentCount: 0,
+        monthlyRoleCount: 0,
+        monthlyFridayRoleCount: 0,
+        monthlyFridayTotalCount: 0,
+        threeMonthAssignmentCount: 0,
+        threeMonthFridayCount: 0,
+        previouslyAssignedLastMonth: true,
+        historicalPriorityFlag: false,
+        closestAssignmentDistanceDays: null,
+        lastAssignedAt: null,
+      },
     },
   ]);
 

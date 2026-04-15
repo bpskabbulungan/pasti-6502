@@ -126,8 +126,8 @@ export default function QRCodePage() {
   return (
     <PageContainer className="dashboard-page">
       <DashboardPageHeader
-        title="QR Code Buku Tamu"
-        description="Cetak QR code ini dan tempel di area layanan untuk memudahkan pengunjung mengakses buku tamu digital."
+        title="QR Code Buku Tamu PST BPS Kabupaten Bulungan"
+        description="Halaman untuk menampilkan dan mengelola QR Code buku tamu digital."
       />
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,360px)_1fr]">

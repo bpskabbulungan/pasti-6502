@@ -20,6 +20,8 @@ export const generateMonthlyScheduleSchema = monthYearSchema.extend({
   forceRegenerate: z.boolean().optional(),
   allowSameFridayAssignee: z.boolean().optional(),
   holidayCalendar: holidayCalendarSchema.optional(),
+  documentStatus: z.enum(["DRAFT", "FINAL", "REVISI"]).optional(),
+  changeNotes: z.string().trim().max(500).optional(),
   downloadPdf: z.boolean().optional(),
 });
 

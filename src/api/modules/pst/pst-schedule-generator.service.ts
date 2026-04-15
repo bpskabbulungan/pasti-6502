@@ -1,4 +1,5 @@
 import {
+  DayOffType,
   Prisma,
   PstOfficerEmploymentStatus,
   PstScheduleDetailStatus,
@@ -11,8 +12,11 @@ import prisma from "@api/infrastructure/database/prisma";
 import defaultHolidayCalendar from "@shared/constants/pst-holiday-calendar-2026.json";
 import { startOfDayInTimeZone, toIsoDateInTimeZone } from "@shared/utils/date-boundary";
 import type {
+  MonthlyScheduleSummary,
   MonthlyScheduleResponse,
+  PstDocumentStatus,
   PstHolidayCalendar,
+  PstValidationLevel,
   WeeklyScheduleGroup,
   WeeklyScheduleSlot,
 } from "@shared/types/pst-schedule";
@@ -35,8 +39,14 @@ type HolidayEntry = {
 
 type CandidateScoringContext = {
   monthlyAssignmentCount: number;
-  fridayRoleCount: number;
-  totalHistoryCount: number;
+  monthlyRoleCount: number;
+  monthlyFridayRoleCount: number;
+  monthlyFridayTotalCount: number;
+  threeMonthAssignmentCount: number;
+  threeMonthFridayCount: number;
+  previouslyAssignedLastMonth: boolean;
+  closestAssignmentDistanceDays: number | null;
+  historicalPriorityFlag: boolean;
   lastAssignedAt: Date | null;
 };
 
@@ -51,6 +61,25 @@ type CandidateWithScore = {
   };
   score: number;
   weight: number;
+  context: CandidateScoringContext;
+};
+
+type FairnessValidationItem = {
+  code: string;
+  rule: string;
+  status: PstValidationLevel;
+  detail: string;
+};
+
+type MonthlySpecialSchedulingRule = {
+  year: number;
+  month: number;
+  wfoStartDateIso: string;
+  fixedAssignments: Array<{
+    dateIso: string;
+    role: PstSlotRole;
+    officerName: string;
+  }>;
 };
 
 const DAY_LABELS: Record<number, string> = {
@@ -61,6 +90,81 @@ const DAY_LABELS: Record<number, string> = {
   5: "Jumat",
   6: "Sabtu",
   7: "Minggu",
+};
+
+const FAIRNESS_HISTORY_WINDOW_MONTHS = 3;
+const FAIRNESS_ALGORITHM_VERSION = "v2.0-historical-3m";
+const FRIDAY_ASSIGNMENT_HARD_CAP_PER_OFFICER = 1;
+
+const APRIL_2026_SPECIAL_SCHEDULING_RULE: MonthlySpecialSchedulingRule = {
+  year: 2026,
+  month: 4,
+  wfoStartDateIso: "2026-04-10",
+  fixedAssignments: [
+    {
+      dateIso: "2026-04-10",
+      role: PstSlotRole.PST,
+      officerName: "Afnita Rahma",
+    },
+    {
+      dateIso: "2026-04-10",
+      role: PstSlotRole.WFO,
+      officerName: "Novanni Indi Pradana",
+    },
+  ],
+};
+
+const ROLE_BASED_EXCLUDED_NAMES: Record<PstSlotRole, string[]> = {
+  [PstSlotRole.PST]: [
+    "Yuda Agus Irianto",
+    "Ari Susilowati",
+    "Idhamsyah",
+    "Zulkifli",
+    "Marinda Saga",
+  ],
+  [PstSlotRole.WFO]: [
+    "Yuda Agus Irianto",
+    "Zulkifli",
+    "Marinda Saga",
+    "Jusman",
+    "Anuar",
+  ],
+};
+
+const normalizeOfficerName = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+
+const EXCLUDED_NAME_SET_BY_ROLE: Record<PstSlotRole, Set<string>> = {
+  [PstSlotRole.PST]: new Set(
+    ROLE_BASED_EXCLUDED_NAMES[PstSlotRole.PST].map(normalizeOfficerName)
+  ),
+  [PstSlotRole.WFO]: new Set(
+    ROLE_BASED_EXCLUDED_NAMES[PstSlotRole.WFO].map(normalizeOfficerName)
+  ),
+};
+
+const isOfficerExcludedForRole = (officerName: string, role: PstSlotRole) =>
+  EXCLUDED_NAME_SET_BY_ROLE[role].has(normalizeOfficerName(officerName));
+
+const getMonthlySpecialSchedulingRule = (year: number, month: number) => {
+  if (
+    year === APRIL_2026_SPECIAL_SCHEDULING_RULE.year &&
+    month === APRIL_2026_SPECIAL_SCHEDULING_RULE.month
+  ) {
+    return APRIL_2026_SPECIAL_SCHEDULING_RULE;
+  }
+
+  return null;
+};
+
+const isWfoSlotRequired = (
+  dateIso: string,
+  rule: MonthlySpecialSchedulingRule | null | undefined
+) => {
+  if (!rule) {
+    return true;
+  }
+
+  return dateIso >= rule.wfoStartDateIso;
 };
 
 const PST_OFFICER_MIN_SELECT = {
@@ -105,11 +209,143 @@ const getWeekdayIso = (date: Date) => {
 
 const getHistoryMapKey = (officerId: string, role: PstSlotRole) => `${officerId}:${role}`;
 
+const getMonthStart = (year: number, month: number) =>
+  startOfDayInTimeZone(new Date(Date.UTC(year, month - 1, 1)));
+
+const addMonths = (year: number, month: number, delta: number) => {
+  const shifted = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+  };
+};
+
+const toPreviousMonth = (year: number, month: number) => addMonths(year, month, -1);
+
+const daysBetween = (first: Date, second: Date) =>
+  Math.floor(Math.abs(first.getTime() - second.getTime()) / (1000 * 60 * 60 * 24));
+
+const getClosestAssignmentDistance = (slotDate: Date, assignedDates: Date[]) => {
+  if (assignedDates.length === 0) {
+    return null;
+  }
+
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (const assigned of assignedDates) {
+    const distance = daysBetween(slotDate, assigned);
+    if (distance < minDistance) {
+      minDistance = distance;
+    }
+  }
+
+  return Number.isFinite(minDistance) ? minDistance : null;
+};
+
+const getScheduleStatusFromDocumentStatus = (documentStatus: PstDocumentStatus) =>
+  documentStatus === "FINAL" ? PstScheduleStatus.PUBLISHED : PstScheduleStatus.DRAFT;
+
+const readDocumentVersionFromSummary = (summary: Prisma.JsonValue | null) => {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return 0;
+  }
+
+  const audit = (summary as { audit?: { documentVersion?: unknown } }).audit;
+  const versionRaw = audit?.documentVersion;
+  const version = Number(versionRaw);
+  if (!Number.isInteger(version) || version < 1) {
+    return 0;
+  }
+
+  return version;
+};
+
 const holidayCalendarOrDefault = (calendar?: PstHolidayCalendar) =>
   calendar && calendar.calendar ? calendar : (defaultHolidayCalendar as PstHolidayCalendar);
 
+const mergeHolidayCalendars = (
+  ...calendars: Array<PstHolidayCalendar | null | undefined>
+): PstHolidayCalendar => {
+  const liburanSet = new Set<string>();
+  const cutiSet = new Set<string>();
+
+  for (const calendar of calendars) {
+    if (!calendar?.calendar) {
+      continue;
+    }
+
+    for (const value of calendar.calendar.LIBURAN ?? []) {
+      const normalized = value.trim();
+      if (normalized) {
+        liburanSet.add(normalized);
+      }
+    }
+
+    for (const value of calendar.calendar.CUTI_BERSAMA ?? []) {
+      const normalized = value.trim();
+      if (normalized) {
+        cutiSet.add(normalized);
+      }
+    }
+  }
+
+  return {
+    calendar: {
+      LIBURAN: [...liburanSet].sort((left, right) => left.localeCompare(right)),
+      CUTI_BERSAMA: [...cutiSet].sort((left, right) => left.localeCompare(right)),
+    },
+  };
+};
+
+const toDmyDate = (date: Date) => {
+  const [year, month, day] = toIsoDateInTimeZone(date).split("-");
+  return `${day}-${month}-${year}`;
+};
+
+const getHolidayCalendarFromDutyDayOffs = async (month: number, year: number) => {
+  const monthStart = getMonthStart(year, month);
+  const nextMonth = addMonths(year, month, 1);
+  const nextMonthStart = getMonthStart(nextMonth.year, nextMonth.month);
+
+  const dayOffs = await prisma.dutyDayOff.findMany({
+    where: {
+      date: {
+        gte: monthStart,
+        lt: nextMonthStart,
+      },
+    },
+    select: {
+      date: true,
+      type: true,
+    },
+  });
+
+  if (dayOffs.length === 0) {
+    return null;
+  }
+
+  const liburanSet = new Set<string>();
+  const cutiBersamaSet = new Set<string>();
+
+  for (const dayOff of dayOffs) {
+    const dmy = toDmyDate(dayOff.date);
+    if (dayOff.type === DayOffType.LEAVE) {
+      cutiBersamaSet.add(dmy);
+      continue;
+    }
+    liburanSet.add(dmy);
+  }
+
+  return {
+    calendar: {
+      LIBURAN: [...liburanSet].sort((left, right) => left.localeCompare(right)),
+      CUTI_BERSAMA: [...cutiBersamaSet].sort((left, right) => left.localeCompare(right)),
+    },
+  } satisfies PstHolidayCalendar;
+};
+
 export function buildWorkingSlots(month: number, year: number, holidayCalendar?: PstHolidayCalendar) {
   const normalizedCalendar = holidayCalendarOrDefault(holidayCalendar);
+  const specialRule = getMonthlySpecialSchedulingRule(year, month);
 
   const liburSet = new Set(
     normalizedCalendar.calendar.LIBURAN.map(normalizeDmyToIso).filter(Boolean) as string[]
@@ -162,14 +398,16 @@ export function buildWorkingSlots(month: number, year: number, holidayCalendar?:
         weekday,
         role: PstSlotRole.PST,
       });
-      slots.push({
-        scheduleDate: date,
-        dateIso,
-        dayName,
-        weekOfMonth,
-        weekday,
-        role: PstSlotRole.WFO,
-      });
+      if (isWfoSlotRequired(dateIso, specialRule)) {
+        slots.push({
+          scheduleDate: date,
+          dateIso,
+          dayName,
+          weekOfMonth,
+          weekday,
+          role: PstSlotRole.WFO,
+        });
+      }
       continue;
     }
 
@@ -237,7 +475,10 @@ export async function getEligibleOfficers(date: Date, role: PstSlotRole) {
   );
 
   return officers.filter(
-    (officer) => !unavailableSet.has(officer.id) && !takenByDate.has(officer.id)
+    (officer) =>
+      !isOfficerExcludedForRole(officer.name, role) &&
+      !unavailableSet.has(officer.id) &&
+      !takenByDate.has(officer.id)
   );
 }
 
@@ -246,17 +487,29 @@ export function scoreCandidate(
   slot: WorkingSlot,
   history: CandidateScoringContext
 ) {
-  let score = 100;
+  const monthlyRoleCount = history.monthlyRoleCount ?? 0;
+  const monthlyFridayRoleCount = history.monthlyFridayRoleCount ?? 0;
+  const monthlyFridayTotalCount = history.monthlyFridayTotalCount ?? 0;
+  const threeMonthAssignmentCount = history.threeMonthAssignmentCount ?? 0;
+  const threeMonthFridayCount = history.threeMonthFridayCount ?? 0;
+  const previouslyAssignedLastMonth = history.previouslyAssignedLastMonth ?? false;
+  const closestAssignmentDistanceDays = history.closestAssignmentDistanceDays ?? null;
+  const historicalPriorityFlag = history.historicalPriorityFlag ?? false;
 
-  score -= history.monthlyAssignmentCount * 22;
-  score -= history.totalHistoryCount * 4;
+  let score = 120;
+
+  score -= history.monthlyAssignmentCount * 26;
+  score -= monthlyRoleCount * 10;
+  score -= threeMonthAssignmentCount * 14;
 
   if (slot.weekday === 5) {
-    score -= history.fridayRoleCount * 12;
+    score -= monthlyFridayTotalCount * 56;
+    score -= monthlyFridayRoleCount * 18;
+    score -= threeMonthFridayCount * 16;
   }
 
-  if (candidate.priorityNextMonth) {
-    score += 26;
+  if (!previouslyAssignedLastMonth || historicalPriorityFlag || candidate.priorityNextMonth) {
+    score += 48;
   }
 
   if (candidate.employmentStatus !== PstOfficerEmploymentStatus.MASUK) {
@@ -264,17 +517,25 @@ export function scoreCandidate(
   }
 
   if (history.lastAssignedAt) {
-    const distanceMs = Math.abs(slot.scheduleDate.getTime() - history.lastAssignedAt.getTime());
-    const distanceDays = Math.floor(distanceMs / (1000 * 60 * 60 * 24));
+    const distanceDays = daysBetween(slot.scheduleDate, history.lastAssignedAt);
+    score += Math.min(distanceDays, 45) * 2;
+  } else {
+    score += 24;
+  }
 
-    if (distanceDays <= 1) {
-      score -= 40;
-    } else if (distanceDays <= 3) {
-      score -= 15;
+  if (closestAssignmentDistanceDays !== null) {
+    if (closestAssignmentDistanceDays <= 1) {
+      score -= 72;
+    } else if (closestAssignmentDistanceDays <= 2) {
+      score -= 36;
+    } else if (closestAssignmentDistanceDays <= 3) {
+      score -= 20;
+    } else if (closestAssignmentDistanceDays <= 5) {
+      score -= 8;
     }
   }
 
-  return Math.max(1, score);
+  return Math.max(1, Math.round(score));
 }
 
 export function pickCandidateWeightedRandom(candidates: CandidateWithScore[]) {
@@ -307,6 +568,7 @@ const buildWeeklyPayload = (params: {
     weekOfMonth: number;
     slotRole: PstSlotRole;
     status: PstScheduleDetailStatus;
+    notes: string | null;
     officerId: string | null;
     officer: {
       name: string;
@@ -335,6 +597,7 @@ const buildWeeklyPayload = (params: {
       officerUsername: detail.officer?.sigapUsername ?? null,
       officerWhatsapp: detail.officer?.whatsappNumber ?? null,
       status: detail.status,
+      note: detail.notes,
     };
 
     const bucket = byWeek.get(detail.weekOfMonth) ?? [];
@@ -357,6 +620,7 @@ const buildWeeklyPayload = (params: {
       officerUsername: null,
       officerWhatsapp: null,
       status: "UNASSIGNED",
+      note: holiday.holidayType === "LIBURAN" ? "Libur nasional" : "Cuti bersama",
     });
     byWeek.set(holiday.weekOfMonth, bucket);
   }
@@ -393,6 +657,7 @@ const toMonthlyScheduleResponse = (params: {
     weekOfMonth: number;
     slotRole: PstSlotRole;
     status: PstScheduleDetailStatus;
+    notes: string | null;
     officerId: string | null;
     officer: {
       name: string;
@@ -421,6 +686,21 @@ const toMonthlyScheduleResponse = (params: {
   } as MonthlyScheduleResponse;
 };
 
+const hasRoleExclusionViolation = (schedule: MonthlyScheduleResponse) =>
+  schedule.weeks.some((week) =>
+    week.items.some((item) => {
+      if (
+        item.isHoliday ||
+        (item.role !== PstSlotRole.PST && item.role !== PstSlotRole.WFO) ||
+        !item.officerName
+      ) {
+        return false;
+      }
+
+      return isOfficerExcludedForRole(item.officerName, item.role);
+    })
+  );
+
 export async function generateMonthlySchedule(params: {
   month: number;
   year: number;
@@ -428,10 +708,31 @@ export async function generateMonthlySchedule(params: {
   allowSameFridayAssignee?: boolean;
   holidayCalendar?: PstHolidayCalendar;
   generatedById?: string;
+  generatedByName?: string | null;
+  documentStatus?: PstDocumentStatus;
+  changeNotes?: string;
 }) {
   const forceRegenerate = params.forceRegenerate === true;
   const allowSameFridayAssignee = params.allowSameFridayAssignee === true;
-  const normalizedHolidayCalendar = holidayCalendarOrDefault(params.holidayCalendar);
+  const dutyDayOffCalendar =
+    params.holidayCalendar === undefined
+      ? await getHolidayCalendarFromDutyDayOffs(params.month, params.year)
+      : null;
+  const normalizedHolidayCalendar = holidayCalendarOrDefault(
+    mergeHolidayCalendars(
+      defaultHolidayCalendar as PstHolidayCalendar,
+      dutyDayOffCalendar,
+      params.holidayCalendar
+    )
+  );
+  const specialRule = getMonthlySpecialSchedulingRule(params.year, params.month);
+  let requestedDocumentStatus =
+    params.documentStatus ?? (forceRegenerate ? "REVISI" : "DRAFT");
+  let normalizedChangeNotes =
+    params.changeNotes?.trim() ||
+    (forceRegenerate
+      ? "REVISI TERKENDALI - Regenerasi untuk pembaruan jadwal/perbaikan data."
+      : "DRAFT AWAL - Hasil generate bulanan.");
 
   const existing = await prisma.monthlySchedule.findUnique({
     where: {
@@ -440,7 +741,7 @@ export async function generateMonthlySchedule(params: {
         year: params.year,
       },
     },
-    select: { id: true },
+    select: { id: true, summary: true },
   });
 
   if (existing && !forceRegenerate) {
@@ -453,11 +754,21 @@ export async function generateMonthlySchedule(params: {
       };
     }
 
-    return {
-      ok: true as const,
-      alreadyExists: true,
-      schedule: existingSchedule,
-    };
+    if (!hasRoleExclusionViolation(existingSchedule)) {
+      return {
+        ok: true as const,
+        alreadyExists: true,
+        schedule: existingSchedule,
+      };
+    }
+
+    if (!params.documentStatus) {
+      requestedDocumentStatus = "REVISI";
+    }
+    if (!params.changeNotes?.trim()) {
+      normalizedChangeNotes =
+        "REVISI TERKENDALI - Regenerasi otomatis karena jadwal lama memuat petugas yang dikecualikan untuk role tertentu.";
+    }
   }
 
   const { slots, holidays } = buildWorkingSlots(params.month, params.year, normalizedHolidayCalendar);
@@ -486,9 +797,90 @@ export async function generateMonthlySchedule(params: {
     };
   }
 
-  const uniqueDates = [...new Set(slots.map((slot) => slot.dateIso))];
+  const officerByNormalizedName = new Map(
+    officers.map((officer) => [normalizeOfficerName(officer.name), officer] as const)
+  );
+  const findOfficerByRequestedName = (requestedName: string) => {
+    const normalizedRequestedName = normalizeOfficerName(requestedName);
+    const exact = officerByNormalizedName.get(normalizedRequestedName);
+    if (exact) {
+      return exact;
+    }
+
+    return (
+      officers.find((officer) => {
+        const normalizedOfficerName = normalizeOfficerName(officer.name);
+        return (
+          normalizedOfficerName.includes(normalizedRequestedName) ||
+          normalizedRequestedName.includes(normalizedOfficerName)
+        );
+      }) ?? null
+    );
+  };
+
+  const forcedAssignmentBySlotKey = new Map<
+    string,
+    { requestedName: string; officer: (typeof officers)[number] }
+  >();
+  const fixedLockedOfficerIdSet = new Set<string>();
+  if (specialRule) {
+    for (const item of specialRule.fixedAssignments) {
+      const officer = findOfficerByRequestedName(item.officerName);
+      if (!officer) {
+        return {
+          ok: false as const,
+          status: 400,
+          error: `Penugasan khusus ${item.dateIso} (${item.role}) gagal: petugas ${item.officerName} tidak ditemukan atau tidak aktif`,
+        };
+      }
+      forcedAssignmentBySlotKey.set(`${item.dateIso}|${item.role}`, {
+        requestedName: item.officerName,
+        officer,
+      });
+      fixedLockedOfficerIdSet.add(officer.id);
+    }
+  }
+
+  const assignableOfficersByRole: Record<PstSlotRole, typeof officers> = {
+    [PstSlotRole.PST]: officers.filter(
+      (officer) => !isOfficerExcludedForRole(officer.name, PstSlotRole.PST)
+    ),
+    [PstSlotRole.WFO]: officers.filter(
+      (officer) => !isOfficerExcludedForRole(officer.name, PstSlotRole.WFO)
+    ),
+  };
+
+  const requiredRoles = new Set(slots.map((slot) => slot.role));
+  for (const role of requiredRoles) {
+    if (assignableOfficersByRole[role].length === 0) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: `Tidak ada kandidat yang memenuhi syarat untuk slot ${role}`,
+      };
+    }
+  }
+
+  const assignableOfficerIds = new Set(
+    [...assignableOfficersByRole[PstSlotRole.PST], ...assignableOfficersByRole[PstSlotRole.WFO]].map(
+      (officer) => officer.id
+    )
+  );
+  const assignableOfficerIdList = Array.from(assignableOfficerIds).sort((left, right) =>
+    left.localeCompare(right, "id")
+  );
+
+  const uniqueDates = [...new Set(slots.map((slot) => slot.dateIso))].sort((left, right) =>
+    left.localeCompare(right)
+  );
   const firstDate = dateFromIso(uniqueDates[0]);
   const lastDate = dateFromIso(uniqueDates[uniqueDates.length - 1]);
+  const historyWindowStart = (() => {
+    const shifted = addMonths(params.year, params.month, -FAIRNESS_HISTORY_WINDOW_MONTHS);
+    return getMonthStart(shifted.year, shifted.month);
+  })();
+  const previousMonthPeriod = toPreviousMonth(params.year, params.month);
+  const holidayDateSet = new Set(holidays.map((holiday) => holiday.dateIso));
 
   const availabilityRecords = await prisma.officerAvailability.findMany({
     where: {
@@ -510,7 +902,7 @@ export async function generateMonthlySchedule(params: {
 
   const history = await prisma.assignmentHistory.findMany({
     where: {
-      officerId: { in: officers.map((officer) => officer.id) },
+      officerId: { in: assignableOfficerIdList },
       scheduleDate: {
         lt: firstDate,
       },
@@ -520,26 +912,48 @@ export async function generateMonthlySchedule(params: {
       officerId: true,
       slotRole: true,
       scheduleDate: true,
+      month: true,
+      year: true,
     },
   });
 
-  const totalHistoryCount = new Map<string, number>();
-  const fridayRoleCount = new Map<string, number>();
+  const threeMonthCount = new Map<string, number>();
+  const threeMonthFridayCount = new Map<string, number>();
+  const previousMonthAssigned = new Set<string>();
   const lastAssignedAt = new Map<string, Date>();
+  const assignmentDatesByOfficer = new Map<string, Date[]>();
 
   for (const item of history) {
-    totalHistoryCount.set(item.officerId, (totalHistoryCount.get(item.officerId) ?? 0) + 1);
-    if (item.slotRole === PstSlotRole.PST || item.slotRole === PstSlotRole.WFO) {
-      const key = getHistoryMapKey(item.officerId, item.slotRole);
-      fridayRoleCount.set(key, (fridayRoleCount.get(key) ?? 0) + 1);
-    }
     if (!lastAssignedAt.has(item.officerId)) {
       lastAssignedAt.set(item.officerId, item.scheduleDate);
+    }
+
+    if (item.month === previousMonthPeriod.month && item.year === previousMonthPeriod.year) {
+      previousMonthAssigned.add(item.officerId);
+    }
+
+    if (item.scheduleDate >= historyWindowStart) {
+      threeMonthCount.set(item.officerId, (threeMonthCount.get(item.officerId) ?? 0) + 1);
+      if (getWeekdayIso(item.scheduleDate) === 5) {
+        threeMonthFridayCount.set(item.officerId, (threeMonthFridayCount.get(item.officerId) ?? 0) + 1);
+      }
+
+      const dateBucket = assignmentDatesByOfficer.get(item.officerId) ?? [];
+      dateBucket.push(item.scheduleDate);
+      assignmentDatesByOfficer.set(item.officerId, dateBucket);
+    }
+  }
+
+  for (const officerId of assignableOfficerIdList) {
+    if (!assignmentDatesByOfficer.has(officerId)) {
+      assignmentDatesByOfficer.set(officerId, []);
     }
   }
 
   const monthlyCount = new Map<string, number>();
+  const monthlyRoleCount = new Map<string, number>();
   const monthlyFridayRoleCount = new Map<string, number>();
+  const monthlyFridayTotalCount = new Map<string, number>();
   const assignedThisMonth = new Set<string>();
   const assignedByDate = new Map<string, Set<string>>();
 
@@ -557,8 +971,72 @@ export async function generateMonthlySchedule(params: {
   for (const slot of slots) {
     const dateKey = slot.dateIso;
     const sameDateAssigned = assignedByDate.get(dateKey) ?? new Set<string>();
+    let fridayCapRelaxed = false;
+    let fixedAssigneeLockRelaxed = false;
+    const forcedAssignment = forcedAssignmentBySlotKey.get(`${dateKey}|${slot.role}`) ?? null;
 
-    let eligible = officers.filter((officer) => {
+    if (forcedAssignment) {
+      const forcedOfficer = forcedAssignment.officer;
+
+      if (isOfficerExcludedForRole(forcedOfficer.name, slot.role)) {
+        return {
+          ok: false as const,
+          status: 400,
+          error: `Penugasan khusus ${dateKey} (${slot.role}) gagal: petugas ${forcedOfficer.name} tidak memenuhi syarat role`,
+        };
+      }
+
+      if (unavailableSet.has(`${forcedOfficer.id}|${dateKey}`)) {
+        return {
+          ok: false as const,
+          status: 400,
+          error: `Penugasan khusus ${dateKey} (${slot.role}) gagal: petugas ${forcedOfficer.name} berstatus unavailable`,
+        };
+      }
+
+      if (!allowSameFridayAssignee && sameDateAssigned.has(forcedOfficer.id)) {
+        return {
+          ok: false as const,
+          status: 400,
+          error: `Penugasan khusus ${dateKey} gagal: petugas ${forcedAssignment.requestedName} sudah terpakai pada tanggal yang sama`,
+        };
+      }
+
+      provisionalDetails.push({
+        scheduleDate: slot.scheduleDate,
+        weekOfMonth: slot.weekOfMonth,
+        weekday: slot.weekday,
+        slotRole: slot.role,
+        officerId: forcedOfficer.id,
+        status: PstScheduleDetailStatus.ASSIGNED,
+        notes: "Penugasan khusus April 2026",
+        score: null,
+      });
+
+      monthlyCount.set(forcedOfficer.id, (monthlyCount.get(forcedOfficer.id) ?? 0) + 1);
+      const roleHistoryKey = getHistoryMapKey(forcedOfficer.id, slot.role);
+      monthlyRoleCount.set(roleHistoryKey, (monthlyRoleCount.get(roleHistoryKey) ?? 0) + 1);
+      if (slot.weekday === 5) {
+        monthlyFridayRoleCount.set(
+          roleHistoryKey,
+          (monthlyFridayRoleCount.get(roleHistoryKey) ?? 0) + 1
+        );
+        monthlyFridayTotalCount.set(
+          forcedOfficer.id,
+          (monthlyFridayTotalCount.get(forcedOfficer.id) ?? 0) + 1
+        );
+      }
+      assignedThisMonth.add(forcedOfficer.id);
+      sameDateAssigned.add(forcedOfficer.id);
+      assignedByDate.set(dateKey, sameDateAssigned);
+      lastAssignedAt.set(forcedOfficer.id, slot.scheduleDate);
+      const assignmentDateBucket = assignmentDatesByOfficer.get(forcedOfficer.id) ?? [];
+      assignmentDateBucket.push(slot.scheduleDate);
+      assignmentDatesByOfficer.set(forcedOfficer.id, assignmentDateBucket);
+      continue;
+    }
+
+    let eligible = assignableOfficersByRole[slot.role].filter((officer) => {
       if (unavailableSet.has(`${officer.id}|${dateKey}`)) {
         return false;
       }
@@ -567,6 +1045,27 @@ export async function generateMonthlySchedule(params: {
       }
       return true;
     });
+
+    if (fixedLockedOfficerIdSet.size > 0 && eligible.length > 0) {
+      const unlockedEligible = eligible.filter((officer) => !fixedLockedOfficerIdSet.has(officer.id));
+      if (unlockedEligible.length > 0) {
+        eligible = unlockedEligible;
+      } else {
+        fixedAssigneeLockRelaxed = true;
+      }
+    }
+
+    if (slot.weekday === 5 && eligible.length > 0) {
+      const underFridayCap = eligible.filter(
+        (officer) =>
+          (monthlyFridayTotalCount.get(officer.id) ?? 0) < FRIDAY_ASSIGNMENT_HARD_CAP_PER_OFFICER
+      );
+      if (underFridayCap.length > 0) {
+        eligible = underFridayCap;
+      } else {
+        fridayCapRelaxed = true;
+      }
+    }
 
     if (eligible.length === 0) {
       provisionalDetails.push({
@@ -585,29 +1084,72 @@ export async function generateMonthlySchedule(params: {
     const firstRoundEligible = eligible.filter((officer) => !assignedThisMonth.has(officer.id));
     if (firstRoundEligible.length > 0) {
       eligible = firstRoundEligible;
+    } else if (eligible.length > 1) {
+      const minMonthlyAssignment = Math.min(
+        ...eligible.map((officer) => monthlyCount.get(officer.id) ?? 0)
+      );
+      eligible = eligible.filter(
+        (officer) => (monthlyCount.get(officer.id) ?? 0) === minMonthlyAssignment
+      );
     }
 
     const scoredCandidates: CandidateWithScore[] = eligible.map((candidate) => {
       const monthlyAssignmentCount = monthlyCount.get(candidate.id) ?? 0;
-      const fridayRoleCountKey = getHistoryMapKey(candidate.id, slot.role);
-      const fridayRoleAssignmentCount = monthlyFridayRoleCount.get(fridayRoleCountKey) ?? 0;
-      const historyCount = totalHistoryCount.get(candidate.id) ?? 0;
-
-      const score = scoreCandidate(candidate, slot, {
+      const roleHistoryKey = getHistoryMapKey(candidate.id, slot.role);
+      const context: CandidateScoringContext = {
         monthlyAssignmentCount,
-        fridayRoleCount: fridayRoleAssignmentCount,
-        totalHistoryCount: historyCount,
+        monthlyRoleCount: monthlyRoleCount.get(roleHistoryKey) ?? 0,
+        monthlyFridayRoleCount: monthlyFridayRoleCount.get(roleHistoryKey) ?? 0,
+        monthlyFridayTotalCount: monthlyFridayTotalCount.get(candidate.id) ?? 0,
+        threeMonthAssignmentCount: threeMonthCount.get(candidate.id) ?? 0,
+        threeMonthFridayCount: threeMonthFridayCount.get(candidate.id) ?? 0,
+        previouslyAssignedLastMonth: previousMonthAssigned.has(candidate.id),
+        closestAssignmentDistanceDays: getClosestAssignmentDistance(
+          slot.scheduleDate,
+          assignmentDatesByOfficer.get(candidate.id) ?? []
+        ),
+        historicalPriorityFlag: !previousMonthAssigned.has(candidate.id),
         lastAssignedAt: lastAssignedAt.get(candidate.id) ?? null,
-      });
+      };
+      const score = scoreCandidate(candidate, slot, context);
 
       return {
         candidate,
         score,
         weight: Math.max(1, score),
+        context,
       };
     });
 
-    const picked = pickCandidateWeightedRandom(scoredCandidates);
+    const picked =
+      scoredCandidates.sort((left, right) => {
+        if (left.score !== right.score) {
+          return right.score - left.score;
+        }
+        if (left.context.monthlyAssignmentCount !== right.context.monthlyAssignmentCount) {
+          return left.context.monthlyAssignmentCount - right.context.monthlyAssignmentCount;
+        }
+        if (left.context.monthlyRoleCount !== right.context.monthlyRoleCount) {
+          return left.context.monthlyRoleCount - right.context.monthlyRoleCount;
+        }
+        if (slot.weekday === 5) {
+          if (left.context.monthlyFridayTotalCount !== right.context.monthlyFridayTotalCount) {
+            return left.context.monthlyFridayTotalCount - right.context.monthlyFridayTotalCount;
+          }
+          if (left.context.monthlyFridayRoleCount !== right.context.monthlyFridayRoleCount) {
+            return left.context.monthlyFridayRoleCount - right.context.monthlyFridayRoleCount;
+          }
+        }
+
+        const leftLast = left.context.lastAssignedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+        const rightLast = right.context.lastAssignedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+        if (leftLast !== rightLast) {
+          return leftLast - rightLast;
+        }
+
+        return left.candidate.name.localeCompare(right.candidate.name, "id");
+      })[0] ?? null;
+
     if (!picked) {
       provisionalDetails.push({
         scheduleDate: slot.scheduleDate,
@@ -622,6 +1164,26 @@ export async function generateMonthlySchedule(params: {
       continue;
     }
 
+    const noteParts: string[] = [];
+    if (picked.context.historicalPriorityFlag || picked.candidate.priorityNextMonth) {
+      noteParts.push("Prioritas: belum terpilih bulan sebelumnya");
+    }
+    if (picked.context.monthlyAssignmentCount > 0) {
+      noteParts.push(`Pemerataan penugasan ke-${picked.context.monthlyAssignmentCount + 1}`);
+    }
+    if (slot.weekday === 5 && picked.context.monthlyFridayRoleCount > 0) {
+      noteParts.push("Rotasi Jumat dikendalikan");
+    }
+    if (slot.weekday === 5 && fridayCapRelaxed) {
+      noteParts.push("Bypass batas Jumat karena kandidat terbatas");
+    }
+    if (fixedAssigneeLockRelaxed) {
+      noteParts.push("Bypass lock petugas fixed assignment karena kandidat terbatas");
+    }
+    if (noteParts.length === 0) {
+      noteParts.push("Penugasan sesuai fairness histori");
+    }
+
     provisionalDetails.push({
       scheduleDate: slot.scheduleDate,
       weekOfMonth: slot.weekOfMonth,
@@ -629,31 +1191,245 @@ export async function generateMonthlySchedule(params: {
       slotRole: slot.role,
       officerId: picked.candidate.id,
       status: PstScheduleDetailStatus.ASSIGNED,
-      notes: null,
+      notes: noteParts.join(" | "),
       score: picked.score,
     });
 
     monthlyCount.set(picked.candidate.id, (monthlyCount.get(picked.candidate.id) ?? 0) + 1);
-    const fridayRoleCountKey = getHistoryMapKey(picked.candidate.id, slot.role);
-    monthlyFridayRoleCount.set(
-      fridayRoleCountKey,
-      (monthlyFridayRoleCount.get(fridayRoleCountKey) ?? 0) + 1
-    );
+    const roleHistoryKey = getHistoryMapKey(picked.candidate.id, slot.role);
+    monthlyRoleCount.set(roleHistoryKey, (monthlyRoleCount.get(roleHistoryKey) ?? 0) + 1);
+    if (slot.weekday === 5) {
+      monthlyFridayRoleCount.set(
+        roleHistoryKey,
+        (monthlyFridayRoleCount.get(roleHistoryKey) ?? 0) + 1
+      );
+      monthlyFridayTotalCount.set(
+        picked.candidate.id,
+        (monthlyFridayTotalCount.get(picked.candidate.id) ?? 0) + 1
+      );
+    }
     assignedThisMonth.add(picked.candidate.id);
     sameDateAssigned.add(picked.candidate.id);
     assignedByDate.set(dateKey, sameDateAssigned);
     lastAssignedAt.set(picked.candidate.id, slot.scheduleDate);
+    const assignmentDateBucket = assignmentDatesByOfficer.get(picked.candidate.id) ?? [];
+    assignmentDateBucket.push(slot.scheduleDate);
+    assignmentDatesByOfficer.set(picked.candidate.id, assignmentDateBucket);
   }
 
-  const totalAssigned = provisionalDetails.filter((detail) => detail.officerId).length;
+  const totalAssigned = provisionalDetails.filter((detail) => Boolean(detail.officerId)).length;
   const totalUnassigned = provisionalDetails.length - totalAssigned;
-  const unassignedOfficerIds = officers
-    .filter((officer) => !assignedThisMonth.has(officer.id))
-    .map((officer) => officer.id);
+  const unassignedOfficerIds = assignableOfficerIdList.filter(
+    (officerId) => !assignedThisMonth.has(officerId)
+  );
 
-  const summary = {
+  const detailByDate = new Map<
+    string,
+    {
+      dateIso: string;
+      pstOfficerId: string | null;
+      wfoOfficerId: string | null;
+      weekday: number;
+      seenOfficerIds: string[];
+    }
+  >();
+  for (const detail of provisionalDetails) {
+    const dateIso = toIsoDateInTimeZone(detail.scheduleDate);
+    const bucket = detailByDate.get(dateIso) ?? {
+      dateIso,
+      pstOfficerId: null,
+      wfoOfficerId: null,
+      weekday: detail.weekday,
+      seenOfficerIds: [],
+    };
+
+    if (detail.slotRole === PstSlotRole.PST) {
+      bucket.pstOfficerId = detail.officerId;
+    }
+    if (detail.slotRole === PstSlotRole.WFO) {
+      bucket.wfoOfficerId = detail.officerId;
+    }
+    if (detail.officerId) {
+      bucket.seenOfficerIds.push(detail.officerId);
+    }
+    detailByDate.set(dateIso, bucket);
+  }
+
+  let duplicateOfficerCount = 0;
+  let fridayIncompleteCount = 0;
+  for (const value of detailByDate.values()) {
+    if (value.seenOfficerIds.length !== new Set(value.seenOfficerIds).size) {
+      duplicateOfficerCount += 1;
+    }
+    const requiresWfoOnFriday = isWfoSlotRequired(value.dateIso, specialRule);
+    if (
+      value.weekday === 5 &&
+      (!value.pstOfficerId || (requiresWfoOnFriday && !value.wfoOfficerId))
+    ) {
+      fridayIncompleteCount += 1;
+    }
+  }
+
+  const holidayAssignedCount = provisionalDetails.filter(
+    (detail) =>
+      Boolean(detail.officerId) && holidayDateSet.has(toIsoDateInTimeZone(detail.scheduleDate))
+  ).length;
+  const unavailableAssignmentCount = provisionalDetails.filter(
+    (detail) =>
+      Boolean(detail.officerId) &&
+      unavailableSet.has(`${detail.officerId}|${toIsoDateInTimeZone(detail.scheduleDate)}`)
+  ).length;
+  const chronologicalIssueCount = slots.reduce((count, slot, index) => {
+    if (index === 0) {
+      return count;
+    }
+    const previous = slots[index - 1];
+    if (!previous) {
+      return count;
+    }
+    return previous.dateIso > slot.dateIso ? count + 1 : count;
+  }, 0);
+  const effectiveWorkingDayMismatchCount =
+    uniqueDates.length === detailByDate.size ? 0 : Math.abs(uniqueDates.length - detailByDate.size);
+
+  const assignedCountByOfficer = new Map<string, number>();
+  const fridayCountByOfficer = new Map<string, number>();
+  for (const detail of provisionalDetails) {
+    if (!detail.officerId) {
+      continue;
+    }
+    assignedCountByOfficer.set(
+      detail.officerId,
+      (assignedCountByOfficer.get(detail.officerId) ?? 0) + 1
+    );
+    if (detail.weekday === 5) {
+      fridayCountByOfficer.set(
+        detail.officerId,
+        (fridayCountByOfficer.get(detail.officerId) ?? 0) + 1
+      );
+    }
+  }
+
+  const assignmentCountValues = Array.from(assignedCountByOfficer.values());
+  const fridayCountValues = Array.from(fridayCountByOfficer.values());
+  const maxAssignedCount = assignmentCountValues.length > 0 ? Math.max(...assignmentCountValues) : 0;
+  const minAssignedCount = assignmentCountValues.length > 0 ? Math.min(...assignmentCountValues) : 0;
+  const distributionSpread = assignmentCountValues.length > 0 ? maxAssignedCount - minAssignedCount : 0;
+  const maxFridayCount = fridayCountValues.length > 0 ? Math.max(...fridayCountValues) : 0;
+  const minFridayCount = fridayCountValues.length > 0 ? Math.min(...fridayCountValues) : 0;
+  const fridaySpread = fridayCountValues.length > 0 ? maxFridayCount - minFridayCount : 0;
+  const coverageRate =
+    assignableOfficerIdList.length === 0
+      ? 1
+      : assignedThisMonth.size / assignableOfficerIdList.length;
+
+  const validationItems: FairnessValidationItem[] = [];
+  const fridayRuleLabel = specialRule
+    ? `Hari Jumat wajib memiliki slot PST dan WFO mulai ${specialRule.wfoStartDateIso}`
+    : "Hari Jumat wajib memiliki slot PST dan WFO";
+  const fridayRuleSuccessDetail = specialRule
+    ? `Seluruh hari Jumat sejak ${specialRule.wfoStartDateIso} sudah terisi PST dan WFO.`
+    : "Seluruh hari Jumat sudah terisi PST dan WFO.";
+  const pushValidation = (
+    code: string,
+    rule: string,
+    status: PstValidationLevel,
+    detail: string
+  ) => {
+    validationItems.push({ code, rule, status, detail });
+  };
+
+  pushValidation(
+    "NO_DUPLICATE_OFFICER",
+    "Tidak ada petugas ganda di tanggal yang sama",
+    duplicateOfficerCount === 0 ? "OK" : "ERROR",
+    duplicateOfficerCount === 0
+      ? "Tidak ditemukan petugas ganda."
+      : `${duplicateOfficerCount} tanggal terdeteksi petugas ganda.`
+  );
+  pushValidation(
+    "FRIDAY_HAS_PST_WFO",
+    fridayRuleLabel,
+    fridayIncompleteCount === 0 ? "OK" : "ERROR",
+    fridayIncompleteCount === 0
+      ? fridayRuleSuccessDetail
+      : `${fridayIncompleteCount} hari Jumat belum lengkap.`
+  );
+  pushValidation(
+    "HOLIDAY_EMPTY",
+    "Hari libur nasional/cuti bersama harus kosong",
+    holidayAssignedCount === 0 ? "OK" : "ERROR",
+    holidayAssignedCount === 0
+      ? "Semua hari libur/cuti bersama kosong."
+      : `${holidayAssignedCount} hari libur/cuti bersama masih memiliki petugas.`
+  );
+  pushValidation(
+    "UNAVAILABLE_FILTER",
+    "Petugas unavailable tidak boleh terpilih",
+    unavailableAssignmentCount === 0 ? "OK" : "ERROR",
+    unavailableAssignmentCount === 0
+      ? "Tidak ada petugas unavailable yang terjadwal."
+      : `${unavailableAssignmentCount} slot terisi oleh petugas unavailable.`
+  );
+  pushValidation(
+    "DATE_CHRONOLOGICAL",
+    "Urutan tanggal harus kronologis",
+    chronologicalIssueCount === 0 ? "OK" : "ERROR",
+    chronologicalIssueCount === 0
+      ? "Urutan tanggal sudah kronologis."
+      : `Terdapat ${chronologicalIssueCount} anomali urutan tanggal.`
+  );
+  pushValidation(
+    "EFFECTIVE_WORKING_DAY_CONSISTENCY",
+    "Jumlah hari kerja efektif konsisten dengan kalender slot",
+    effectiveWorkingDayMismatchCount === 0 ? "OK" : "ERROR",
+    effectiveWorkingDayMismatchCount === 0
+      ? "Jumlah hari kerja efektif konsisten."
+      : `Terdapat selisih ${effectiveWorkingDayMismatchCount} hari kerja efektif.`
+  );
+  pushValidation(
+    "SLOT_COMPLETENESS",
+    "Slot kosong harus ditandai jelas",
+    totalUnassigned === 0 ? "OK" : "WARNING",
+    totalUnassigned === 0
+      ? "Semua slot terisi."
+      : `${totalUnassigned} slot belum terisi dan sudah ditandai pada keterangan.`
+  );
+
+  const totalSlots = provisionalDetails.length;
+  const fairnessStatus: PstValidationLevel =
+    totalSlots >= assignableOfficerIdList.length && unassignedOfficerIds.length > 0
+      ? "ERROR"
+      : distributionSpread > 2 || fridaySpread > 2
+        ? "WARNING"
+        : "OK";
+  pushValidation(
+    "FAIRNESS_MINIMUM",
+    "Distribusi penugasan minimum terpenuhi",
+    fairnessStatus,
+    fairnessStatus === "OK"
+      ? "Distribusi penugasan merata dalam batas aman."
+      : fairnessStatus === "WARNING"
+        ? `Distribusi masih perlu diratakan (spread total ${distributionSpread}, spread Jumat ${fridaySpread}).`
+        : "Slot cukup untuk seluruh petugas, tetapi masih ada petugas yang belum terpilih."
+  );
+
+  const levelRank: Record<PstValidationLevel, number> = {
+    OK: 1,
+    WARNING: 2,
+    ERROR: 3,
+  };
+  const overallStatus = validationItems.reduce<PstValidationLevel>(
+    (current, item) => (levelRank[item.status] > levelRank[current] ? item.status : current),
+    "OK"
+  );
+
+  const previousVersion = readDocumentVersionFromSummary(existing?.summary ?? null);
+  const documentVersion = existing ? Math.max(2, previousVersion + 1) : 1;
+
+  const summary: MonthlyScheduleSummary = {
     totalWorkingDays: uniqueDates.length,
-    totalSlots: provisionalDetails.length,
+    totalSlots,
     totalAssigned,
     totalUnassigned,
     totalFridaySlots: provisionalDetails.filter((detail) => detail.weekday === 5).length,
@@ -661,8 +1437,36 @@ export async function generateMonthlySchedule(params: {
     unassignedOfficerIds,
     generatedMessage:
       totalUnassigned === 0
-        ? "Jadwal bulanan berhasil dibuat tanpa konflik slot"
+        ? "Jadwal bulanan berhasil dibuat dengan distribusi fairness yang tervalidasi"
         : `Jadwal bulanan dibuat dengan ${totalUnassigned} slot belum terisi`,
+    validation: {
+      overallStatus,
+      items: validationItems,
+    },
+    fairness: {
+      historyWindowMonths: FAIRNESS_HISTORY_WINDOW_MONTHS,
+      distributionSpread,
+      fridaySpread,
+      assignedOfficerCount: assignedThisMonth.size,
+      eligibleOfficerCount: assignableOfficerIdList.length,
+      coverageRate: Number((coverageRate * 100).toFixed(2)),
+      note:
+        fairnessStatus === "OK"
+          ? "Distribusi penugasan stabil; prioritas bulan sebelumnya sudah diperhitungkan."
+          : fairnessStatus === "WARNING"
+            ? "Distribusi masih bisa diratakan pada periode berikutnya."
+            : "Terdapat gap fairness yang perlu ditindaklanjuti pada regenerasi berikutnya.",
+    },
+    audit: {
+      generatedAt: new Date().toISOString(),
+      generatedById: params.generatedById ?? null,
+      generatedByName: params.generatedByName ?? null,
+      documentVersion,
+      documentStatus: requestedDocumentStatus,
+      changeNotes: normalizedChangeNotes,
+      previousScheduleId: existing?.id ?? null,
+      algorithmVersion: FAIRNESS_ALGORITHM_VERSION,
+    },
   };
 
   const createdSchedule = await prisma.$transaction(async (tx) => {
@@ -683,7 +1487,7 @@ export async function generateMonthlySchedule(params: {
       data: {
         month: params.month,
         year: params.year,
-        status: PstScheduleStatus.DRAFT,
+        status: getScheduleStatusFromDocumentStatus(requestedDocumentStatus),
         generatedById: params.generatedById ?? null,
         holidayCalendar: normalizedHolidayCalendar as Prisma.InputJsonValue,
         summary: summary as Prisma.InputJsonValue,
@@ -705,6 +1509,7 @@ export async function generateMonthlySchedule(params: {
       weekOfMonth: number;
       slotRole: PstSlotRole;
       status: PstScheduleDetailStatus;
+      notes: string | null;
       officerId: string | null;
       officer: {
         name: string;
@@ -731,6 +1536,7 @@ export async function generateMonthlySchedule(params: {
           weekOfMonth: true,
           slotRole: true,
           status: true,
+          notes: true,
           officerId: true,
           officer: {
             select: {
@@ -1026,8 +1832,14 @@ export async function swapSchedule(
   options?: { reason?: string; performedById?: string }
 ) {
   const [first, second] = await Promise.all([
-    prisma.scheduleDetail.findUnique({ where: { id: firstScheduleId } }),
-    prisma.scheduleDetail.findUnique({ where: { id: secondScheduleId } }),
+    prisma.scheduleDetail.findUnique({
+      where: { id: firstScheduleId },
+      include: { officer: { select: { id: true, name: true } } },
+    }),
+    prisma.scheduleDetail.findUnique({
+      where: { id: secondScheduleId },
+      include: { officer: { select: { id: true, name: true } } },
+    }),
   ]);
 
   if (!first || !second) {
@@ -1059,6 +1871,22 @@ export async function swapSchedule(
       ok: false as const,
       status: 409,
       error: "Swap antar slot pada tanggal yang sama tidak diperbolehkan",
+    };
+  }
+
+  if (second.officer?.name && isOfficerExcludedForRole(second.officer.name, first.slotRole)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: `Petugas ${second.officer.name} tidak memenuhi syarat untuk slot ${first.slotRole}`,
+    };
+  }
+
+  if (first.officer?.name && isOfficerExcludedForRole(first.officer.name, second.slotRole)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: `Petugas ${first.officer.name} tidak memenuhi syarat untuk slot ${second.slotRole}`,
     };
   }
 
@@ -1163,6 +1991,7 @@ export async function getMonthlySchedule(month: number, year: number) {
           weekOfMonth: true,
           slotRole: true,
           status: true,
+          notes: true,
           officerId: true,
           officer: {
             select: {
@@ -1205,6 +2034,7 @@ export async function getMonthlyScheduleById(scheduleId: string) {
           weekOfMonth: true,
           slotRole: true,
           status: true,
+          notes: true,
           officerId: true,
           officer: {
             select: {
@@ -1248,6 +2078,7 @@ export async function listMonthlySchedules(limit = 6) {
           weekOfMonth: true,
           slotRole: true,
           status: true,
+          notes: true,
           officerId: true,
           officer: {
             select: {

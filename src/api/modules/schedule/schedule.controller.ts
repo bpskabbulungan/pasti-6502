@@ -10,6 +10,7 @@ import {
 	listSchedules as listSchedulesService,
 	removeDutyDayOff as removeDutyDayOffService,
 	runDutyReminder as runDutyReminderService,
+	syncDutyDayOffsFromSigapNow as syncDutyDayOffsFromSigapNowService,
 	updateDutySettings as updateDutySettingsService,
 } from "./schedule.service";
 
@@ -30,4 +31,5 @@ export const listSchedules = (fromParam?: string | null, toParam?: string | null
 export const removeDutyDayOff = (id: string) => removeDutyDayOffService(id);
 export const runDutyReminder = (dateParam?: string | null, force = false) =>
 	runDutyReminderService(dateParam, force);
+export const syncDutyDayOffsFromSigapNow = () => syncDutyDayOffsFromSigapNowService();
 export const updateDutySettings = (payload: unknown) => updateDutySettingsService(payload);

@@ -1217,7 +1217,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
     ? feedbackItemsByOfficerId[selectedOfficerDetail.officerId] || []
     : [];
 
-  const selectedOfficerPreviewCommentItems = useMemo(() => {
+  const selectedOfficerPreviewCommentItems = (() => {
     if (!selectedOfficerDetail || !shouldUseFeedbackPreviewData) {
       return [] as OfficerFeedbackCommentItem[];
     }
@@ -1252,7 +1252,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
         serviceName,
       };
     });
-  }, [currentPeriod.endDate, selectedOfficerDetail, shouldUseFeedbackPreviewData]);
+  })();
 
   const selectedOfficerDisplayCommentItems =
     selectedOfficerCommentItems.length > 0
@@ -1424,8 +1424,8 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
   return (
     <PageContainer maxWidth="6xl">
       <DashboardPageHeader
-        title="Analisis Pelayanan Statistik Terpadu"
-        description="Ringkasan analisis Pelayanan Statistik Terpadu BPS Kabupaten Bulungan."
+        title="Analisis PST BPS Kabupaten Bulungan"
+        description="Halaman ringkasan dan analisis Pelayanan Statistik Terpadu BPS Kabupaten Bulungan."
         meta={
           <>
             <div className="flex items-center gap-2">

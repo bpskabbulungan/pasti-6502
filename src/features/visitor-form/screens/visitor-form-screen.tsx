@@ -628,27 +628,6 @@ export default function VisitorFormPage() {
                             )}
                           />
                         </div>
-                        <FormField
-                          control={form.control}
-                          name="queueType"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Tipe Antrean</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Pilih tipe antrean" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="OFFLINE">Offline (di lokasi PASTI 6502)</SelectItem>
-                                  <SelectItem value="ONLINE">Online (daring)</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                           <p className="text-sm text-muted-foreground">
                             Pastikan data sudah benar sebelum mengirim.
@@ -755,7 +734,6 @@ export default function VisitorFormPage() {
     </>
   );
 }
-
 
 
 

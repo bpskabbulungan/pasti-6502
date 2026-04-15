@@ -146,6 +146,38 @@ bun run dev
 
 Akses `http://localhost:3000`.
 
+## Deploy Docker + Cloudflare Tunnel
+
+1. Salin template env produksi:
+
+```bash
+cp env.docker.production.example .env.docker
+```
+
+2. Isi variabel wajib di `.env.docker`:
+- `NEXTAUTH_URL=https://pasti.databenuanta.id`
+- `NEXT_PUBLIC_QR_BASE_URL=https://pasti.databenuanta.id`
+- `NEXT_PUBLIC_STATIC_UUID` (UUID v4 statis untuk QR)
+- kredensial MySQL (`MYSQL_*` + `DATABASE_URL`)
+- `NEXTAUTH_SECRET`
+
+3. Jalankan stack aplikasi:
+
+```bash
+docker compose --env-file .env.docker up -d --build
+```
+
+4. Jika ingin Cloudflare Tunnel dalam compose yang sama:
+
+```bash
+docker compose --env-file .env.docker --profile tunnel up -d
+```
+
+5. Verifikasi:
+- App publik terbuka di `https://pasti.databenuanta.id`
+- Dashboard QR menampilkan link tujuan `https://pasti.databenuanta.id/guest`
+- Endpoint QR image bisa diakses: `https://pasti.databenuanta.id/api/qrcode/image`
+
 ## Scripts
 
 - `bun run dev` - jalankan dev server

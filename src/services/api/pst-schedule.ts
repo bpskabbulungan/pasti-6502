@@ -2,6 +2,7 @@ import { apiFetch } from "./base-client";
 import type {
   GenerateMonthlyScheduleResponse,
   MonthlyScheduleResponse,
+  PstGenerateAttemptLog,
   PstHolidayCalendar,
 } from "@shared/types/pst-schedule";
 
@@ -62,12 +63,26 @@ export const pstScheduleApi = {
         year: String(year),
       })
     ),
+  listGenerateAttempts: (params?: {
+    month?: number;
+    year?: number;
+    limit?: number;
+  }) =>
+    apiFetch<{ logs: PstGenerateAttemptLog[] }>(
+      withQuery("/api/pst/schedules/monthly/generate", {
+        month: params?.month ? String(params.month) : undefined,
+        year: params?.year ? String(params.year) : undefined,
+        limit: params?.limit ? String(params.limit) : undefined,
+      })
+    ),
   generateMonthly: (payload: {
     month: number;
     year: number;
     forceRegenerate?: boolean;
     allowSameFridayAssignee?: boolean;
     holidayCalendar?: PstHolidayCalendar;
+    documentStatus?: "DRAFT" | "FINAL" | "REVISI";
+    changeNotes?: string;
     downloadPdf?: boolean;
   }) =>
     apiFetch<GenerateMonthlyScheduleResponse>(
@@ -83,6 +98,8 @@ export const pstScheduleApi = {
     forceRegenerate?: boolean;
     allowSameFridayAssignee?: boolean;
     holidayCalendar?: PstHolidayCalendar;
+    documentStatus?: "DRAFT" | "FINAL" | "REVISI";
+    changeNotes?: string;
   }) => {
     const response = await fetch("/api/pst/schedules/monthly/generate", {
       method: "POST",

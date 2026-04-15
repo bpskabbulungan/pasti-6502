@@ -68,6 +68,7 @@ const queueDetailInclude = {
 	service: {
 		select: {
 			name: true,
+			code: true,
 		},
 	},
 	admin: {
@@ -125,7 +126,7 @@ export async function getQueueDetail(id: string) {
 	const queue = await prisma.queue.findUnique({
 		where: { id },
 		include: {
-			service: { select: { name: true } },
+			service: { select: { name: true, code: true } },
 			visitor: {
 				select: {
 					name: true,
@@ -550,6 +551,14 @@ export async function prepareSkdReminder(queueId: string, message?: string) {
 		};
 	}
 
+	if (queue.status !== PrismaQueueStatus.COMPLETED) {
+		return {
+			ok: false as const,
+			status: 400,
+			error: "Pengingat SKD hanya dapat dikirim setelah layanan selesai",
+		};
+	}
+
 	// If message not provided, fetch template from DB and interpolate
 	let messageToUse = message;
 	if (!message) {
@@ -588,6 +597,14 @@ export async function updateSkdStatusByQueueId(queueId: string, filled: boolean)
 
 	if (!queue) {
 		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+
+	if (filled && queue.status !== PrismaQueueStatus.COMPLETED) {
+		return {
+			ok: false as const,
+			status: 400,
+			error: "SKD hanya dapat ditandai terisi setelah layanan selesai",
+		};
 	}
 
 	const updatedQueue = await prisma.queue.update({
@@ -638,6 +655,14 @@ export async function triggerSkdReminderBot(queueId: string, message?: string) {
 		};
 	}
 
+	if (queue.status !== PrismaQueueStatus.COMPLETED) {
+		return {
+			ok: false as const,
+			status: 400,
+			error: "Pengingat SKD hanya dapat dikirim setelah layanan selesai",
+		};
+	}
+
 	const reminderMessage =
 		message?.trim() && message.trim().length > 0
 			? message.trim()
@@ -655,6 +680,12 @@ export async function triggerSkdReminderBot(queueId: string, message?: string) {
 	}
 
 	if (!result.success) {
+		createNotificationAsync({
+			type: "REMINDER_SKD_FAILED",
+			title: "Pengingat SKD Gagal",
+			message: `Gagal mengirim pengingat SKD ke ${queue.visitor.name}: ${result.message}`,
+			isRead: false,
+		});
 		return { ok: false as const, status: 400, error: result.message };
 	}
 

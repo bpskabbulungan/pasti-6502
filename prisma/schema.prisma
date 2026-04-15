@@ -20,33 +20,39 @@ enum QueueStatus {
   CANCELED
 }
 
+enum QueueType {
+  ONLINE
+  OFFLINE
+}
+
 enum ServiceStatus {
   ACTIVE
   INACTIVE
 }
 
 model User {
-  id                         String                @id @default(uuid())
-  username                   String                @unique
+  id                         String                  @id @default(uuid())
+  username                   String                  @unique
   password                   String
   name                       String
   phone                      String?
-  role                       Role                  @default(PETUGAS)
-  createdAt                  DateTime              @default(now())
-  updatedAt                  DateTime              @updatedAt
-  queues                     Queue[]               @relation("AdminQueue")
-  dutyQueues                 Queue[]               @relation("DutyStaffQueueUser")
-  dutySchedules              DutySchedule[]        @relation("DutyScheduleStaff")
-  dutyReminderLogs           DutyReminderLog[]     @relation("DutyReminderLogStaff")
+  role                       Role                    @default(PETUGAS)
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  queues                     Queue[]                 @relation("AdminQueue")
+  dutyQueues                 Queue[]                 @relation("DutyStaffQueueUser")
+  dutySchedules              DutySchedule[]          @relation("DutyScheduleStaff")
+  dutyReminderLogs           DutyReminderLog[]       @relation("DutyReminderLogStaff")
   analyticsExports           AnalyticsExportJob[]
   notifications              Notification[]
   notificationReads          NotificationRead[]
-  sigapSyncLogsTriggered     SigapSyncLog[]        @relation("SigapSyncTriggeredBy")
-  monthlySchedulesGenerated  MonthlySchedule[]     @relation("MonthlyScheduleGeneratedBy")
-  officerAvailabilityCreated OfficerAvailability[] @relation("OfficerAvailabilityCreatedBy")
-  reshuffleLogsPerformed     ReshuffleLog[]        @relation("ReshufflePerformedBy")
-  swapRequestsRequested      SwapRequest[]         @relation("SwapRequestedBy")
-  swapRequestsApproved       SwapRequest[]         @relation("SwapApprovedBy")
+  sigapSyncLogsTriggered     SigapSyncLog[]          @relation("SigapSyncTriggeredBy")
+  monthlySchedulesGenerated  MonthlySchedule[]       @relation("MonthlyScheduleGeneratedBy")
+  pstGenerateAttemptLogs     PstGenerateAttemptLog[] @relation("PstGenerateAttemptRequestedBy")
+  officerAvailabilityCreated OfficerAvailability[]   @relation("OfficerAvailabilityCreatedBy")
+  reshuffleLogsPerformed     ReshuffleLog[]          @relation("ReshufflePerformedBy")
+  swapRequestsRequested      SwapRequest[]           @relation("SwapRequestedBy")
+  swapRequestsApproved       SwapRequest[]           @relation("SwapApprovedBy")
 }
 
 model Service {
@@ -159,6 +165,12 @@ enum PstScheduleDetailStatus {
   REPLACED
 }
 
+enum PstGenerateAttemptStatus {
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
 enum OfficerUnavailableType {
   CUTI
   SAKIT
@@ -182,6 +194,7 @@ model Queue {
   id                  String      @id @default(uuid())
   queueNumber         Int
   status              QueueStatus @default(WAITING)
+  queueType           QueueType   @default(OFFLINE)
   queueDate           DateTime    @default(now())
   visitorId           String
   visitor             Visitor     @relation(fields: [visitorId], references: [id])
@@ -194,6 +207,7 @@ model Queue {
   dutyStaffId         String?
   dutyStaff           User?       @relation("DutyStaffQueueUser", fields: [dutyStaffId], references: [id])
   startTime           DateTime?
+  endTime             DateTime?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
   tempUuid            String?     @unique
@@ -440,24 +454,50 @@ model SigapSyncLog {
 }
 
 model MonthlySchedule {
-  id                  String              @id @default(uuid())
+  id                  String                  @id @default(uuid())
   month               Int
   year                Int
-  status              PstScheduleStatus   @default(DRAFT)
-  generatedAt         DateTime            @default(now())
+  status              PstScheduleStatus       @default(DRAFT)
+  generatedAt         DateTime                @default(now())
   generatedById       String?
-  generatedBy         User?               @relation("MonthlyScheduleGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  generatedBy         User?                   @relation("MonthlyScheduleGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
   holidayCalendar     Json
   summary             Json?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
   details             ScheduleDetail[]
   assignmentHistories AssignmentHistory[]
+  generateAttemptLogs PstGenerateAttemptLog[]
   reshuffleLogs       ReshuffleLog[]
   swapRequests        SwapRequest[]
 
   @@unique([month, year])
   @@index([year, month])
+}
+
+model PstGenerateAttemptLog {
+  id                      String                   @id @default(uuid())
+  month                   Int
+  year                    Int
+  downloadPdf             Boolean                  @default(false)
+  forceRegenerate         Boolean                  @default(false)
+  allowSameFridayAssignee Boolean                  @default(false)
+  status                  PstGenerateAttemptStatus @default(PROCESSING)
+  alreadyExists           Boolean?
+  errorMessage            String?
+  requestedById           String?
+  requestedBy             User?                    @relation("PstGenerateAttemptRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  monthlyScheduleId       String?
+  monthlySchedule         MonthlySchedule?         @relation(fields: [monthlyScheduleId], references: [id], onDelete: SetNull)
+  startedAt               DateTime                 @default(now())
+  finishedAt              DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  @@index([year, month, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([monthlyScheduleId, createdAt])
 }
 
 model ScheduleDetail {

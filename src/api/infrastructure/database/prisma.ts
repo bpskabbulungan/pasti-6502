@@ -20,9 +20,10 @@ const hasPstDelegates = (client: PrismaClient | undefined) => {
 	);
 };
 
-const prisma = hasPstDelegates(globalForPrisma.prisma)
-	? globalForPrisma.prisma
-	: new PrismaClient();
+const prisma =
+	hasPstDelegates(globalForPrisma.prisma) && globalForPrisma.prisma
+		? globalForPrisma.prisma
+		: new PrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
 	globalForPrisma.prisma = prisma;

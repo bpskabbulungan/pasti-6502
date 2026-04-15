@@ -14,6 +14,15 @@ type DateRangeParams = {
   to?: string;
 };
 
+type DutyDayOffSyncSummary = {
+  inserted: number;
+  updated: number;
+  removed: number;
+  total: number;
+  sourceTotal: number;
+  skipped: boolean;
+};
+
 const withQuery = (base: string, params: Record<string, string | undefined>) => {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -52,6 +61,13 @@ export const dutyScheduleApi = {
         from: params?.from,
         to: params?.to,
       })
+    ),
+  syncDayOffsFromSigap: () =>
+    apiFetch<{ summary: DutyDayOffSyncSummary; dayOffs: DutyDayOff[] }>(
+      "/api/schedule/day-offs/sync",
+      {
+        method: "POST",
+      }
     ),
   createDayOff: (payload: {
     date: string;

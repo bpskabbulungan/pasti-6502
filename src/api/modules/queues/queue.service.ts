@@ -109,6 +109,7 @@ export async function getQueues({
       service: {
         select: {
           name: true,
+          code: true,
         },
       },
       admin: {

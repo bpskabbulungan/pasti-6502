@@ -297,7 +297,7 @@ export default function GuidePage({ currentUser }: GuidePageProps) {
       <DashboardPageHeader
         className="guide-no-print"
         title="Panduan Penggunaan PASTI"
-        description="Panduan operasional agar alur kerja antrean tetap lancar dan konsisten."
+        description="Halaman panduan operasional agar alur kerja antrean tetap lancar dan konsisten."
       />
 
       <section className="guide-no-print">
