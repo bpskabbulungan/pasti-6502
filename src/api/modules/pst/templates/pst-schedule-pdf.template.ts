@@ -10,7 +10,8 @@ export type PstSchedulePdfWeekRow = {
   dayName: string;
   dateLabel: string;
   pstOfficer: string;
-  wfoOfficer: string;
+  wfoRandomOfficer: string;
+  wfoFixedOfficer: string;
   note: string;
   isHoliday: boolean;
   hasIssue: boolean;
@@ -18,11 +19,24 @@ export type PstSchedulePdfWeekRow = {
 
 export type PstSchedulePdfFairnessOfficerRow = {
   name: string;
-  totalAssignments: string;
-  pstAssignments: string;
-  wfoAssignments: string;
-  fridayAssignments: string;
-  lastAssignedLabel: string;
+  poolPstLabel: string;
+  statusWfoFriday: string;
+  pstCurrentMonth: string;
+  pstFridayCurrentMonth: string;
+  randomWfoFridayCurrentMonth: string;
+  fixedWfoFridayCurrentMonth: string;
+  fridayRandomBurdenCurrentMonth: string;
+  totalOperationalPresence: string;
+  previousMonthFridayBurden: string;
+  totalCurrentMonthForRandomFairness: string;
+  previousMonthRandomTotal: string;
+  historyWindowFridayBurden: string;
+  historyWindowTotalRandomAssignments: string;
+  cumulativeRandomFairnessTotal: string;
+  fairnessStatus: string;
+  nextPriorityRole: string;
+  priorityReason: string;
+  lastRandomAssignedDate: string;
 };
 
 export type PstSchedulePdfViewModel = {
@@ -40,9 +54,16 @@ export type PstSchedulePdfViewModel = {
   selectedOfficerNames: string[];
   unselectedOfficerNames: string[];
   priorityOfficerNames: string[];
+  priorityPstNames?: string[];
+  priorityWfoRandomNames?: string[];
+  priorityFridayBurdenNames?: string[];
+  priorityRandomTotalNames?: string[];
+  poolSummaryRows?: Array<{ pool: string; meaning: string; officers: string }>;
   fairnessNote: string;
   fairnessSummaryRows: Array<{ label: string; value: string }>;
   fairnessOfficerRows: PstSchedulePdfFairnessOfficerRow[];
+  historyWindowColumnLabel: string;
+  previousMonthColumnLabel: string;
   rules: string[];
 };
 
@@ -67,11 +88,10 @@ const renderWeekRows = (rows: PstSchedulePdfWeekRow[]) =>
     .map((row) => {
       const rowClass = row.isHoliday ? "holiday" : row.hasIssue ? "issue" : "";
       return `<tr class="${rowClass}">
-  <td>${row.week}</td>
   <td>${escapeHtml(row.dayName)}</td>
   <td>${escapeHtml(row.dateLabel)}</td>
   <td>${escapeHtml(row.pstOfficer)}</td>
-  <td>${escapeHtml(row.wfoOfficer)}</td>
+  <td>${escapeHtml(row.wfoRandomOfficer)}</td>
   <td>${escapeHtml(row.note)}</td>
 </tr>`;
     })
@@ -92,6 +112,7 @@ export const buildPstSchedulePdfHtmlTemplate = (view: PstSchedulePdfViewModel) =
     h1, h2, h3 { margin: 0; }
     p { margin: 6px 0 0 0; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    table.schedule { table-layout: fixed; }
     th, td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: top; }
     th { background: #e5e7eb; text-align: left; }
     .section { margin-top: 18px; }
@@ -121,14 +142,20 @@ export const buildPstSchedulePdfHtmlTemplate = (view: PstSchedulePdfViewModel) =
 
   <div class="section">
     <h2>Tabel Jadwal</h2>
-    <table>
+    <table class="schedule">
+      <colgroup>
+        <col style="width:12%" />
+        <col style="width:14%" />
+        <col style="width:24%" />
+        <col style="width:20%" />
+        <col style="width:30%" />
+      </colgroup>
       <thead>
         <tr>
-          <th>Minggu</th>
           <th>Hari</th>
           <th>Tanggal</th>
           <th>Petugas PST</th>
-          <th>Petugas WFO</th>
+          <th>Petugas WFO Jumat</th>
           <th>Keterangan</th>
         </tr>
       </thead>
@@ -150,9 +177,14 @@ export const buildPstSchedulePdfHtmlTemplate = (view: PstSchedulePdfViewModel) =
         ${renderNameList(view.unselectedOfficerNames, "Semua petugas aktif sudah terpilih")}
       </div>
     </div>
-    <h3>Prioritas Bulan Berikutnya</h3>
-    ${renderNameList(view.priorityOfficerNames, "Tidak ada prioritas tambahan")}
-    <p><strong>Catatan fairness:</strong> ${escapeHtml(view.fairnessNote)}</p>
+    <h3>Prioritas PST Bulan Berikutnya</h3>
+    ${renderNameList(view.priorityPstNames ?? [], "Tidak ada prioritas PST")}
+    <h3>Prioritas WFO Jumat Random Bulan Berikutnya</h3>
+    ${renderNameList(view.priorityWfoRandomNames ?? [], "Tidak ada prioritas WFO Jumat random")}
+    <h3>Prioritas Beban Jumat Bulan Berikutnya</h3>
+    ${renderNameList(view.priorityFridayBurdenNames ?? [], "Tidak ada prioritas beban Jumat")}
+    <h3>Prioritas Beban Random Total Bulan Berikutnya</h3>
+    ${renderNameList(view.priorityRandomTotalNames ?? view.priorityOfficerNames, "Tidak ada prioritas beban random")}
   </div>
 </body>
 </html>

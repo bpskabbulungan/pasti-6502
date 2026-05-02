@@ -129,6 +129,7 @@ export async function POST(req: NextRequest) {
       schedule: result.schedule,
       generatedById: guard.session.user?.id ?? null,
       generatedByName: guard.session.user?.name ?? null,
+      includeBody: Boolean(downloadPdf),
     });
 
     if (!generatedPdf.ok) {
@@ -161,6 +162,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (downloadPdf) {
+      if (!generatedPdf.body) {
+        return NextResponse.json(
+          {
+            error: "PDF berhasil disimpan, tetapi body unduhan tidak tersedia",
+            schedule: result.schedule,
+            alreadyExists: result.alreadyExists,
+          },
+          { status: 500 }
+        );
+      }
       return new NextResponse(generatedPdf.body, {
         headers: {
           "Content-Type": generatedPdf.contentType,

@@ -1,0 +1,12 @@
+{
+  "scheduleId": "5b2ec1ec-840a-4c05-aa0e-a78101f1d033",
+  "fileName": "Jadwal_PST_WFO_05_2026.pdf",
+  "path": "2026/05/Jadwal_PST_WFO_05_2026.pdf",
+  "htmlPath": "2026/05/Jadwal_PST_WFO_05_2026.html",
+  "metadataPath": "2026/05/Jadwal_PST_WFO_05_2026.json",
+  "month": 5,
+  "year": 2026,
+  "generatedAt": "2026-05-02T13:39:59.691Z",
+  "generatedById": null,
+  "downloadUrl": "/api/pst/schedules/monthly/5b2ec1ec-840a-4c05-aa0e-a78101f1d033/pdf"
+}

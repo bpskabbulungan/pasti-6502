@@ -17,10 +17,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    return new NextResponse(result.body, {
+    if (!result.body) {
+      return NextResponse.json(
+        { error: "PDF ditemukan tetapi konten file tidak tersedia" },
+        { status: 500 }
+      );
+    }
+
+    return new Response(result.body, {
       headers: {
         "Content-Type": result.contentType,
+        "Content-Length": String(result.body.byteLength),
         "Content-Disposition": `attachment; filename="${result.fileName}"`,
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {

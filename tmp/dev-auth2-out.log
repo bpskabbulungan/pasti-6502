@@ -1,0 +1,12 @@
+   ▲ Next.js 15.5.7
+   - Local:        http://localhost:3112
+   - Network:      http://192.168.1.31:3112
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 13.3s
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 3.1s (213 modules)
+ ○ Compiling /api/auth/[...nextauth] ...
+ ✓ Compiled /api/notifications in 37.2s (603 modules)
+ GET /api/notifications 401 in 15844ms

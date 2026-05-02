@@ -24,6 +24,23 @@ type NotificationsDropdownProps = {
   userId: string;
 };
 
+const isTransientNetworkFailure = (error: unknown) => {
+  if (error instanceof TypeError) {
+    return /failed to fetch|networkerror/i.test(error.message);
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const maybeError = error as { status?: unknown; message?: unknown };
+    return (
+      maybeError.status === 0 &&
+      typeof maybeError.message === "string" &&
+      /network request failed/i.test(maybeError.message)
+    );
+  }
+
+  return false;
+};
+
 export default function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
   const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -46,6 +63,9 @@ export default function NotificationsDropdown({ userId }: NotificationsDropdownP
         if (data.hash) dataHashRef.current = data.hash;
       }
     } catch (error) {
+      if (isTransientNetworkFailure(error)) {
+        return;
+      }
       console.error("Error fetching notifications:", serializeErrorForLog(error));
     } finally {
       if (showLoading) {
@@ -61,6 +81,10 @@ export default function NotificationsDropdown({ userId }: NotificationsDropdownP
       if (data.hash) dataHashRef.current = data.hash;
       touch("Semua notifikasi telah dibaca");
     } catch (error) {
+      if (isTransientNetworkFailure(error)) {
+        toast.error("Koneksi bermasalah. Coba lagi.");
+        return;
+      }
       console.error("Error marking notifications as read:", serializeErrorForLog(error));
       toast.error("Terjadi kesalahan");
     }
@@ -78,6 +102,10 @@ export default function NotificationsDropdown({ userId }: NotificationsDropdownP
       if (data.hash) dataHashRef.current = data.hash;
       touch("Notifikasi telah dibaca");
     } catch (error) {
+      if (isTransientNetworkFailure(error)) {
+        toast.error("Koneksi bermasalah. Coba lagi.");
+        return;
+      }
       console.error("Error marking notification as read:", serializeErrorForLog(error));
       toast.error("Terjadi kesalahan saat menandai notifikasi");
     } finally {

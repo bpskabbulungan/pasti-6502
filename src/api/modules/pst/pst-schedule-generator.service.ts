@@ -93,8 +93,92 @@ const DAY_LABELS: Record<number, string> = {
 };
 
 const FAIRNESS_HISTORY_WINDOW_MONTHS = 3;
-const FAIRNESS_ALGORITHM_VERSION = "v2.0-historical-3m";
-const FRIDAY_ASSIGNMENT_HARD_CAP_PER_OFFICER = 1;
+const FAIRNESS_ALGORITHM_VERSION = "v3.1-friday-dual-random-prior-month-fairness";
+const DEFAULT_MAX_RANDOM_ASSIGNMENTS_PER_MONTH = 1;
+
+type PstPoolType = "NORMAL" | "LOW_PRIORITY" | "EXCLUDED";
+type WfoFridayRandomPoolType = "PRIMARY" | "FALLBACK" | "NONE";
+type ScheduleSlotType =
+  | "PST_REGULAR"
+  | "PST_FRIDAY"
+  | "WFO_FRIDAY_FIXED"
+  | "WFO_FRIDAY_RANDOM";
+
+type OfficerScheduleRule = {
+  officerId: string;
+  name: string;
+  pstPoolType: PstPoolType;
+  wfoFridayRandomPoolType: WfoFridayRandomPoolType;
+  canRandomPst: boolean;
+  canRandomWfoFriday: boolean;
+  fixedFridayWfo: boolean;
+  fridayWfoOnly: boolean;
+  maxRandomAssignmentsPerMonth: number;
+};
+
+type GeneratedAssignmentSlot = {
+  scheduleDate: Date;
+  dateIso: string;
+  dayName: string;
+  weekOfMonth: number;
+  weekday: number;
+  slotType: ScheduleSlotType;
+  slotRole: PstSlotRole;
+};
+
+type ProvisionalAssignment = {
+  scheduleDate: Date;
+  weekOfMonth: number;
+  weekday: number;
+  slotRole: PstSlotRole;
+  slotType: ScheduleSlotType;
+  officerId: string | null;
+  status: PstScheduleDetailStatus;
+  notes: string | null;
+  score: number | null;
+  isRandomFairness: boolean;
+};
+
+type OfficerFairnessStats = {
+  pstCurrentMonth: number;
+  pstRegularCurrentMonth: number;
+  pstFridayCurrentMonth: number;
+  randomWfoFridayCurrentMonth: number;
+  fixedWfoFridayCurrentMonth: number;
+  fridayRandomBurdenCurrentMonth: number;
+  totalCurrentMonthForRandomFairness: number;
+  totalOperationalPresence: number;
+  previousMonthPstRegular: number;
+  previousMonthPstFriday: number;
+  previousMonthRandomWfoFriday: number;
+  previousMonthFridayBurden: number;
+  previousMonthRandomTotal: number;
+  historyWindowPstRegular: number;
+  historyWindowPstFriday: number;
+  historyWindowPst: number;
+  historyWindowRandomWfoFriday: number;
+  historyWindowFridayBurden: number;
+  historyWindowTotalRandomAssignments: number;
+  cumulativeRandomFairnessTotal: number;
+  lastRandomAssignedDate: Date | null;
+  selectedRandomThisMonth: boolean;
+};
+
+type CompareCandidatePriorityParams = {
+  slotType: ScheduleSlotType;
+  leftOfficerId: string;
+  rightOfficerId: string;
+  leftOfficerName: string;
+  rightOfficerName: string;
+  leftRule: OfficerScheduleRule;
+  rightRule: OfficerScheduleRule;
+  leftStats: OfficerFairnessStats;
+  rightStats: OfficerFairnessStats;
+  leftMonthRandomCount: number;
+  rightMonthRandomCount: number;
+  periodKey: string;
+  dateIso: string;
+};
 
 const APRIL_2026_SPECIAL_SCHEDULING_RULE: MonthlySpecialSchedulingRule = {
   year: 2026,
@@ -119,15 +203,12 @@ const ROLE_BASED_EXCLUDED_NAMES: Record<PstSlotRole, string[]> = {
     "Yuda Agus Irianto",
     "Ari Susilowati",
     "Idhamsyah",
-    "Zulkifli",
-    "Marinda Saga",
   ],
   [PstSlotRole.WFO]: [
     "Yuda Agus Irianto",
     "Zulkifli",
     "Marinda Saga",
-    "Jusman",
-    "Anuar",
+    "Marinda Saga Putra",
   ],
 };
 
@@ -142,8 +223,27 @@ const EXCLUDED_NAME_SET_BY_ROLE: Record<PstSlotRole, Set<string>> = {
   ),
 };
 
-const isOfficerExcludedForRole = (officerName: string, role: PstSlotRole) =>
-  EXCLUDED_NAME_SET_BY_ROLE[role].has(normalizeOfficerName(officerName));
+const EXCLUDED_NAME_LIST_BY_ROLE: Record<PstSlotRole, string[]> = {
+  [PstSlotRole.PST]: ROLE_BASED_EXCLUDED_NAMES[PstSlotRole.PST].map(normalizeOfficerName),
+  [PstSlotRole.WFO]: ROLE_BASED_EXCLUDED_NAMES[PstSlotRole.WFO].map(normalizeOfficerName),
+};
+
+const isOfficerExcludedForRole = (officerName: string, role: PstSlotRole) => {
+  const normalizedOfficerName = normalizeOfficerName(officerName);
+  const excludedNames = EXCLUDED_NAME_LIST_BY_ROLE[role];
+
+  if (EXCLUDED_NAME_SET_BY_ROLE[role].has(normalizedOfficerName)) {
+    return true;
+  }
+
+  // Backward-compatible alias match: "marinda saga" should match
+  // "marinda saga putra" when legacy config used a shortened name.
+  return excludedNames.some(
+    (excludedName) =>
+      normalizedOfficerName.startsWith(`${excludedName} `) ||
+      excludedName.startsWith(`${normalizedOfficerName} `)
+  );
+};
 
 const getMonthlySpecialSchedulingRule = (year: number, month: number) => {
   if (
@@ -165,6 +265,285 @@ const isWfoSlotRequired = (
   }
 
   return dateIso >= rule.wfoStartDateIso;
+};
+
+const OFFICER_NAME_ALIASES = {
+  ZULKIFLI: ["zulkifli"],
+  MARINDA: ["marinda saga putra", "marinda saga"],
+  ARI: ["ari susilowati"],
+  IDHAMSYAH: ["idhamsyah"],
+  ANUAR: ["anuar"],
+  JUSMAN: ["jusman"],
+} as const;
+
+const hasOfficerAlias = (name: string, aliases: readonly string[]) => {
+  const normalized = normalizeOfficerName(name);
+  return aliases.some((alias) => {
+    const normalizedAlias = normalizeOfficerName(alias);
+    return (
+      normalized === normalizedAlias ||
+      normalized.startsWith(`${normalizedAlias} `) ||
+      normalizedAlias.startsWith(`${normalized} `)
+    );
+  });
+};
+
+export const getPstPoolRank = (rule: OfficerScheduleRule): number => {
+  if (rule.pstPoolType === "NORMAL") return 0;
+  if (rule.pstPoolType === "LOW_PRIORITY") return 1;
+  return 999;
+};
+
+export const getWfoFridayRandomPoolRank = (rule: OfficerScheduleRule): number => {
+  if (rule.wfoFridayRandomPoolType === "PRIMARY") return 0;
+  if (rule.wfoFridayRandomPoolType === "FALLBACK") return 1;
+  return 999;
+};
+
+export const isEligibleForRandomWfoFriday = (rule: OfficerScheduleRule): boolean => {
+  if (rule.fixedFridayWfo) return false;
+  if (!rule.canRandomWfoFriday) return false;
+  if (rule.wfoFridayRandomPoolType === "NONE") return false;
+  return true;
+};
+
+const createOfficerRule = (
+  officer: {
+    id: string;
+    name: string;
+  },
+  overrides?: Partial<OfficerScheduleRule>
+): OfficerScheduleRule => ({
+  officerId: officer.id,
+  name: officer.name,
+  pstPoolType: "NORMAL",
+  wfoFridayRandomPoolType: "FALLBACK",
+  canRandomPst: true,
+  canRandomWfoFriday: true,
+  fixedFridayWfo: false,
+  fridayWfoOnly: false,
+  maxRandomAssignmentsPerMonth: DEFAULT_MAX_RANDOM_ASSIGNMENTS_PER_MONTH,
+  ...(overrides ?? {}),
+});
+
+export const buildOfficerScheduleRuleMap = (
+  officers: Array<{
+    id: string;
+    name: string;
+  }>
+) => {
+  const map = new Map<string, OfficerScheduleRule>();
+
+  for (const officer of officers) {
+    if (hasOfficerAlias(officer.name, OFFICER_NAME_ALIASES.ZULKIFLI)) {
+      map.set(
+        officer.id,
+        createOfficerRule(officer, {
+          pstPoolType: "LOW_PRIORITY",
+          wfoFridayRandomPoolType: "NONE",
+          canRandomPst: true,
+          canRandomWfoFriday: false,
+          fixedFridayWfo: true,
+          fridayWfoOnly: true,
+        })
+      );
+      continue;
+    }
+
+    if (hasOfficerAlias(officer.name, OFFICER_NAME_ALIASES.MARINDA)) {
+      map.set(
+        officer.id,
+        createOfficerRule(officer, {
+          pstPoolType: "LOW_PRIORITY",
+          wfoFridayRandomPoolType: "NONE",
+          canRandomPst: true,
+          canRandomWfoFriday: false,
+          fixedFridayWfo: true,
+          fridayWfoOnly: true,
+        })
+      );
+      continue;
+    }
+
+    if (hasOfficerAlias(officer.name, OFFICER_NAME_ALIASES.ARI)) {
+      map.set(
+        officer.id,
+        createOfficerRule(officer, {
+          pstPoolType: "EXCLUDED",
+          wfoFridayRandomPoolType: "PRIMARY",
+          canRandomPst: false,
+          canRandomWfoFriday: true,
+          fixedFridayWfo: false,
+          fridayWfoOnly: true,
+        })
+      );
+      continue;
+    }
+
+    if (hasOfficerAlias(officer.name, OFFICER_NAME_ALIASES.IDHAMSYAH)) {
+      map.set(
+        officer.id,
+        createOfficerRule(officer, {
+          pstPoolType: "EXCLUDED",
+          wfoFridayRandomPoolType: "PRIMARY",
+          canRandomPst: false,
+          canRandomWfoFriday: true,
+          fixedFridayWfo: false,
+          fridayWfoOnly: true,
+        })
+      );
+      continue;
+    }
+
+    // Anuar, Jusman, and everyone else are normal PST candidates and WFO fallback.
+    map.set(officer.id, createOfficerRule(officer));
+  }
+
+  return map;
+};
+
+export const stableHash = (input: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash +=
+      (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return hash >>> 0;
+};
+
+export const compareCandidatePriority = (params: CompareCandidatePriorityParams) => {
+  const {
+    slotType,
+    leftOfficerId,
+    rightOfficerId,
+    leftOfficerName,
+    rightOfficerName,
+    leftRule,
+    rightRule,
+    leftStats,
+    rightStats,
+    leftMonthRandomCount,
+    rightMonthRandomCount,
+    periodKey,
+    dateIso,
+  } = params;
+
+  if (leftMonthRandomCount !== rightMonthRandomCount) {
+    return leftMonthRandomCount - rightMonthRandomCount;
+  }
+
+  if (slotType === "WFO_FRIDAY_RANDOM") {
+    const leftPool = getWfoFridayRandomPoolRank(leftRule);
+    const rightPool = getWfoFridayRandomPoolRank(rightRule);
+    if (leftPool !== rightPool) return leftPool - rightPool;
+    if (leftStats.previousMonthFridayBurden !== rightStats.previousMonthFridayBurden) {
+      return leftStats.previousMonthFridayBurden - rightStats.previousMonthFridayBurden;
+    }
+    if (leftStats.previousMonthRandomTotal !== rightStats.previousMonthRandomTotal) {
+      return leftStats.previousMonthRandomTotal - rightStats.previousMonthRandomTotal;
+    }
+    if (leftStats.historyWindowFridayBurden !== rightStats.historyWindowFridayBurden) {
+      return leftStats.historyWindowFridayBurden - rightStats.historyWindowFridayBurden;
+    }
+    if (
+      leftStats.historyWindowTotalRandomAssignments !==
+      rightStats.historyWindowTotalRandomAssignments
+    ) {
+      return (
+        leftStats.historyWindowTotalRandomAssignments -
+        rightStats.historyWindowTotalRandomAssignments
+      );
+    }
+    if (leftStats.historyWindowRandomWfoFriday !== rightStats.historyWindowRandomWfoFriday) {
+      return leftStats.historyWindowRandomWfoFriday - rightStats.historyWindowRandomWfoFriday;
+    }
+  } else if (slotType === "PST_FRIDAY") {
+    const leftPool = getPstPoolRank(leftRule);
+    const rightPool = getPstPoolRank(rightRule);
+    if (leftPool !== rightPool) return leftPool - rightPool;
+    if (leftStats.previousMonthFridayBurden !== rightStats.previousMonthFridayBurden) {
+      return leftStats.previousMonthFridayBurden - rightStats.previousMonthFridayBurden;
+    }
+    if (leftStats.previousMonthRandomTotal !== rightStats.previousMonthRandomTotal) {
+      return leftStats.previousMonthRandomTotal - rightStats.previousMonthRandomTotal;
+    }
+    if (leftStats.historyWindowFridayBurden !== rightStats.historyWindowFridayBurden) {
+      return leftStats.historyWindowFridayBurden - rightStats.historyWindowFridayBurden;
+    }
+    if (
+      leftStats.historyWindowTotalRandomAssignments !==
+      rightStats.historyWindowTotalRandomAssignments
+    ) {
+      return (
+        leftStats.historyWindowTotalRandomAssignments -
+        rightStats.historyWindowTotalRandomAssignments
+      );
+    }
+    if (leftStats.historyWindowPstFriday !== rightStats.historyWindowPstFriday) {
+      return leftStats.historyWindowPstFriday - rightStats.historyWindowPstFriday;
+    }
+  } else {
+    const leftPool = getPstPoolRank(leftRule);
+    const rightPool = getPstPoolRank(rightRule);
+    if (leftPool !== rightPool) return leftPool - rightPool;
+    if (leftStats.previousMonthRandomTotal !== rightStats.previousMonthRandomTotal) {
+      return leftStats.previousMonthRandomTotal - rightStats.previousMonthRandomTotal;
+    }
+    if (
+      leftStats.historyWindowTotalRandomAssignments !==
+      rightStats.historyWindowTotalRandomAssignments
+    ) {
+      return (
+        leftStats.historyWindowTotalRandomAssignments -
+        rightStats.historyWindowTotalRandomAssignments
+      );
+    }
+    if (leftStats.historyWindowPst !== rightStats.historyWindowPst) {
+      return leftStats.historyWindowPst - rightStats.historyWindowPst;
+    }
+  }
+
+  const leftLast = leftStats.lastRandomAssignedDate?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const rightLast = rightStats.lastRandomAssignedDate?.getTime() ?? Number.NEGATIVE_INFINITY;
+  if (leftLast !== rightLast) {
+    return leftLast - rightLast;
+  }
+
+  const leftHash = stableHash(`${leftOfficerId}|${periodKey}|${slotType}|${dateIso}`);
+  const rightHash = stableHash(`${rightOfficerId}|${periodKey}|${slotType}|${dateIso}`);
+  if (leftHash !== rightHash) {
+    return leftHash - rightHash;
+  }
+
+  return leftOfficerName.localeCompare(rightOfficerName, "id");
+};
+
+const formatSlotTypeLabel = (slotType: ScheduleSlotType) => `[SLOT:${slotType}]`;
+
+const appendSlotTypeNote = (notes: string | null, slotType: ScheduleSlotType) => {
+  const slotToken = formatSlotTypeLabel(slotType);
+  if (!notes) {
+    return slotToken;
+  }
+  if (notes.includes(slotToken)) {
+    return notes;
+  }
+  return `${notes} | ${slotToken}`;
+};
+
+const isRandomWfoDetail = (detail: { slotRole: PstSlotRole; weekday?: number; notes?: string | null }) => {
+  if (detail.slotRole !== PstSlotRole.WFO) {
+    return false;
+  }
+
+  const noteText = detail.notes ?? "";
+  if (noteText.includes(formatSlotTypeLabel("WFO_FRIDAY_RANDOM"))) {
+    return true;
+  }
+
+  // Backward compatibility for legacy schedules: Friday WFO was random.
+  return detail.weekday === 5;
 };
 
 const PST_OFFICER_MIN_SELECT = {
@@ -207,8 +586,6 @@ const getWeekdayIso = (date: Date) => {
   return day === 0 ? 7 : day;
 };
 
-const getHistoryMapKey = (officerId: string, role: PstSlotRole) => `${officerId}:${role}`;
-
 const getMonthStart = (year: number, month: number) =>
   startOfDayInTimeZone(new Date(Date.UTC(year, month - 1, 1)));
 
@@ -224,22 +601,6 @@ const toPreviousMonth = (year: number, month: number) => addMonths(year, month, 
 
 const daysBetween = (first: Date, second: Date) =>
   Math.floor(Math.abs(first.getTime() - second.getTime()) / (1000 * 60 * 60 * 24));
-
-const getClosestAssignmentDistance = (slotDate: Date, assignedDates: Date[]) => {
-  if (assignedDates.length === 0) {
-    return null;
-  }
-
-  let minDistance = Number.POSITIVE_INFINITY;
-  for (const assigned of assignedDates) {
-    const distance = daysBetween(slotDate, assigned);
-    if (distance < minDistance) {
-      minDistance = distance;
-    }
-  }
-
-  return Number.isFinite(minDistance) ? minDistance : null;
-};
 
 const getScheduleStatusFromDocumentStatus = (documentStatus: PstDocumentStatus) =>
   documentStatus === "FINAL" ? PstScheduleStatus.PUBLISHED : PstScheduleStatus.DRAFT;
@@ -559,6 +920,99 @@ export function pickCandidateWeightedRandom(candidates: CandidateWithScore[]) {
   return candidates[candidates.length - 1];
 }
 
+type FridayRoleNormalizationDetail = {
+  scheduleDate: Date;
+  weekday: number;
+  slotRole: PstSlotRole;
+  officerId: string | null;
+  notes: string | null;
+};
+
+const appendNote = (previous: string | null, note: string) => {
+  const normalized = previous?.trim();
+  if (!normalized) {
+    return note;
+  }
+  if (normalized.includes(note)) {
+    return normalized;
+  }
+  return `${normalized} | ${note}`;
+};
+
+const swapFridayAssignments = (
+  pstDetail: FridayRoleNormalizationDetail,
+  wfoDetail: FridayRoleNormalizationDetail,
+  reason: string
+) => {
+  const previousPstOfficerId = pstDetail.officerId;
+  pstDetail.officerId = wfoDetail.officerId;
+  wfoDetail.officerId = previousPstOfficerId;
+  pstDetail.notes = appendNote(pstDetail.notes, reason);
+  wfoDetail.notes = appendNote(wfoDetail.notes, reason);
+};
+
+export function normalizeFridayRoleAssignmentsByPstHistory(
+  details: FridayRoleNormalizationDetail[],
+  historicalPstCountBeforeMonth: Map<string, number>,
+  options?: { random?: () => number }
+) {
+  const random = options?.random ?? Math.random;
+  const byDate = new Map<string, FridayRoleNormalizationDetail[]>();
+  for (const detail of details) {
+    if (detail.weekday !== 5) {
+      continue;
+    }
+    const dateIso = toIsoDateInTimeZone(detail.scheduleDate);
+    const bucket = byDate.get(dateIso) ?? [];
+    bucket.push(detail);
+    byDate.set(dateIso, bucket);
+  }
+
+  for (const items of byDate.values()) {
+    const pstDetail = items.find((item) => item.slotRole === PstSlotRole.PST) ?? null;
+    const wfoDetail = items.find((item) => item.slotRole === PstSlotRole.WFO) ?? null;
+    if (!pstDetail || !wfoDetail || !pstDetail.officerId || !wfoDetail.officerId) {
+      continue;
+    }
+    if (pstDetail.officerId === wfoDetail.officerId) {
+      continue;
+    }
+
+    const hasLockedNote =
+      (pstDetail.notes ?? "").includes("Penugasan khusus") ||
+      (wfoDetail.notes ?? "").includes("Penugasan khusus");
+    if (hasLockedNote) {
+      continue;
+    }
+
+    const pstOfficerHistoricalPstCount =
+      historicalPstCountBeforeMonth.get(pstDetail.officerId) ?? 0;
+    const wfoOfficerHistoricalPstCount =
+      historicalPstCountBeforeMonth.get(wfoDetail.officerId) ?? 0;
+
+    const reasonPriority =
+      "Role Jumat disesuaikan: petugas yang belum pernah PST diprioritaskan ke slot PST.";
+    const reasonRandom =
+      "Role Jumat diacak: kedua petugas sama-sama sudah punya histori PST.";
+
+    if (pstOfficerHistoricalPstCount > 0 && wfoOfficerHistoricalPstCount === 0) {
+      swapFridayAssignments(pstDetail, wfoDetail, reasonPriority);
+      continue;
+    }
+
+    if (pstOfficerHistoricalPstCount === 0 && wfoOfficerHistoricalPstCount > 0) {
+      continue;
+    }
+
+    if (pstOfficerHistoricalPstCount > 0 && wfoOfficerHistoricalPstCount > 0) {
+      const keepCurrentPst = random() < 0.5;
+      if (!keepCurrentPst) {
+        swapFridayAssignments(pstDetail, wfoDetail, reasonRandom);
+      }
+    }
+  }
+}
+
 const buildWeeklyPayload = (params: {
   month: number;
   year: number;
@@ -771,7 +1225,11 @@ export async function generateMonthlySchedule(params: {
     }
   }
 
-  const { slots, holidays } = buildWorkingSlots(params.month, params.year, normalizedHolidayCalendar);
+  const { slots, holidays } = buildWorkingSlots(
+    params.month,
+    params.year,
+    normalizedHolidayCalendar
+  );
   if (slots.length === 0) {
     return {
       ok: false as const,
@@ -797,9 +1255,14 @@ export async function generateMonthlySchedule(params: {
     };
   }
 
+  const officerRuleMap = buildOfficerScheduleRuleMap(
+    officers.map((officer) => ({ id: officer.id, name: officer.name }))
+  );
+  const officerById = new Map(officers.map((officer) => [officer.id, officer] as const));
   const officerByNormalizedName = new Map(
     officers.map((officer) => [normalizeOfficerName(officer.name), officer] as const)
   );
+
   const findOfficerByRequestedName = (requestedName: string) => {
     const normalizedRequestedName = normalizeOfficerName(requestedName);
     const exact = officerByNormalizedName.get(normalizedRequestedName);
@@ -818,68 +1281,79 @@ export async function generateMonthlySchedule(params: {
     );
   };
 
-  const forcedAssignmentBySlotKey = new Map<
-    string,
-    { requestedName: string; officer: (typeof officers)[number] }
-  >();
-  const fixedLockedOfficerIdSet = new Set<string>();
-  if (specialRule) {
-    for (const item of specialRule.fixedAssignments) {
-      const officer = findOfficerByRequestedName(item.officerName);
-      if (!officer) {
-        return {
-          ok: false as const,
-          status: 400,
-          error: `Penugasan khusus ${item.dateIso} (${item.role}) gagal: petugas ${item.officerName} tidak ditemukan atau tidak aktif`,
-        };
-      }
-      forcedAssignmentBySlotKey.set(`${item.dateIso}|${item.role}`, {
-        requestedName: item.officerName,
-        officer,
+  const assignmentSlots: GeneratedAssignmentSlot[] = [];
+  for (const slot of slots) {
+    if (slot.role !== PstSlotRole.PST) {
+      continue;
+    }
+
+    if (slot.weekday === 5) {
+      assignmentSlots.push({
+        scheduleDate: slot.scheduleDate,
+        dateIso: slot.dateIso,
+        dayName: slot.dayName,
+        weekOfMonth: slot.weekOfMonth,
+        weekday: slot.weekday,
+        slotType: "PST_FRIDAY",
+        slotRole: PstSlotRole.PST,
       });
-      fixedLockedOfficerIdSet.add(officer.id);
+
+      if (isWfoSlotRequired(slot.dateIso, specialRule)) {
+        assignmentSlots.push({
+          scheduleDate: slot.scheduleDate,
+          dateIso: slot.dateIso,
+          dayName: slot.dayName,
+          weekOfMonth: slot.weekOfMonth,
+          weekday: slot.weekday,
+          slotType: "WFO_FRIDAY_RANDOM",
+          slotRole: PstSlotRole.WFO,
+        });
+      }
+      continue;
     }
+
+    assignmentSlots.push({
+      scheduleDate: slot.scheduleDate,
+      dateIso: slot.dateIso,
+      dayName: slot.dayName,
+      weekOfMonth: slot.weekOfMonth,
+      weekday: slot.weekday,
+      slotType: "PST_REGULAR",
+      slotRole: PstSlotRole.PST,
+    });
   }
 
-  const assignableOfficersByRole: Record<PstSlotRole, typeof officers> = {
-    [PstSlotRole.PST]: officers.filter(
-      (officer) => !isOfficerExcludedForRole(officer.name, PstSlotRole.PST)
-    ),
-    [PstSlotRole.WFO]: officers.filter(
-      (officer) => !isOfficerExcludedForRole(officer.name, PstSlotRole.WFO)
-    ),
-  };
-
-  const requiredRoles = new Set(slots.map((slot) => slot.role));
-  for (const role of requiredRoles) {
-    if (assignableOfficersByRole[role].length === 0) {
-      return {
-        ok: false as const,
-        status: 400,
-        error: `Tidak ada kandidat yang memenuhi syarat untuk slot ${role}`,
+  const fridaySlots = assignmentSlots.filter((slot) => slot.slotType === "PST_FRIDAY");
+  const regularSlots = assignmentSlots.filter((slot) => slot.slotType === "PST_REGULAR");
+  const randomWfoFridaySlots = assignmentSlots.filter(
+    (slot) => slot.slotType === "WFO_FRIDAY_RANDOM"
+  );
+  const orderedSlots = [...fridaySlots, ...randomWfoFridaySlots, ...regularSlots].sort(
+    (left, right) => {
+      const dateCompare = left.dateIso.localeCompare(right.dateIso);
+      if (dateCompare !== 0) {
+        return dateCompare;
+      }
+      const order: Record<ScheduleSlotType, number> = {
+        WFO_FRIDAY_FIXED: 0,
+        PST_FRIDAY: 1,
+        WFO_FRIDAY_RANDOM: 2,
+        PST_REGULAR: 3,
       };
+      return order[left.slotType] - order[right.slotType];
     }
-  }
-
-  const assignableOfficerIds = new Set(
-    [...assignableOfficersByRole[PstSlotRole.PST], ...assignableOfficersByRole[PstSlotRole.WFO]].map(
-      (officer) => officer.id
-    )
-  );
-  const assignableOfficerIdList = Array.from(assignableOfficerIds).sort((left, right) =>
-    left.localeCompare(right, "id")
   );
 
-  const uniqueDates = [...new Set(slots.map((slot) => slot.dateIso))].sort((left, right) =>
+  const uniqueDates = [...new Set(orderedSlots.map((slot) => slot.dateIso))].sort((left, right) =>
     left.localeCompare(right)
   );
   const firstDate = dateFromIso(uniqueDates[0]);
   const lastDate = dateFromIso(uniqueDates[uniqueDates.length - 1]);
+  const previousMonthPeriod = toPreviousMonth(params.year, params.month);
   const historyWindowStart = (() => {
     const shifted = addMonths(params.year, params.month, -FAIRNESS_HISTORY_WINDOW_MONTHS);
     return getMonthStart(shifted.year, shifted.month);
   })();
-  const previousMonthPeriod = toPreviousMonth(params.year, params.month);
   const holidayDateSet = new Set(holidays.map((holiday) => holiday.dateIso));
 
   const availabilityRecords = await prisma.officerAvailability.findMany({
@@ -895,378 +1369,595 @@ export async function generateMonthlySchedule(params: {
       date: true,
     },
   });
-
   const unavailableSet = new Set(
     availabilityRecords.map((item) => `${item.officerId}|${toIsoDateInTimeZone(item.date)}`)
   );
 
-  const history = await prisma.assignmentHistory.findMany({
+  const manualLockedBySlotKey = new Map<
+    string,
+    { officerId: string; reason: string; source: "manual" | "special" }
+  >();
+  if (specialRule) {
+    for (const item of specialRule.fixedAssignments) {
+      const officer = findOfficerByRequestedName(item.officerName);
+      if (!officer) {
+        return {
+          ok: false as const,
+          status: 400,
+          error: `Penugasan khusus ${item.dateIso} (${item.role}) gagal: petugas ${item.officerName} tidak ditemukan atau tidak aktif`,
+        };
+      }
+
+      manualLockedBySlotKey.set(`${item.dateIso}|${item.role}`, {
+        officerId: officer.id,
+        reason: "Penugasan khusus",
+        source: "special",
+      });
+    }
+  }
+
+  if (existing && forceRegenerate) {
+    const existingDetails = await prisma.scheduleDetail.findMany({
+      where: {
+        monthlyScheduleId: existing.id,
+        officerId: { not: null },
+      },
+      select: {
+        scheduleDate: true,
+        slotRole: true,
+        officerId: true,
+        status: true,
+        notes: true,
+      },
+    });
+
+    for (const detail of existingDetails) {
+      if (!detail.officerId) {
+        continue;
+      }
+      const noteText = (detail.notes ?? "").toLowerCase();
+      const isManualLike =
+        detail.status === PstScheduleDetailStatus.SWAPPED ||
+        detail.status === PstScheduleDetailStatus.REPLACED ||
+        noteText.includes("manual") ||
+        noteText.includes("swap") ||
+        noteText.includes("reshuffle") ||
+        noteText.includes("override");
+      if (!isManualLike) {
+        continue;
+      }
+
+      const dateIso = toIsoDateInTimeZone(detail.scheduleDate);
+      manualLockedBySlotKey.set(`${dateIso}|${detail.slotRole}`, {
+        officerId: detail.officerId,
+        reason: detail.notes?.trim() || "Manual lock dari jadwal sebelumnya",
+        source: "manual",
+      });
+    }
+  }
+
+  const historyDetails = await prisma.scheduleDetail.findMany({
     where: {
-      officerId: { in: assignableOfficerIdList },
+      officerId: { in: officers.map((officer) => officer.id) },
       scheduleDate: {
         lt: firstDate,
       },
+      status: {
+        in: [
+          PstScheduleDetailStatus.ASSIGNED,
+          PstScheduleDetailStatus.REPLACED,
+          PstScheduleDetailStatus.SWAPPED,
+        ],
+      },
+      monthlySchedule: {
+        status: {
+          not: PstScheduleStatus.CANCELLED,
+        },
+      },
     },
-    orderBy: { scheduleDate: "desc" },
     select: {
       officerId: true,
       slotRole: true,
+      weekday: true,
       scheduleDate: true,
-      month: true,
-      year: true,
+      notes: true,
+      monthlySchedule: {
+        select: {
+          month: true,
+          year: true,
+        },
+      },
     },
+    orderBy: [{ scheduleDate: "desc" }],
   });
 
-  const threeMonthCount = new Map<string, number>();
-  const threeMonthFridayCount = new Map<string, number>();
-  const previousMonthAssigned = new Set<string>();
-  const lastAssignedAt = new Map<string, Date>();
-  const assignmentDatesByOfficer = new Map<string, Date[]>();
+  const fairnessByOfficer = new Map<string, OfficerFairnessStats>();
+  for (const officer of officers) {
+    fairnessByOfficer.set(officer.id, {
+      pstCurrentMonth: 0,
+      pstRegularCurrentMonth: 0,
+      pstFridayCurrentMonth: 0,
+      randomWfoFridayCurrentMonth: 0,
+      fixedWfoFridayCurrentMonth: 0,
+      fridayRandomBurdenCurrentMonth: 0,
+      totalCurrentMonthForRandomFairness: 0,
+      totalOperationalPresence: 0,
+      previousMonthPstRegular: 0,
+      previousMonthPstFriday: 0,
+      previousMonthRandomWfoFriday: 0,
+      previousMonthFridayBurden: 0,
+      previousMonthRandomTotal: 0,
+      historyWindowPstRegular: 0,
+      historyWindowPstFriday: 0,
+      historyWindowPst: 0,
+      historyWindowRandomWfoFriday: 0,
+      historyWindowFridayBurden: 0,
+      historyWindowTotalRandomAssignments: 0,
+      cumulativeRandomFairnessTotal: 0,
+      lastRandomAssignedDate: null,
+      selectedRandomThisMonth: false,
+    });
+  }
 
-  for (const item of history) {
-    if (!lastAssignedAt.has(item.officerId)) {
-      lastAssignedAt.set(item.officerId, item.scheduleDate);
+  for (const item of historyDetails) {
+    if (!item.officerId) {
+      continue;
+    }
+    const bucket = fairnessByOfficer.get(item.officerId);
+    if (!bucket) {
+      continue;
     }
 
-    if (item.month === previousMonthPeriod.month && item.year === previousMonthPeriod.year) {
-      previousMonthAssigned.add(item.officerId);
+    const isRandomAssignment =
+      item.slotRole === PstSlotRole.PST ||
+      isRandomWfoDetail({ slotRole: item.slotRole, weekday: item.weekday, notes: item.notes });
+    if (!isRandomAssignment) {
+      continue;
     }
 
-    if (item.scheduleDate >= historyWindowStart) {
-      threeMonthCount.set(item.officerId, (threeMonthCount.get(item.officerId) ?? 0) + 1);
-      if (getWeekdayIso(item.scheduleDate) === 5) {
-        threeMonthFridayCount.set(item.officerId, (threeMonthFridayCount.get(item.officerId) ?? 0) + 1);
+    if (!bucket.lastRandomAssignedDate) {
+      bucket.lastRandomAssignedDate = item.scheduleDate;
+    }
+
+    const withinWindow = item.scheduleDate >= historyWindowStart;
+    if (withinWindow) {
+      bucket.historyWindowTotalRandomAssignments += 1;
+      if (item.slotRole === PstSlotRole.PST) {
+        bucket.historyWindowPst += 1;
+        if (item.weekday === 5) {
+          bucket.historyWindowPstFriday += 1;
+          bucket.historyWindowFridayBurden += 1;
+        } else {
+          bucket.historyWindowPstRegular += 1;
+        }
+      } else if (item.weekday === 5) {
+        bucket.historyWindowRandomWfoFriday += 1;
+        bucket.historyWindowFridayBurden += 1;
       }
+    }
 
-      const dateBucket = assignmentDatesByOfficer.get(item.officerId) ?? [];
-      dateBucket.push(item.scheduleDate);
-      assignmentDatesByOfficer.set(item.officerId, dateBucket);
+    const sourceMonth = item.monthlySchedule?.month ?? 0;
+    const sourceYear = item.monthlySchedule?.year ?? 0;
+    if (sourceMonth === previousMonthPeriod.month && sourceYear === previousMonthPeriod.year) {
+      bucket.previousMonthRandomTotal += 1;
+      if (item.slotRole === PstSlotRole.PST) {
+        if (item.weekday === 5) {
+          bucket.previousMonthPstFriday += 1;
+          bucket.previousMonthFridayBurden += 1;
+        } else {
+          bucket.previousMonthPstRegular += 1;
+        }
+      } else if (item.weekday === 5) {
+        bucket.previousMonthRandomWfoFriday += 1;
+        bucket.previousMonthFridayBurden += 1;
+      }
     }
   }
 
-  for (const officerId of assignableOfficerIdList) {
-    if (!assignmentDatesByOfficer.has(officerId)) {
-      assignmentDatesByOfficer.set(officerId, []);
-    }
+  const monthlyRandomCount = new Map<string, number>();
+  for (const officer of officers) {
+    monthlyRandomCount.set(officer.id, 0);
   }
-
-  const monthlyCount = new Map<string, number>();
-  const monthlyRoleCount = new Map<string, number>();
-  const monthlyFridayRoleCount = new Map<string, number>();
-  const monthlyFridayTotalCount = new Map<string, number>();
-  const assignedThisMonth = new Set<string>();
   const assignedByDate = new Map<string, Set<string>>();
+  const generationWarnings: string[] = [];
 
-  const provisionalDetails: Array<{
-    scheduleDate: Date;
-    weekOfMonth: number;
-    weekday: number;
-    slotRole: PstSlotRole;
-    officerId: string | null;
-    status: PstScheduleDetailStatus;
-    notes: string | null;
-    score: number | null;
-  }> = [];
+  const fixedFridayOfficerIds = officers
+    .filter((officer) => officerRuleMap.get(officer.id)?.fixedFridayWfo)
+    .map((officer) => officer.id);
+  const fixedWfoByFridayDate = new Map<string, string[]>();
 
-  for (const slot of slots) {
-    const dateKey = slot.dateIso;
-    const sameDateAssigned = assignedByDate.get(dateKey) ?? new Set<string>();
-    let fridayCapRelaxed = false;
-    let fixedAssigneeLockRelaxed = false;
-    const forcedAssignment = forcedAssignmentBySlotKey.get(`${dateKey}|${slot.role}`) ?? null;
-
-    if (forcedAssignment) {
-      const forcedOfficer = forcedAssignment.officer;
-
-      if (isOfficerExcludedForRole(forcedOfficer.name, slot.role)) {
-        return {
-          ok: false as const,
-          status: 400,
-          error: `Penugasan khusus ${dateKey} (${slot.role}) gagal: petugas ${forcedOfficer.name} tidak memenuhi syarat role`,
-        };
+  for (const friday of fridaySlots) {
+    const availableFixedNames: string[] = [];
+    for (const officerId of fixedFridayOfficerIds) {
+      const officer = officerById.get(officerId);
+      if (!officer) {
+        continue;
       }
-
-      if (unavailableSet.has(`${forcedOfficer.id}|${dateKey}`)) {
-        return {
-          ok: false as const,
-          status: 400,
-          error: `Penugasan khusus ${dateKey} (${slot.role}) gagal: petugas ${forcedOfficer.name} berstatus unavailable`,
-        };
+      if (unavailableSet.has(`${officerId}|${friday.dateIso}`)) {
+        generationWarnings.push(`WFO Jumat Tetap tidak tersedia: ${officer.name} (${friday.dateIso})`);
+        continue;
       }
-
-      if (!allowSameFridayAssignee && sameDateAssigned.has(forcedOfficer.id)) {
-        return {
-          ok: false as const,
-          status: 400,
-          error: `Penugasan khusus ${dateKey} gagal: petugas ${forcedAssignment.requestedName} sudah terpakai pada tanggal yang sama`,
-        };
+      availableFixedNames.push(officer.name);
+      const bucket = fairnessByOfficer.get(officerId);
+      if (bucket) {
+        bucket.fixedWfoFridayCurrentMonth += 1;
       }
+    }
+    fixedWfoByFridayDate.set(friday.dateIso, availableFixedNames);
+  }
 
-      provisionalDetails.push({
-        scheduleDate: slot.scheduleDate,
-        weekOfMonth: slot.weekOfMonth,
-        weekday: slot.weekday,
-        slotRole: slot.role,
-        officerId: forcedOfficer.id,
-        status: PstScheduleDetailStatus.ASSIGNED,
-        notes: "Penugasan khusus April 2026",
-        score: null,
-      });
-
-      monthlyCount.set(forcedOfficer.id, (monthlyCount.get(forcedOfficer.id) ?? 0) + 1);
-      const roleHistoryKey = getHistoryMapKey(forcedOfficer.id, slot.role);
-      monthlyRoleCount.set(roleHistoryKey, (monthlyRoleCount.get(roleHistoryKey) ?? 0) + 1);
-      if (slot.weekday === 5) {
-        monthlyFridayRoleCount.set(
-          roleHistoryKey,
-          (monthlyFridayRoleCount.get(roleHistoryKey) ?? 0) + 1
-        );
-        monthlyFridayTotalCount.set(
-          forcedOfficer.id,
-          (monthlyFridayTotalCount.get(forcedOfficer.id) ?? 0) + 1
-        );
-      }
-      assignedThisMonth.add(forcedOfficer.id);
-      sameDateAssigned.add(forcedOfficer.id);
-      assignedByDate.set(dateKey, sameDateAssigned);
-      lastAssignedAt.set(forcedOfficer.id, slot.scheduleDate);
-      const assignmentDateBucket = assignmentDatesByOfficer.get(forcedOfficer.id) ?? [];
-      assignmentDateBucket.push(slot.scheduleDate);
-      assignmentDatesByOfficer.set(forcedOfficer.id, assignmentDateBucket);
-      continue;
+  const updateStatsForRandomAssignment = (
+    officerId: string,
+    slot: GeneratedAssignmentSlot
+  ) => {
+    const bucket = fairnessByOfficer.get(officerId);
+    if (!bucket) {
+      return;
     }
 
-    let eligible = assignableOfficersByRole[slot.role].filter((officer) => {
-      if (unavailableSet.has(`${officer.id}|${dateKey}`)) {
+    if (slot.slotType === "PST_REGULAR" || slot.slotType === "PST_FRIDAY") {
+      bucket.pstCurrentMonth += 1;
+      if (slot.slotType === "PST_FRIDAY") {
+        bucket.pstFridayCurrentMonth += 1;
+        bucket.fridayRandomBurdenCurrentMonth += 1;
+      } else {
+        bucket.pstRegularCurrentMonth += 1;
+      }
+    }
+    if (slot.slotType === "WFO_FRIDAY_RANDOM") {
+      bucket.randomWfoFridayCurrentMonth += 1;
+      bucket.fridayRandomBurdenCurrentMonth += 1;
+    }
+    bucket.totalCurrentMonthForRandomFairness += 1;
+    bucket.selectedRandomThisMonth = true;
+    bucket.lastRandomAssignedDate = slot.scheduleDate;
+    monthlyRandomCount.set(officerId, (monthlyRandomCount.get(officerId) ?? 0) + 1);
+  };
+
+  const candidatePoolForSlot = (slot: GeneratedAssignmentSlot) => {
+    let base = officers.filter((officer) => {
+      const rule = officerRuleMap.get(officer.id);
+      if (!rule) {
         return false;
       }
-      if (!allowSameFridayAssignee && sameDateAssigned.has(officer.id)) {
+      if (unavailableSet.has(`${officer.id}|${slot.dateIso}`)) {
         return false;
       }
-      return true;
+      if (!allowSameFridayAssignee) {
+        const sameDateSet = assignedByDate.get(slot.dateIso);
+        if (sameDateSet?.has(officer.id)) {
+          return false;
+        }
+      }
+
+      if (slot.slotType === "PST_REGULAR") {
+        return rule.canRandomPst && rule.pstPoolType !== "EXCLUDED";
+      }
+      if (slot.slotType === "PST_FRIDAY") {
+        return (
+          rule.canRandomPst &&
+          rule.pstPoolType !== "EXCLUDED" &&
+          !rule.fridayWfoOnly &&
+          !rule.fixedFridayWfo
+        );
+      }
+      if (slot.slotType === "WFO_FRIDAY_RANDOM") {
+        return isEligibleForRandomWfoFriday(rule);
+      }
+      return false;
     });
 
-    if (fixedLockedOfficerIdSet.size > 0 && eligible.length > 0) {
-      const unlockedEligible = eligible.filter((officer) => !fixedLockedOfficerIdSet.has(officer.id));
-      if (unlockedEligible.length > 0) {
-        eligible = unlockedEligible;
-      } else {
-        fixedAssigneeLockRelaxed = true;
+    const filterWithFallback = (
+      source: typeof base,
+      predicate: (officer: (typeof base)[number]) => boolean
+    ) => {
+      const filtered = source.filter(predicate);
+      return filtered.length > 0 ? filtered : source;
+    };
+
+    // Hard rule: utamakan kandidat yang belum melebihi batas random bulanan.
+    base = filterWithFallback(base, (officer) => {
+      const rule = officerRuleMap.get(officer.id) as OfficerScheduleRule;
+      const assignedCount = monthlyRandomCount.get(officer.id) ?? 0;
+      return assignedCount < rule.maxRandomAssignmentsPerMonth;
+    });
+
+    // Hard rule: selama masih ada yang belum kebagian random bulan aktif, jangan ulang.
+    base = filterWithFallback(base, (officer) => (monthlyRandomCount.get(officer.id) ?? 0) === 0);
+
+    // Hard rule lintas bulan: prioritaskan yang belum dapat random bulan sebelumnya.
+    base = filterWithFallback(base, (officer) => {
+      const stats = fairnessByOfficer.get(officer.id);
+      return (stats?.previousMonthRandomTotal ?? 0) === 0;
+    });
+
+    if (slot.slotType === "PST_FRIDAY" || slot.slotType === "WFO_FRIDAY_RANDOM") {
+      // Hard rule rotasi Jumat lintas bulan.
+      base = filterWithFallback(base, (officer) => {
+        const stats = fairnessByOfficer.get(officer.id);
+        return (stats?.previousMonthFridayBurden ?? 0) === 0;
+      });
+    }
+
+    // Setelah hard filter, baru terapkan prioritas pool (utama lalu fallback/cadangan).
+    if (slot.slotType === "PST_REGULAR" || slot.slotType === "PST_FRIDAY") {
+      const normal = base.filter(
+        (officer) => getPstPoolRank(officerRuleMap.get(officer.id) as OfficerScheduleRule) === 0
+      );
+      if (normal.length > 0) {
+        base = normal;
       }
     }
 
-    if (slot.weekday === 5 && eligible.length > 0) {
-      const underFridayCap = eligible.filter(
+    if (slot.slotType === "WFO_FRIDAY_RANDOM") {
+      const primary = base.filter(
         (officer) =>
-          (monthlyFridayTotalCount.get(officer.id) ?? 0) < FRIDAY_ASSIGNMENT_HARD_CAP_PER_OFFICER
+          getWfoFridayRandomPoolRank(officerRuleMap.get(officer.id) as OfficerScheduleRule) === 0
       );
-      if (underFridayCap.length > 0) {
-        eligible = underFridayCap;
-      } else {
-        fridayCapRelaxed = true;
+      if (primary.length > 0) {
+        base = primary;
       }
     }
 
-    if (eligible.length === 0) {
-      provisionalDetails.push({
-        scheduleDate: slot.scheduleDate,
-        weekOfMonth: slot.weekOfMonth,
-        weekday: slot.weekday,
-        slotRole: slot.role,
-        officerId: null,
-        status: PstScheduleDetailStatus.UNASSIGNED,
-        notes: "Tidak ada kandidat yang memenuhi syarat pada slot ini",
-        score: null,
-      });
-      continue;
-    }
+    return base;
+  };
 
-    const firstRoundEligible = eligible.filter((officer) => !assignedThisMonth.has(officer.id));
-    if (firstRoundEligible.length > 0) {
-      eligible = firstRoundEligible;
-    } else if (eligible.length > 1) {
-      const minMonthlyAssignment = Math.min(
-        ...eligible.map((officer) => monthlyCount.get(officer.id) ?? 0)
-      );
-      eligible = eligible.filter(
-        (officer) => (monthlyCount.get(officer.id) ?? 0) === minMonthlyAssignment
-      );
-    }
+  const compareCandidates = (
+    slot: GeneratedAssignmentSlot,
+    left: (typeof officers)[number],
+    right: (typeof officers)[number]
+  ) => {
+    const leftRule = officerRuleMap.get(left.id) as OfficerScheduleRule;
+    const rightRule = officerRuleMap.get(right.id) as OfficerScheduleRule;
+    const leftStats = fairnessByOfficer.get(left.id) as OfficerFairnessStats;
+    const rightStats = fairnessByOfficer.get(right.id) as OfficerFairnessStats;
+    const leftMonth = monthlyRandomCount.get(left.id) ?? 0;
+    const rightMonth = monthlyRandomCount.get(right.id) ?? 0;
 
-    const scoredCandidates: CandidateWithScore[] = eligible.map((candidate) => {
-      const monthlyAssignmentCount = monthlyCount.get(candidate.id) ?? 0;
-      const roleHistoryKey = getHistoryMapKey(candidate.id, slot.role);
-      const context: CandidateScoringContext = {
-        monthlyAssignmentCount,
-        monthlyRoleCount: monthlyRoleCount.get(roleHistoryKey) ?? 0,
-        monthlyFridayRoleCount: monthlyFridayRoleCount.get(roleHistoryKey) ?? 0,
-        monthlyFridayTotalCount: monthlyFridayTotalCount.get(candidate.id) ?? 0,
-        threeMonthAssignmentCount: threeMonthCount.get(candidate.id) ?? 0,
-        threeMonthFridayCount: threeMonthFridayCount.get(candidate.id) ?? 0,
-        previouslyAssignedLastMonth: previousMonthAssigned.has(candidate.id),
-        closestAssignmentDistanceDays: getClosestAssignmentDistance(
-          slot.scheduleDate,
-          assignmentDatesByOfficer.get(candidate.id) ?? []
-        ),
-        historicalPriorityFlag: !previousMonthAssigned.has(candidate.id),
-        lastAssignedAt: lastAssignedAt.get(candidate.id) ?? null,
-      };
-      const score = scoreCandidate(candidate, slot, context);
-
-      return {
-        candidate,
-        score,
-        weight: Math.max(1, score),
-        context,
-      };
+    return compareCandidatePriority({
+      slotType: slot.slotType,
+      leftOfficerId: left.id,
+      rightOfficerId: right.id,
+      leftOfficerName: left.name,
+      rightOfficerName: right.name,
+      leftRule,
+      rightRule,
+      leftStats,
+      rightStats,
+      leftMonthRandomCount: leftMonth,
+      rightMonthRandomCount: rightMonth,
+      periodKey: `${params.year}-${params.month}`,
+      dateIso: slot.dateIso,
     });
+  };
 
-    const picked =
-      scoredCandidates.sort((left, right) => {
-        if (left.score !== right.score) {
-          return right.score - left.score;
+  const provisionalDetails: ProvisionalAssignment[] = [];
+  for (const slot of orderedSlots) {
+    const key = `${slot.dateIso}|${slot.slotRole}`;
+    const sameDateAssigned = assignedByDate.get(slot.dateIso) ?? new Set<string>();
+    const manualLock = manualLockedBySlotKey.get(key) ?? null;
+
+    if (manualLock) {
+      const lockedOfficer = officerById.get(manualLock.officerId) ?? null;
+      if (!lockedOfficer) {
+        generationWarnings.push(
+          `Manual lock ${slot.dateIso} (${slot.slotRole}) diabaikan karena petugas tidak aktif`
+        );
+      } else {
+        const rule = officerRuleMap.get(lockedOfficer.id) as OfficerScheduleRule;
+        const warnings: string[] = [];
+        if (unavailableSet.has(`${lockedOfficer.id}|${slot.dateIso}`)) {
+          warnings.push("petugas unavailable");
         }
-        if (left.context.monthlyAssignmentCount !== right.context.monthlyAssignmentCount) {
-          return left.context.monthlyAssignmentCount - right.context.monthlyAssignmentCount;
+        if (!allowSameFridayAssignee && sameDateAssigned.has(lockedOfficer.id)) {
+          warnings.push("petugas bentrok dengan slot lain di tanggal sama");
         }
-        if (left.context.monthlyRoleCount !== right.context.monthlyRoleCount) {
-          return left.context.monthlyRoleCount - right.context.monthlyRoleCount;
+        if (
+          slot.slotType === "WFO_FRIDAY_RANDOM" &&
+          !isEligibleForRandomWfoFriday(rule)
+        ) {
+          warnings.push("melanggar pool WFO Jumat random");
         }
-        if (slot.weekday === 5) {
-          if (left.context.monthlyFridayTotalCount !== right.context.monthlyFridayTotalCount) {
-            return left.context.monthlyFridayTotalCount - right.context.monthlyFridayTotalCount;
-          }
-          if (left.context.monthlyFridayRoleCount !== right.context.monthlyFridayRoleCount) {
-            return left.context.monthlyFridayRoleCount - right.context.monthlyFridayRoleCount;
-          }
+        if (
+          (slot.slotType === "PST_REGULAR" || slot.slotType === "PST_FRIDAY") &&
+          (!rule.canRandomPst || rule.pstPoolType === "EXCLUDED")
+        ) {
+          warnings.push("melanggar pool PST");
+        }
+        if (slot.slotType === "PST_FRIDAY" && (rule.fridayWfoOnly || rule.fixedFridayWfo)) {
+          warnings.push("petugas tidak boleh PST Jumat");
+        }
+        if (warnings.length > 0) {
+          generationWarnings.push(
+            `Manual lock ${slot.dateIso} (${slot.slotType}) untuk ${lockedOfficer.name}: ${warnings.join(
+              ", "
+            )}`
+          );
         }
 
-        const leftLast = left.context.lastAssignedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-        const rightLast = right.context.lastAssignedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-        if (leftLast !== rightLast) {
-          return leftLast - rightLast;
+        const fixedCoverageNames = slot.slotType === "PST_FRIDAY"
+          ? fixedWfoByFridayDate.get(slot.dateIso) ?? []
+          : [];
+        const fridayFixedInfo =
+          slot.slotType === "PST_FRIDAY"
+            ? fixedCoverageNames.length > 0
+              ? `WFO Tetap: ${fixedCoverageNames.join(", ")}`
+              : "WFO Jumat Tetap tidak tersedia"
+            : null;
+        const manualSuffix =
+          warnings.length > 0 ? `WARNING: ${warnings.join(", ")}` : "Manual lock diterapkan";
+        const note = [manualLock.reason, manualSuffix, fridayFixedInfo]
+          .filter(Boolean)
+          .join(" | ");
+        const finalizedNote = appendSlotTypeNote(note, slot.slotType);
+
+        provisionalDetails.push({
+          scheduleDate: slot.scheduleDate,
+          weekOfMonth: slot.weekOfMonth,
+          weekday: slot.weekday,
+          slotRole: slot.slotRole,
+          slotType: slot.slotType,
+          officerId: lockedOfficer.id,
+          status: PstScheduleDetailStatus.ASSIGNED,
+          notes: finalizedNote,
+          score: null,
+          isRandomFairness: true,
+        });
+
+        if (!allowSameFridayAssignee || !sameDateAssigned.has(lockedOfficer.id)) {
+          sameDateAssigned.add(lockedOfficer.id);
+          assignedByDate.set(slot.dateIso, sameDateAssigned);
         }
+        updateStatsForRandomAssignment(lockedOfficer.id, slot);
+        continue;
+      }
+    }
 
-        return left.candidate.name.localeCompare(right.candidate.name, "id");
-      })[0] ?? null;
-
-    if (!picked) {
+    const candidates = candidatePoolForSlot(slot);
+    if (candidates.length === 0) {
+      const fixedCoverageNames = slot.slotType === "PST_FRIDAY"
+        ? fixedWfoByFridayDate.get(slot.dateIso) ?? []
+        : [];
+      const fridayFixedInfo =
+        slot.slotType === "PST_FRIDAY"
+          ? fixedCoverageNames.length > 0
+            ? `WFO Tetap: ${fixedCoverageNames.join(", ")}`
+            : "WFO Jumat Tetap tidak tersedia"
+          : null;
+      const note = appendSlotTypeNote(
+        ["Tidak ada kandidat yang memenuhi syarat pada slot ini", fridayFixedInfo]
+          .filter(Boolean)
+          .join(" | "),
+        slot.slotType
+      );
       provisionalDetails.push({
         scheduleDate: slot.scheduleDate,
         weekOfMonth: slot.weekOfMonth,
         weekday: slot.weekday,
-        slotRole: slot.role,
+        slotRole: slot.slotRole,
+        slotType: slot.slotType,
         officerId: null,
         status: PstScheduleDetailStatus.UNASSIGNED,
-        notes: "Tidak ada kandidat terpilih",
+        notes: note,
         score: null,
+        isRandomFairness: true,
       });
       continue;
     }
 
-    const noteParts: string[] = [];
-    if (picked.context.historicalPriorityFlag || picked.candidate.priorityNextMonth) {
-      noteParts.push("Prioritas: belum terpilih bulan sebelumnya");
-    }
-    if (picked.context.monthlyAssignmentCount > 0) {
-      noteParts.push(`Pemerataan penugasan ke-${picked.context.monthlyAssignmentCount + 1}`);
-    }
-    if (slot.weekday === 5 && picked.context.monthlyFridayRoleCount > 0) {
-      noteParts.push("Rotasi Jumat dikendalikan");
-    }
-    if (slot.weekday === 5 && fridayCapRelaxed) {
-      noteParts.push("Bypass batas Jumat karena kandidat terbatas");
-    }
-    if (fixedAssigneeLockRelaxed) {
-      noteParts.push("Bypass lock petugas fixed assignment karena kandidat terbatas");
-    }
-    if (noteParts.length === 0) {
-      noteParts.push("Penugasan sesuai fairness histori");
+    const picked = [...candidates].sort((left, right) =>
+      compareCandidates(slot, left, right)
+    )[0];
+    if (!picked) {
+      continue;
     }
 
+    const sameDaySet = assignedByDate.get(slot.dateIso) ?? new Set<string>();
+    sameDaySet.add(picked.id);
+    assignedByDate.set(slot.dateIso, sameDaySet);
+
+    const fixedCoverageNames = slot.slotType === "PST_FRIDAY"
+      ? fixedWfoByFridayDate.get(slot.dateIso) ?? []
+      : [];
+    const noteParts: string[] = [];
+    if (slot.slotType === "WFO_FRIDAY_RANDOM") {
+      const rule = officerRuleMap.get(picked.id) as OfficerScheduleRule;
+      if (rule.wfoFridayRandomPoolType === "FALLBACK") {
+        noteParts.push("Fallback pool digunakan karena kandidat primary tidak tersedia");
+      } else {
+        noteParts.push("Dipilih dari pool utama WFO Jumat random");
+      }
+    } else {
+      noteParts.push("Dipilih berdasarkan fairness random deterministik");
+    }
+    if (slot.slotType === "PST_FRIDAY") {
+      noteParts.push(
+        fixedCoverageNames.length > 0
+          ? `WFO Tetap: ${fixedCoverageNames.join(", ")}`
+          : "WFO Jumat Tetap tidak tersedia"
+      );
+    }
+
+    const note = appendSlotTypeNote(noteParts.join(" | "), slot.slotType);
     provisionalDetails.push({
       scheduleDate: slot.scheduleDate,
       weekOfMonth: slot.weekOfMonth,
       weekday: slot.weekday,
-      slotRole: slot.role,
-      officerId: picked.candidate.id,
+      slotRole: slot.slotRole,
+      slotType: slot.slotType,
+      officerId: picked.id,
       status: PstScheduleDetailStatus.ASSIGNED,
-      notes: noteParts.join(" | "),
-      score: picked.score,
+      notes: note,
+      score: null,
+      isRandomFairness: true,
     });
+    updateStatsForRandomAssignment(picked.id, slot);
+  }
 
-    monthlyCount.set(picked.candidate.id, (monthlyCount.get(picked.candidate.id) ?? 0) + 1);
-    const roleHistoryKey = getHistoryMapKey(picked.candidate.id, slot.role);
-    monthlyRoleCount.set(roleHistoryKey, (monthlyRoleCount.get(roleHistoryKey) ?? 0) + 1);
-    if (slot.weekday === 5) {
-      monthlyFridayRoleCount.set(
-        roleHistoryKey,
-        (monthlyFridayRoleCount.get(roleHistoryKey) ?? 0) + 1
-      );
-      monthlyFridayTotalCount.set(
-        picked.candidate.id,
-        (monthlyFridayTotalCount.get(picked.candidate.id) ?? 0) + 1
-      );
-    }
-    assignedThisMonth.add(picked.candidate.id);
-    sameDateAssigned.add(picked.candidate.id);
-    assignedByDate.set(dateKey, sameDateAssigned);
-    lastAssignedAt.set(picked.candidate.id, slot.scheduleDate);
-    const assignmentDateBucket = assignmentDatesByOfficer.get(picked.candidate.id) ?? [];
-    assignmentDateBucket.push(slot.scheduleDate);
-    assignmentDatesByOfficer.set(picked.candidate.id, assignmentDateBucket);
+  for (const bucket of fairnessByOfficer.values()) {
+    bucket.totalOperationalPresence =
+      bucket.totalCurrentMonthForRandomFairness + bucket.fixedWfoFridayCurrentMonth;
+    bucket.cumulativeRandomFairnessTotal =
+      bucket.historyWindowTotalRandomAssignments + bucket.totalCurrentMonthForRandomFairness;
   }
 
   const totalAssigned = provisionalDetails.filter((detail) => Boolean(detail.officerId)).length;
   const totalUnassigned = provisionalDetails.length - totalAssigned;
-  const unassignedOfficerIds = assignableOfficerIdList.filter(
-    (officerId) => !assignedThisMonth.has(officerId)
+  const randomEligibleOfficerIds = officers
+    .filter((officer) => {
+      const rule = officerRuleMap.get(officer.id);
+      if (!rule) {
+        return false;
+      }
+      return rule.canRandomPst || isEligibleForRandomWfoFriday(rule);
+    })
+    .map((officer) => officer.id);
+  const unassignedOfficerIds = randomEligibleOfficerIds.filter(
+    (officerId) => !((monthlyRandomCount.get(officerId) ?? 0) > 0)
   );
 
   const detailByDate = new Map<
     string,
     {
       dateIso: string;
-      pstOfficerId: string | null;
-      wfoOfficerId: string | null;
       weekday: number;
+      pstOfficerId: string | null;
+      wfoRandomOfficerId: string | null;
       seenOfficerIds: string[];
     }
   >();
   for (const detail of provisionalDetails) {
     const dateIso = toIsoDateInTimeZone(detail.scheduleDate);
-    const bucket = detailByDate.get(dateIso) ?? {
+    const row = detailByDate.get(dateIso) ?? {
       dateIso,
-      pstOfficerId: null,
-      wfoOfficerId: null,
       weekday: detail.weekday,
+      pstOfficerId: null,
+      wfoRandomOfficerId: null,
       seenOfficerIds: [],
     };
-
     if (detail.slotRole === PstSlotRole.PST) {
-      bucket.pstOfficerId = detail.officerId;
+      row.pstOfficerId = detail.officerId;
     }
-    if (detail.slotRole === PstSlotRole.WFO) {
-      bucket.wfoOfficerId = detail.officerId;
+    if (detail.slotType === "WFO_FRIDAY_RANDOM") {
+      row.wfoRandomOfficerId = detail.officerId;
     }
     if (detail.officerId) {
-      bucket.seenOfficerIds.push(detail.officerId);
+      row.seenOfficerIds.push(detail.officerId);
     }
-    detailByDate.set(dateIso, bucket);
+    detailByDate.set(dateIso, row);
   }
 
   let duplicateOfficerCount = 0;
   let fridayIncompleteCount = 0;
-  for (const value of detailByDate.values()) {
-    if (value.seenOfficerIds.length !== new Set(value.seenOfficerIds).size) {
-      duplicateOfficerCount += 1;
-    }
-    const requiresWfoOnFriday = isWfoSlotRequired(value.dateIso, specialRule);
-    if (
-      value.weekday === 5 &&
-      (!value.pstOfficerId || (requiresWfoOnFriday && !value.wfoOfficerId))
-    ) {
+  for (const dateIso of [...new Set(fridaySlots.map((slot) => slot.dateIso))]) {
+    const row = detailByDate.get(dateIso);
+    const hasPst = Boolean(row?.pstOfficerId);
+    const hasRandomWfo = Boolean(row?.wfoRandomOfficerId);
+    if (!hasPst || !hasRandomWfo) {
       fridayIncompleteCount += 1;
+    }
+    if (row && row.pstOfficerId && row.wfoRandomOfficerId && row.pstOfficerId === row.wfoRandomOfficerId) {
+      duplicateOfficerCount += 1;
     }
   }
 
@@ -1279,57 +1970,62 @@ export async function generateMonthlySchedule(params: {
       Boolean(detail.officerId) &&
       unavailableSet.has(`${detail.officerId}|${toIsoDateInTimeZone(detail.scheduleDate)}`)
   ).length;
-  const chronologicalIssueCount = slots.reduce((count, slot, index) => {
-    if (index === 0) {
-      return count;
-    }
-    const previous = slots[index - 1];
-    if (!previous) {
-      return count;
-    }
+  const chronologicalIssueCount = orderedSlots.reduce((count, slot, index) => {
+    if (index === 0) return count;
+    const previous = orderedSlots[index - 1];
+    if (!previous) return count;
     return previous.dateIso > slot.dateIso ? count + 1 : count;
   }, 0);
   const effectiveWorkingDayMismatchCount =
     uniqueDates.length === detailByDate.size ? 0 : Math.abs(uniqueDates.length - detailByDate.size);
 
-  const assignedCountByOfficer = new Map<string, number>();
-  const fridayCountByOfficer = new Map<string, number>();
-  for (const detail of provisionalDetails) {
-    if (!detail.officerId) {
-      continue;
-    }
-    assignedCountByOfficer.set(
-      detail.officerId,
-      (assignedCountByOfficer.get(detail.officerId) ?? 0) + 1
-    );
-    if (detail.weekday === 5) {
-      fridayCountByOfficer.set(
-        detail.officerId,
-        (fridayCountByOfficer.get(detail.officerId) ?? 0) + 1
-      );
-    }
-  }
+  const currentRandomTotals = randomEligibleOfficerIds.map(
+    (officerId) =>
+      fairnessByOfficer.get(officerId)?.totalCurrentMonthForRandomFairness ?? 0
+  );
+  const distributionSpread =
+    currentRandomTotals.length > 0
+      ? Math.max(...currentRandomTotals) - Math.min(...currentRandomTotals)
+      : 0;
 
-  const assignmentCountValues = Array.from(assignedCountByOfficer.values());
-  const fridayCountValues = Array.from(fridayCountByOfficer.values());
-  const maxAssignedCount = assignmentCountValues.length > 0 ? Math.max(...assignmentCountValues) : 0;
-  const minAssignedCount = assignmentCountValues.length > 0 ? Math.min(...assignmentCountValues) : 0;
-  const distributionSpread = assignmentCountValues.length > 0 ? maxAssignedCount - minAssignedCount : 0;
-  const maxFridayCount = fridayCountValues.length > 0 ? Math.max(...fridayCountValues) : 0;
-  const minFridayCount = fridayCountValues.length > 0 ? Math.min(...fridayCountValues) : 0;
-  const fridaySpread = fridayCountValues.length > 0 ? maxFridayCount - minFridayCount : 0;
+  const fridayRandomEligibleIds = officers
+    .filter((officer) => {
+      const rule = officerRuleMap.get(officer.id) as OfficerScheduleRule;
+      const eligiblePstFriday =
+        rule.canRandomPst &&
+        rule.pstPoolType !== "EXCLUDED" &&
+        !rule.fridayWfoOnly &&
+        !rule.fixedFridayWfo;
+      const eligibleWfoFridayRandom = isEligibleForRandomWfoFriday(rule);
+      return eligiblePstFriday || eligibleWfoFridayRandom;
+    })
+    .map((officer) => officer.id);
+  const fridayRandomTotals = fridayRandomEligibleIds.map(
+    (officerId) => fairnessByOfficer.get(officerId)?.fridayRandomBurdenCurrentMonth ?? 0
+  );
+  const fridaySpread =
+    fridayRandomTotals.length > 0
+      ? Math.max(...fridayRandomTotals) - Math.min(...fridayRandomTotals)
+      : 0;
   const coverageRate =
-    assignableOfficerIdList.length === 0
+    randomEligibleOfficerIds.length === 0
       ? 1
-      : assignedThisMonth.size / assignableOfficerIdList.length;
+      : randomEligibleOfficerIds.filter((officerId) => (monthlyRandomCount.get(officerId) ?? 0) > 0)
+          .length / randomEligibleOfficerIds.length;
+  const totalPstSlots = assignmentSlots.filter(
+    (slot) => slot.slotType === "PST_REGULAR" || slot.slotType === "PST_FRIDAY"
+  ).length;
+  const totalWfoFridayRandomSlots = assignmentSlots.filter(
+    (slot) => slot.slotType === "WFO_FRIDAY_RANDOM"
+  ).length;
+  const totalRandomSlots = totalPstSlots + totalWfoFridayRandomSlots;
+  const totalFixedWfoOperational = Array.from(fairnessByOfficer.values()).reduce(
+    (sum, stats) => sum + stats.fixedWfoFridayCurrentMonth,
+    0
+  );
+  const totalOperationalPresence = totalRandomSlots + totalFixedWfoOperational;
 
   const validationItems: FairnessValidationItem[] = [];
-  const fridayRuleLabel = specialRule
-    ? `Hari Jumat wajib memiliki slot PST dan WFO mulai ${specialRule.wfoStartDateIso}`
-    : "Hari Jumat wajib memiliki slot PST dan WFO";
-  const fridayRuleSuccessDetail = specialRule
-    ? `Seluruh hari Jumat sejak ${specialRule.wfoStartDateIso} sudah terisi PST dan WFO.`
-    : "Seluruh hari Jumat sudah terisi PST dan WFO.";
   const pushValidation = (
     code: string,
     rule: string,
@@ -1348,12 +2044,12 @@ export async function generateMonthlySchedule(params: {
       : `${duplicateOfficerCount} tanggal terdeteksi petugas ganda.`
   );
   pushValidation(
-    "FRIDAY_HAS_PST_WFO",
-    fridayRuleLabel,
+    "FRIDAY_COVERAGE_MINIMUM",
+    "Jumat wajib memiliki PST Jumat dan WFO Jumat Random",
     fridayIncompleteCount === 0 ? "OK" : "ERROR",
     fridayIncompleteCount === 0
-      ? fridayRuleSuccessDetail
-      : `${fridayIncompleteCount} hari Jumat belum lengkap.`
+      ? "Semua Jumat efektif memiliki PST Jumat dan WFO Jumat Random."
+      : `${fridayIncompleteCount} Jumat efektif belum lengkap PST/WFO random.`
   );
   pushValidation(
     "HOLIDAY_EMPTY",
@@ -1395,23 +2091,30 @@ export async function generateMonthlySchedule(params: {
       ? "Semua slot terisi."
       : `${totalUnassigned} slot belum terisi dan sudah ditandai pada keterangan.`
   );
+  pushValidation(
+    "DETERMINISTIC_TIEBREAKER",
+    "Generate deterministik untuk input yang sama",
+    "OK",
+    "Tie breaker menggunakan stable hash officerId+periode+slotType+tanggal."
+  );
+  if (generationWarnings.length > 0) {
+    pushValidation(
+      "MANUAL_OR_FIXED_WARNINGS",
+      "Manual assignment/fixed coverage warning harus ditampilkan",
+      "WARNING",
+      generationWarnings.join(" | ")
+    );
+  }
 
-  const totalSlots = provisionalDetails.length;
   const fairnessStatus: PstValidationLevel =
-    totalSlots >= assignableOfficerIdList.length && unassignedOfficerIds.length > 0
-      ? "ERROR"
-      : distributionSpread > 2 || fridaySpread > 2
-        ? "WARNING"
-        : "OK";
+    distributionSpread > 2 || fridaySpread > 2 ? "WARNING" : "OK";
   pushValidation(
     "FAIRNESS_MINIMUM",
-    "Distribusi penugasan minimum terpenuhi",
+    "Distribusi penugasan random minimum terpenuhi",
     fairnessStatus,
     fairnessStatus === "OK"
-      ? "Distribusi penugasan merata dalam batas aman."
-      : fairnessStatus === "WARNING"
-        ? `Distribusi masih perlu diratakan (spread total ${distributionSpread}, spread Jumat ${fridaySpread}).`
-        : "Slot cukup untuk seluruh petugas, tetapi masih ada petugas yang belum terpilih."
+      ? "Distribusi random bulanan masih dalam batas aman."
+      : `Distribusi random masih bisa diratakan (spread total ${distributionSpread}, spread beban Jumat random ${fridaySpread}).`
   );
 
   const levelRank: Record<PstValidationLevel, number> = {
@@ -1424,20 +2127,268 @@ export async function generateMonthlySchedule(params: {
     "OK"
   );
 
+  const toIso = (value: Date | null) => (value ? toIsoDateInTimeZone(value) : null);
+  const hasEligibleWfoCandidateWithZeroPreviousFridayBurden = officers.some((officer) => {
+    const rule = officerRuleMap.get(officer.id) as OfficerScheduleRule;
+    const stats = fairnessByOfficer.get(officer.id) as OfficerFairnessStats;
+    return (
+      isEligibleForRandomWfoFriday(rule) &&
+      !stats.selectedRandomThisMonth &&
+      stats.previousMonthFridayBurden === 0
+    );
+  });
+  const officerRows = officers
+    .map((officer) => {
+      const rule = officerRuleMap.get(officer.id) as OfficerScheduleRule;
+      const stats = fairnessByOfficer.get(officer.id) as OfficerFairnessStats;
+      const poolPstLabel =
+        rule.pstPoolType === "NORMAL"
+          ? "Normal"
+          : rule.pstPoolType === "LOW_PRIORITY"
+            ? "Cadangan"
+            : "Tidak Random";
+      const poolWfoFridayRandomLabel =
+        rule.wfoFridayRandomPoolType === "PRIMARY"
+          ? "Random Utama"
+          : rule.wfoFridayRandomPoolType === "FALLBACK"
+            ? "Random Fallback"
+            : "Tidak Random";
+      const statusWfoFriday = rule.fixedFridayWfo
+        ? "Tetap / Non-random"
+        : poolWfoFridayRandomLabel;
+
+      let fairnessStatusText = "Sesuai";
+      let nextPriorityRole = "Tidak";
+      let priorityReason = "Sudah mendapat penugasan random bulan ini";
+
+      if (rule.fixedFridayWfo) {
+        fairnessStatusText = "Sesuai";
+        nextPriorityRole = "Tidak";
+        priorityReason = "WFO Jumat tetap, tidak masuk pool random WFO";
+      } else if (
+        rule.wfoFridayRandomPoolType === "PRIMARY" &&
+        stats.randomWfoFridayCurrentMonth === 0
+      ) {
+        if (
+          hasEligibleWfoCandidateWithZeroPreviousFridayBurden &&
+          stats.previousMonthFridayBurden > 0
+        ) {
+          fairnessStatusText = "Sesuai";
+          nextPriorityRole = "Tidak";
+          priorityReason =
+            "Sudah terkena beban Jumat bulan lalu; prioritas diarahkan ke kandidat lain yang belum terkena beban Jumat";
+        } else {
+          fairnessStatusText = "Kurang";
+          nextPriorityRole = "WFO Jumat Random";
+          priorityReason = "Pool utama WFO Jumat random belum terjadwal";
+        }
+      } else if (!stats.selectedRandomThisMonth) {
+        fairnessStatusText = "Kurang";
+        if (rule.canRandomPst && rule.pstPoolType !== "EXCLUDED") {
+          nextPriorityRole = "PST";
+          priorityReason = "Belum mendapat assignment random bulan ini";
+        } else if (isEligibleForRandomWfoFriday(rule)) {
+          nextPriorityRole = "WFO Jumat Random";
+          priorityReason = "Tidak random PST, hanya eligible WFO Jumat Random";
+        } else {
+          nextPriorityRole = "Tidak";
+          priorityReason = "Tidak eligible untuk slot random";
+        }
+      }
+
+      return {
+        officerId: officer.id,
+        name: officer.name,
+        poolPstLabel,
+        poolWfoFridayRandomLabel,
+        fixedWfoFridayLabel: rule.fixedFridayWfo ? "Tetap" : "Tidak",
+        statusWfoFriday,
+        pstCurrentMonthDisplay:
+          rule.pstPoolType === "EXCLUDED" ? "-" : String(stats.pstRegularCurrentMonth),
+        pstFridayCurrentMonthDisplay:
+          rule.pstPoolType === "EXCLUDED" ? "-" : String(stats.pstFridayCurrentMonth),
+        randomWfoFridayCurrentMonthDisplay:
+          rule.wfoFridayRandomPoolType === "NONE"
+            ? "-"
+            : String(stats.randomWfoFridayCurrentMonth),
+        fixedWfoFridayCurrentMonthDisplay: rule.fixedFridayWfo
+          ? String(stats.fixedWfoFridayCurrentMonth)
+          : "-",
+        pstCurrentMonth: stats.pstCurrentMonth,
+        pstRegularCurrentMonth: stats.pstRegularCurrentMonth,
+        pstFridayCurrentMonth: stats.pstFridayCurrentMonth,
+        randomWfoFridayCurrentMonth: stats.randomWfoFridayCurrentMonth,
+        fixedWfoFridayCurrentMonth: stats.fixedWfoFridayCurrentMonth,
+        fridayRandomBurdenCurrentMonth: stats.fridayRandomBurdenCurrentMonth,
+        totalCurrentMonthForRandomFairness: stats.totalCurrentMonthForRandomFairness,
+        totalOperationalPresence: stats.totalOperationalPresence,
+        previousMonthPstRegular: stats.previousMonthPstRegular,
+        previousMonthPstFriday: stats.previousMonthPstFriday,
+        previousMonthRandomWfoFriday: stats.previousMonthRandomWfoFriday,
+        previousMonthFridayBurden: stats.previousMonthFridayBurden,
+        previousMonthRandomTotal: stats.previousMonthRandomTotal,
+        historyWindowPstRegular: stats.historyWindowPstRegular,
+        historyWindowPstFriday: stats.historyWindowPstFriday,
+        historyWindowPst: stats.historyWindowPst,
+        historyWindowRandomWfoFriday: stats.historyWindowRandomWfoFriday,
+        historyWindowFridayBurden: stats.historyWindowFridayBurden,
+        historyWindowTotalRandomAssignments: stats.historyWindowTotalRandomAssignments,
+        cumulativeRandomFairnessTotal: stats.cumulativeRandomFairnessTotal,
+        lastRandomAssignedDate: toIso(stats.lastRandomAssignedDate),
+        selectedRandomThisMonth: stats.selectedRandomThisMonth,
+        fairnessStatus: fairnessStatusText,
+        nextPriorityRole,
+        priorityReason,
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, "id"));
+
+  const sortByTotalPriority = (left: typeof officerRows[number], right: typeof officerRows[number]) => {
+    if (left.cumulativeRandomFairnessTotal !== right.cumulativeRandomFairnessTotal) {
+      return left.cumulativeRandomFairnessTotal - right.cumulativeRandomFairnessTotal;
+    }
+    if (left.historyWindowTotalRandomAssignments !== right.historyWindowTotalRandomAssignments) {
+      return (
+        left.historyWindowTotalRandomAssignments - right.historyWindowTotalRandomAssignments
+      );
+    }
+    if (left.previousMonthRandomTotal !== right.previousMonthRandomTotal) {
+      return left.previousMonthRandomTotal - right.previousMonthRandomTotal;
+    }
+    const leftLast = left.lastRandomAssignedDate ? Date.parse(left.lastRandomAssignedDate) : Number.NEGATIVE_INFINITY;
+    const rightLast = right.lastRandomAssignedDate ? Date.parse(right.lastRandomAssignedDate) : Number.NEGATIVE_INFINITY;
+    if (leftLast !== rightLast) {
+      return leftLast - rightLast;
+    }
+    return stableHash(`${left.officerId}|priority-total|${params.year}-${params.month}`) -
+      stableHash(`${right.officerId}|priority-total|${params.year}-${params.month}`);
+  };
+
+  const priorityPstNormal = officerRows
+    .filter((row) => {
+      const rule = officerRuleMap.get(row.officerId) as OfficerScheduleRule;
+      return rule.canRandomPst && rule.pstPoolType === "NORMAL" && !row.selectedRandomThisMonth;
+    })
+    .sort(sortByTotalPriority);
+  const priorityPstLow = officerRows
+    .filter((row) => {
+      const rule = officerRuleMap.get(row.officerId) as OfficerScheduleRule;
+      return rule.canRandomPst && rule.pstPoolType === "LOW_PRIORITY" && !row.selectedRandomThisMonth;
+    })
+    .sort(sortByTotalPriority);
+  const priorityPstNext = [
+    ...priorityPstNormal,
+    ...(priorityPstNormal.length === 0 ? priorityPstLow : []),
+  ].map((row) => ({
+    officerId: row.officerId,
+    name: row.name,
+    label: row.poolPstLabel,
+    reason: row.priorityReason,
+  }));
+
+  const priorityWfoPrimary = officerRows
+    .filter((row) => {
+      const rule = officerRuleMap.get(row.officerId) as OfficerScheduleRule;
+      return (
+        isEligibleForRandomWfoFriday(rule) &&
+        rule.wfoFridayRandomPoolType === "PRIMARY" &&
+        !row.selectedRandomThisMonth
+      );
+    })
+    .sort((left, right) => {
+      if (left.previousMonthFridayBurden !== right.previousMonthFridayBurden) {
+        return left.previousMonthFridayBurden - right.previousMonthFridayBurden;
+      }
+      if (left.historyWindowRandomWfoFriday !== right.historyWindowRandomWfoFriday) {
+        return left.historyWindowRandomWfoFriday - right.historyWindowRandomWfoFriday;
+      }
+      return sortByTotalPriority(left, right);
+    });
+  const priorityWfoFallback = officerRows
+    .filter((row) => {
+      const rule = officerRuleMap.get(row.officerId) as OfficerScheduleRule;
+      return (
+        isEligibleForRandomWfoFriday(rule) &&
+        rule.wfoFridayRandomPoolType === "FALLBACK" &&
+        !row.selectedRandomThisMonth
+      );
+    })
+    .sort((left, right) => {
+      if (left.previousMonthFridayBurden !== right.previousMonthFridayBurden) {
+        return left.previousMonthFridayBurden - right.previousMonthFridayBurden;
+      }
+      if (left.historyWindowRandomWfoFriday !== right.historyWindowRandomWfoFriday) {
+        return left.historyWindowRandomWfoFriday - right.historyWindowRandomWfoFriday;
+      }
+      return sortByTotalPriority(left, right);
+    });
+  const hasAnyEligibleWfoWithZeroPreviousFriday = [...priorityWfoPrimary, ...priorityWfoFallback].some(
+    (row) => row.previousMonthFridayBurden === 0
+  );
+  const effectivePriorityWfoPrimary = hasAnyEligibleWfoWithZeroPreviousFriday
+    ? priorityWfoPrimary.filter((row) => row.previousMonthFridayBurden === 0)
+    : priorityWfoPrimary;
+  const effectivePriorityWfoFallback = hasAnyEligibleWfoWithZeroPreviousFriday
+    ? priorityWfoFallback.filter((row) => row.previousMonthFridayBurden === 0)
+    : priorityWfoFallback;
+  const priorityWfoNext = [
+    ...effectivePriorityWfoPrimary,
+    ...(effectivePriorityWfoPrimary.length === 0 ? effectivePriorityWfoFallback : []),
+  ].map((row) => ({
+    officerId: row.officerId,
+    name: row.name,
+    label: row.poolWfoFridayRandomLabel,
+    reason: row.priorityReason,
+  }));
+
+  const priorityFridayBurdenNext = officerRows
+    .filter((row) => {
+      const rule = officerRuleMap.get(row.officerId) as OfficerScheduleRule;
+      return (rule.canRandomPst || isEligibleForRandomWfoFriday(rule)) && !row.selectedRandomThisMonth;
+    })
+    .sort((left, right) => {
+      if (left.previousMonthFridayBurden !== right.previousMonthFridayBurden) {
+        return left.previousMonthFridayBurden - right.previousMonthFridayBurden;
+      }
+      if (left.historyWindowFridayBurden !== right.historyWindowFridayBurden) {
+        return left.historyWindowFridayBurden - right.historyWindowFridayBurden;
+      }
+      return sortByTotalPriority(left, right);
+    })
+    .map((row) => ({
+      officerId: row.officerId,
+      name: row.name,
+      label: "Prioritas Beban Jumat",
+      reason: row.priorityReason,
+    }));
+
+  const priorityTotalNext = officerRows
+    .filter((row) => {
+      const rule = officerRuleMap.get(row.officerId) as OfficerScheduleRule;
+      return (rule.canRandomPst || isEligibleForRandomWfoFriday(rule)) && !row.selectedRandomThisMonth;
+    })
+    .sort(sortByTotalPriority)
+    .map((row) => ({
+      officerId: row.officerId,
+      name: row.name,
+      label: "Prioritas Kumulatif",
+      reason: row.priorityReason,
+    }));
+
   const previousVersion = readDocumentVersionFromSummary(existing?.summary ?? null);
   const documentVersion = existing ? Math.max(2, previousVersion + 1) : 1;
 
   const summary: MonthlyScheduleSummary = {
     totalWorkingDays: uniqueDates.length,
-    totalSlots,
+    totalSlots: provisionalDetails.length,
     totalAssigned,
     totalUnassigned,
-    totalFridaySlots: provisionalDetails.filter((detail) => detail.weekday === 5).length,
+    totalFridaySlots: fridaySlots.length,
     unassignedOfficerCount: unassignedOfficerIds.length,
     unassignedOfficerIds,
     generatedMessage:
       totalUnassigned === 0
-        ? "Jadwal bulanan berhasil dibuat dengan distribusi fairness yang tervalidasi"
+        ? "Jadwal bulanan berhasil dibuat dengan fairness random, fixed WFO Jumat, dan prioritas bulan berikutnya yang tervalidasi"
         : `Jadwal bulanan dibuat dengan ${totalUnassigned} slot belum terisi`,
     validation: {
       overallStatus,
@@ -1447,16 +2398,67 @@ export async function generateMonthlySchedule(params: {
       historyWindowMonths: FAIRNESS_HISTORY_WINDOW_MONTHS,
       distributionSpread,
       fridaySpread,
-      assignedOfficerCount: assignedThisMonth.size,
-      eligibleOfficerCount: assignableOfficerIdList.length,
+      assignedOfficerCount: randomEligibleOfficerIds.filter(
+        (officerId) => (monthlyRandomCount.get(officerId) ?? 0) > 0
+      ).length,
+      eligibleOfficerCount: randomEligibleOfficerIds.length,
       coverageRate: Number((coverageRate * 100).toFixed(2)),
       note:
         fairnessStatus === "OK"
-          ? "Distribusi penugasan stabil; prioritas bulan sebelumnya sudah diperhitungkan."
-          : fairnessStatus === "WARNING"
-            ? "Distribusi masih bisa diratakan pada periode berikutnya."
-            : "Terdapat gap fairness yang perlu ditindaklanjuti pada regenerasi berikutnya.",
-    },
+          ? "Fairness random stabil. Histori memakai snapshot final scheduleDetail."
+          : "Fairness random masih bisa diratakan pada periode berikutnya.",
+      poolSummary: [
+        {
+          pool: "PST Normal",
+          meaning: "Masuk pool utama random PST",
+          officers: "Petugas reguler, termasuk Anuar dan Jusman jika tidak ada aturan lain",
+        },
+        {
+          pool: "PST Cadangan",
+          meaning: "Bisa PST tetapi tidak diprioritaskan",
+          officers: "Zulkifli, Marinda Saga Putra",
+        },
+        {
+          pool: "Tidak Random PST",
+          meaning: "Tidak ikut random PST",
+          officers: "Ari Susilowati, Idhamsyah",
+        },
+        {
+          pool: "WFO Jumat Tetap",
+          meaning: "WFO Jumat non-random; tidak masuk fairness random WFO",
+          officers: "Zulkifli, Marinda Saga Putra",
+        },
+        {
+          pool: "WFO Jumat Random Utama",
+          meaning: "Pool utama WFO Jumat yang dipilih generator",
+          officers: "Ari Susilowati, Idhamsyah",
+        },
+        {
+          pool: "WFO Jumat Random Fallback",
+          meaning: "Dipakai hanya jika random utama tidak tersedia",
+          officers: "Petugas lain, termasuk Anuar dan Jusman jika eligible",
+        },
+      ],
+      officerDetails: officerRows,
+      nextMonthPriority: {
+        pst: priorityPstNext,
+        wfoFridayRandom: priorityWfoNext,
+        fridayBurden: priorityFridayBurdenNext,
+        randomTotal: priorityTotalNext,
+      },
+      denominator: {
+        randomEligibleOfficerCount: randomEligibleOfficerIds.length,
+        fridayRandomEligibleOfficerCount: fridayRandomEligibleIds.length,
+      },
+      monthlyOperationalSummary: {
+        totalPstSlots,
+        totalWfoFridayRandomSlots,
+        totalRandomSlots,
+        totalWfoFridayFixed: totalFixedWfoOperational,
+        totalOperationalPresence,
+      },
+      warnings: generationWarnings,
+    } as MonthlyScheduleSummary["fairness"],
     audit: {
       generatedAt: new Date().toISOString(),
       generatedById: params.generatedById ?? null,
@@ -1568,17 +2570,18 @@ export async function generateMonthlySchedule(params: {
 
     await tx.pstOfficerCandidate.updateMany({
       where: {
-        id: { in: Array.from(assignedThisMonth) },
+        id: { in: officers.map((officer) => officer.id) },
       },
       data: {
         priorityNextMonth: false,
       },
     });
 
-    if (unassignedOfficerIds.length > 0) {
+    const nextPriorityOfficerIds = priorityTotalNext.map((item) => item.officerId);
+    if (nextPriorityOfficerIds.length > 0) {
       await tx.pstOfficerCandidate.updateMany({
         where: {
-          id: { in: unassignedOfficerIds },
+          id: { in: nextPriorityOfficerIds },
         },
         data: {
           priorityNextMonth: true,

@@ -59,6 +59,66 @@ export type MonthlyScheduleSummary = {
     eligibleOfficerCount: number;
     coverageRate: number;
     note: string;
+    poolSummary?: Array<{
+      pool: string;
+      meaning: string;
+      officers: string;
+    }>;
+    officerDetails?: Array<{
+      officerId: string;
+      name: string;
+      poolPstLabel: string;
+      poolWfoFridayRandomLabel: string;
+      fixedWfoFridayLabel: string;
+      statusWfoFriday: string;
+      pstCurrentMonthDisplay: string;
+      pstFridayCurrentMonthDisplay: string;
+      randomWfoFridayCurrentMonthDisplay: string;
+      fixedWfoFridayCurrentMonthDisplay: string;
+      pstCurrentMonth: number;
+      pstRegularCurrentMonth: number;
+      pstFridayCurrentMonth: number;
+      randomWfoFridayCurrentMonth: number;
+      fixedWfoFridayCurrentMonth: number;
+      fridayRandomBurdenCurrentMonth: number;
+      totalCurrentMonthForRandomFairness: number;
+      totalOperationalPresence: number;
+      previousMonthPstRegular: number;
+      previousMonthPstFriday: number;
+      previousMonthRandomWfoFriday: number;
+      previousMonthFridayBurden: number;
+      previousMonthRandomTotal: number;
+      historyWindowPstRegular: number;
+      historyWindowPstFriday: number;
+      historyWindowPst: number;
+      historyWindowRandomWfoFriday: number;
+      historyWindowFridayBurden: number;
+      historyWindowTotalRandomAssignments: number;
+      cumulativeRandomFairnessTotal: number;
+      lastRandomAssignedDate: string | null;
+      selectedRandomThisMonth: boolean;
+      fairnessStatus: string;
+      nextPriorityRole: string;
+      priorityReason: string;
+    }>;
+    nextMonthPriority?: {
+      pst: Array<{ officerId: string; name: string; label: string; reason: string }>;
+      wfoFridayRandom: Array<{ officerId: string; name: string; label: string; reason: string }>;
+      fridayBurden?: Array<{ officerId: string; name: string; label: string; reason: string }>;
+      randomTotal: Array<{ officerId: string; name: string; label: string; reason: string }>;
+    };
+    denominator?: {
+      randomEligibleOfficerCount: number;
+      fridayRandomEligibleOfficerCount: number;
+    };
+    monthlyOperationalSummary?: {
+      totalPstSlots: number;
+      totalWfoFridayRandomSlots: number;
+      totalRandomSlots: number;
+      totalWfoFridayFixed: number;
+      totalOperationalPresence: number;
+    };
+    warnings?: string[];
   };
   audit?: {
     generatedAt: string;

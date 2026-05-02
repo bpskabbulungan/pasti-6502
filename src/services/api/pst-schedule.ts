@@ -51,6 +51,9 @@ const parseFileNameFromContentDisposition = (headerValue: string | null) => {
   return null;
 };
 
+const PDF_DOWNLOAD_TIMEOUT_MS =
+  process.env.NODE_ENV === "development" ? 0 : 30_000;
+
 export const pstScheduleApi = {
   listMonthly: (limit = 6) =>
     apiFetch<{ schedules: MonthlyScheduleResponse[] }>(
@@ -123,7 +126,7 @@ export const pstScheduleApi = {
     const blob = await response.blob();
     const fileName =
       parseFileNameFromContentDisposition(response.headers.get("content-disposition")) ||
-      `jadwal-petugas-pst-${payload.year}-${String(payload.month).padStart(2, "0")}.pdf`;
+      `Jadwal_PST_WFO_${String(payload.month).padStart(2, "0")}_${payload.year}.pdf`;
 
     return {
       blob,
@@ -132,6 +135,67 @@ export const pstScheduleApi = {
   },
   getMonthlyPdfDownloadUrl: (scheduleId: string) =>
     `/api/pst/schedules/monthly/${encodeURIComponent(scheduleId)}/pdf`,
+  downloadMonthlyPdf: async (scheduleId: string) => {
+    const controller = new AbortController();
+    const timeoutId =
+      PDF_DOWNLOAD_TIMEOUT_MS > 0
+        ? setTimeout(() => controller.abort(), PDF_DOWNLOAD_TIMEOUT_MS)
+        : null;
+    let response: Response;
+    try {
+      response = await fetch(
+        `/api/pst/schedules/monthly/${encodeURIComponent(scheduleId)}/pdf`,
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      );
+    } catch (error) {
+      const isAbort =
+        error instanceof DOMException
+          ? error.name === "AbortError"
+          : typeof error === "object" &&
+            error !== null &&
+            "name" in error &&
+            (error as { name?: unknown }).name === "AbortError";
+
+      if (isAbort) {
+        throw {
+          status: 0,
+          message: "Permintaan download dibatalkan sebelum selesai.",
+        };
+      }
+
+      throw {
+        status: 0,
+        message: "Gagal menghubungkan ke server saat download PDF.",
+      };
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    if (!response.ok) {
+      const message = await getErrorMessageFromResponse(response);
+      throw {
+        status: response.status,
+        message,
+      };
+    }
+
+    const blob = await response.blob();
+    const fileName =
+      parseFileNameFromContentDisposition(response.headers.get("content-disposition")) ||
+      `Jadwal_PST_WFO_${scheduleId}.pdf`;
+
+    return {
+      blob,
+      fileName,
+    };
+  },
   reshuffleSlot: (scheduleDetailId: string, reason?: string) =>
     apiFetch<{ detail: unknown }>(`/api/pst/schedules/slots/${scheduleDetailId}/reshuffle`, {
       method: "POST",

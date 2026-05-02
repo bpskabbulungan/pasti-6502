@@ -9,15 +9,22 @@ export {
 
 export {
   buildWorkingSlots,
+  buildOfficerScheduleRuleMap,
   generateMonthlySchedule,
+  compareCandidatePriority,
   getEligibleOfficers,
+  getPstPoolRank,
+  getWfoFridayRandomPoolRank,
+  isEligibleForRandomWfoFriday,
   getMonthlyScheduleById,
   getMonthlySchedule,
   listMonthlySchedules,
+  normalizeFridayRoleAssignmentsByPstHistory,
   pickCandidateWeightedRandom,
   repairConflicts,
   reshuffleSingleSlot,
   scoreCandidate,
+  stableHash,
   swapSchedule,
 } from "./pst-schedule-generator.service";
 

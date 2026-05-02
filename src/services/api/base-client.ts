@@ -75,14 +75,26 @@ export async function apiFetch<TResponse, TBody = unknown>(
 	options: RequestOptions<TBody> = {}
 ): Promise<TResponse> {
 	const { method = "GET", body, headers, cache, next } = options;
-
-	const response = await fetch(url, {
-		method,
-		headers: { ...defaultHeaders, ...headers },
-		body: body ? JSON.stringify(body) : undefined,
-		cache,
-		next,
-	});
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			method,
+			headers: { ...defaultHeaders, ...headers },
+			body: body ? JSON.stringify(body) : undefined,
+			cache,
+			next,
+		});
+	} catch (error) {
+		throw {
+			status: 0,
+			message: "Network request failed",
+			details: {
+				url,
+				method,
+				cause: error,
+			},
+		} satisfies ApiError;
+	}
 
 	if (!response.ok) {
 		const details = await readResponseDetails(response);

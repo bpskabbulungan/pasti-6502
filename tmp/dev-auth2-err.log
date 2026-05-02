@@ -1,0 +1,2 @@
+$ next dev -p "3112"
+{"timestamp":"2026-04-30T05:07:56.070Z","level":"warn","message":"API authorization rejected","data":{"traceId":"bba41ca8-6693-4cd2-be06-8540cd5801f8","status":401,"path":"/api/notifications","requiredRoles":[]}}

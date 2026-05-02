@@ -1,8 +1,12 @@
-import { existsSync, promises as fs } from "node:fs";
+import { createWriteStream, existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
-import { PstOfficerEmploymentStatus, PstScheduleStatus } from "@prisma/client";
+import {
+  PstOfficerEmploymentStatus,
+  PstScheduleDetailStatus,
+  PstScheduleStatus,
+} from "@prisma/client";
 import PDFDocument from "pdfkit";
 import prisma from "@api/infrastructure/database/prisma";
 import type {
@@ -34,6 +38,7 @@ type PstScheduleDayAggregate = {
   pstOfficerName: string | null;
   wfoOfficerId: string | null;
   wfoOfficerName: string | null;
+  wfoFixedOfficerNames: string[];
   notes: string[];
 };
 
@@ -43,6 +48,20 @@ type PstAssignedRecord = {
   role: "PST" | "WFO";
   officerId: string;
   officerName: string;
+};
+
+type MonthPeriod = {
+  year: number;
+  month: number;
+};
+
+type OfficerHistoryAggregate = {
+  historyWindowTotal: number;
+  historyWindowPst: number;
+  historyWindowWfo: number;
+  previousMonthTotal: number;
+  previousMonthPst: number;
+  previousMonthWfo: number;
 };
 
 type PstSchedulePdfBuildState = {
@@ -92,6 +111,7 @@ type BuildAndStoreParams = {
   schedule: MonthlyScheduleResponse;
   generatedById?: string | null;
   generatedByName?: string | null;
+  includeBody?: boolean;
 };
 
 const DEFAULT_PST_SCHEDULE_PDF_STORAGE_ROOT = path.join(
@@ -134,10 +154,11 @@ const FOOTER_TEXT = "PASTI - Pelayanan Statistik Terpadu dan Terintegrasi";
 const INSTITUTION_TITLE = "BADAN PUSAT STATISTIK";
 const INSTITUTION_SUBTITLE = "KABUPATEN BULUNGAN";
 const BASE_SCHEDULE_RULES = [
-  "WFO hanya diisi pada hari Jumat (1 PST + 1 WFO).",
+  "Setiap Jumat efektif wajib memiliki 1 PST Jumat dan 1 WFO Jumat Random (dua orang berbeda).",
+  "WFO Jumat Tetap tidak dihitung sebagai fairness random.",
   "Hari libur nasional/cuti bersama dikosongkan.",
   "Petugas unavailable tidak dapat dipilih.",
-  "Fairness mempertimbangkan histori 3 bulan, jarak penugasan, dan prioritas bulan sebelumnya.",
+  "Fairness random memakai snapshot final scheduleDetail pada window histori 3 bulan.",
 ];
 const APRIL_2026_WFO_START_DATE = "2026-04-10";
 
@@ -192,6 +213,63 @@ const asDate = (value: Date | string) => {
 
 const monthLabel = (month: number, year: number) =>
   format(new Date(year, month - 1, 1), "MMMM yyyy", { locale: localeId });
+
+const shiftMonthPeriod = (year: number, month: number, delta: number): MonthPeriod => {
+  const shifted = new Date(year, month - 1 + delta, 1);
+  return {
+    year: shifted.getFullYear(),
+    month: shifted.getMonth() + 1,
+  };
+};
+
+const getMonthStartDate = ({ year, month }: MonthPeriod) => new Date(year, month - 1, 1);
+
+const formatMonthPeriodLabel = (period: MonthPeriod) => monthLabel(period.month, period.year);
+
+const formatHistoryRangeLabel = (startPeriod: MonthPeriod, endPeriod: MonthPeriod) => {
+  const startLabel = formatMonthPeriodLabel(startPeriod);
+  const endLabel = formatMonthPeriodLabel(endPeriod);
+  return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+};
+
+const getAppTimeZone = () => process.env.APP_TIMEZONE?.trim() || "Asia/Makassar";
+
+const getIndonesiaTimeZoneLabel = (timeZone: string) => {
+  if (timeZone === "Asia/Jakarta") return "WIB";
+  if (timeZone === "Asia/Jayapura") return "WIT";
+  if (timeZone === "Asia/Makassar") return "WITA";
+  return null;
+};
+
+const formatDateTimeWithZoneLabel = (value: Date) => {
+  const timeZone = getAppTimeZone();
+  const formatter = new Intl.DateTimeFormat("id-ID", {
+    timeZone,
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(value);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value])) as Record<
+    string,
+    string
+  >;
+
+  const day = byType.day ?? "00";
+  const month = byType.month ?? "-";
+  const year = byType.year ?? "0000";
+  const hour = byType.hour ?? "00";
+  const minute = byType.minute ?? "00";
+  const second = byType.second ?? "00";
+  const zoneLabel = getIndonesiaTimeZoneLabel(timeZone) ?? timeZone;
+
+  return `${day} ${month} ${year} ${hour}:${minute}:${second} ${zoneLabel}`;
+};
 
 const formatIsoDate = (isoDate: string) => {
   const parsed = parseDateOnlyInTimeZone(isoDate);
@@ -271,10 +349,13 @@ const buildCompactNote = (notes: string[]) => {
 
 const toDownloadUrl = (scheduleId: string) => `/api/pst/schedules/monthly/${scheduleId}/pdf`;
 
-const toSchedulePdfFilePaths = (scheduleId: string, month: number, year: number): PstSchedulePdfFilePaths => {
+const buildPstSchedulePdfBaseFileName = (month: number, year: number) =>
+  `Jadwal_PST_WFO_${String(month).padStart(2, "0")}_${year}`;
+
+const toSchedulePdfFilePaths = (month: number, year: number): PstSchedulePdfFilePaths => {
   const monthToken = String(month).padStart(2, "0");
   const directory = path.posix.join(String(year), monthToken);
-  const stem = `jadwal-petugas-pst-${year}-${monthToken}-${scheduleId}`;
+  const stem = buildPstSchedulePdfBaseFileName(month, year);
   const fileName = `${stem}.pdf`;
   const metadataFileName = `${stem}.json`;
   const htmlFileName = `${stem}.html`;
@@ -413,6 +494,7 @@ const buildDayAggregateMap = (schedule: MonthlyScheduleResponse) => {
         pstOfficerName: null,
         wfoOfficerId: null,
         wfoOfficerName: null,
+        wfoFixedOfficerNames: [],
         notes: [],
       };
 
@@ -522,6 +604,7 @@ const buildDisplayWeekMap = (
         pstOfficerName: null,
         wfoOfficerId: null,
         wfoOfficerName: null,
+        wfoFixedOfficerNames: [],
         notes: ["Belum ada data slot pada tanggal ini"],
       });
     }
@@ -595,14 +678,33 @@ const buildScheduleCalendarState = async (
       const notes: string[] = [...row.notes];
       const isFriday = row.dayName === "Jumat";
       const requiresWfo = isFriday && isWfoRequiredOnDate(row.date, wfoStartDateOverride);
+      const fixedWfoNames = isFriday
+        ? Array.from(
+            new Set(
+              notes.flatMap((note) => {
+                const match = /WFO Tetap:\s*([^|]+)/i.exec(note);
+                if (!match || !match[1]) return [];
+                return match[1]
+                  .split(",")
+                  .map((name) => name.trim())
+                  .filter(Boolean);
+              })
+            )
+          )
+        : [];
+      const fixedWfoCount = fixedWfoNames.length;
+      const hasFixedCoverageOnly = isFriday && requiresWfo && fixedWfoCount > 0 && !row.wfoOfficerId;
       const pstOfficer = row.isHoliday ? "-" : row.pstOfficerName || "BELUM TERISI";
-      const wfoOfficer = row.isHoliday
+      const wfoRandomOfficer = row.isHoliday
         ? "-"
         : isFriday
           ? requiresWfo
-            ? row.wfoOfficerName || "BELUM TERISI"
+            ? hasFixedCoverageOnly
+              ? "-"
+              : row.wfoOfficerName || "BELUM TERISI"
             : "-"
           : "-";
+      const wfoFixedOfficer = row.isHoliday ? "-" : isFriday ? (fixedWfoNames.join(", ") || "-") : "-";
 
       if (row.isHoliday) {
         const holidayLabel = row.holidayType === "CUTI_BERSAMA" ? "CUTI BERSAMA" : "LIBUR";
@@ -619,7 +721,8 @@ const buildScheduleCalendarState = async (
         }
 
         if (isFriday) {
-          const fridayIncomplete = !row.hasPstSlot || !row.pstOfficerId || (requiresWfo && (!row.hasWfoSlot || !row.wfoOfficerId));
+          const fridayCoverageReady = !requiresWfo || Boolean(row.wfoOfficerId);
+          const fridayIncomplete = !row.hasPstSlot || !row.pstOfficerId || !fridayCoverageReady;
           if (fridayIncomplete) {
             fridayIncompleteCount += 1;
             notes.push("SLOT JUMAT BELUM LENGKAP");
@@ -627,7 +730,7 @@ const buildScheduleCalendarState = async (
 
           if (requiresWfo && !row.wfoOfficerId) {
             unfilledSlotCount += 1;
-            notes.push("WFO BELUM TERISI");
+            notes.push("WFO JUMAT RANDOM BELUM TERISI");
           }
           if (!requiresWfo) {
             notes.push(`WFO MULAI BERLAKU ${formatIsoDate(wfoStartDateOverride ?? row.date)}`);
@@ -650,7 +753,13 @@ const buildScheduleCalendarState = async (
         }
       }
 
-      const dedupedNotes = Array.from(new Set(notes.map((noteText) => noteText.trim()).filter(Boolean)));
+      const dedupedNotes = Array.from(
+        new Set(
+          notes
+            .map((noteText) => noteText.trim())
+            .filter((noteText) => Boolean(noteText) && !/WFO\s*TETAP\s*:/i.test(noteText))
+        )
+      );
       const note = buildCompactNote(dedupedNotes);
       weekRows.push({
         week,
@@ -658,7 +767,8 @@ const buildScheduleCalendarState = async (
         dayName: row.dayName,
         dateLabel: formatIsoDate(row.date),
         pstOfficer,
-        wfoOfficer,
+        wfoRandomOfficer,
+        wfoFixedOfficer,
         note,
         isHoliday: row.isHoliday,
         hasIssue: dedupedNotes.some((value) =>
@@ -701,11 +811,11 @@ const buildValidationItems = (
   },
   {
     status: validation.fridayIncompleteCount === 0 ? "OK" : "ERROR",
-    rule: "Jumat harus punya slot PST dan WFO",
+    rule: "Jumat harus punya PST Jumat dan WFO Jumat Random",
     detail:
       validation.fridayIncompleteCount === 0
-        ? "Semua hari Jumat memiliki PST dan WFO."
-        : `${validation.fridayIncompleteCount} hari Jumat belum lengkap.`,
+        ? "Semua hari Jumat memiliki PST Jumat dan WFO Jumat Random."
+        : `${validation.fridayIncompleteCount} hari Jumat belum lengkap PST/WFO random.`,
   },
   {
     status: validation.holidayAssignedCount === 0 ? "OK" : "ERROR",
@@ -807,72 +917,107 @@ const buildWeekRangeLabels = (rows: PstSchedulePdfWeekRow[]): PstSchedulePdfWeek
 };
 
 const buildFairnessOfficerRows = (
+  summary: MonthlyScheduleSummary | null | undefined,
   activeOfficers: Array<{ id: string; name: string }>,
-  assignedRecords: PstAssignedRecord[]
+  assignedRecords: PstAssignedRecord[],
+  historyByOfficerId: Map<string, OfficerHistoryAggregate>
 ): PstSchedulePdfFairnessOfficerRow[] => {
+  const summaryRows = summary?.fairness?.officerDetails;
+  if (Array.isArray(summaryRows) && summaryRows.length > 0) {
+    return [...summaryRows]
+      .sort((left, right) => left.name.localeCompare(right.name, "id"))
+      .map((row) => ({
+        name: row.name,
+        poolPstLabel: row.poolPstLabel,
+        statusWfoFriday: row.statusWfoFriday,
+        pstCurrentMonth: row.pstCurrentMonthDisplay,
+        pstFridayCurrentMonth: row.pstFridayCurrentMonthDisplay,
+        randomWfoFridayCurrentMonth: row.randomWfoFridayCurrentMonthDisplay,
+        fixedWfoFridayCurrentMonth: row.fixedWfoFridayCurrentMonthDisplay,
+        fridayRandomBurdenCurrentMonth: String(row.fridayRandomBurdenCurrentMonth),
+        totalOperationalPresence: String(row.totalOperationalPresence),
+        previousMonthFridayBurden: String(row.previousMonthFridayBurden),
+        totalCurrentMonthForRandomFairness: String(row.totalCurrentMonthForRandomFairness),
+        previousMonthRandomTotal: String(row.previousMonthRandomTotal),
+        historyWindowFridayBurden: String(row.historyWindowFridayBurden),
+        historyWindowTotalRandomAssignments: String(row.historyWindowTotalRandomAssignments),
+        cumulativeRandomFairnessTotal: String(row.cumulativeRandomFairnessTotal),
+        fairnessStatus: row.fairnessStatus,
+        nextPriorityRole: row.nextPriorityRole,
+        priorityReason: row.priorityReason,
+        lastRandomAssignedDate: row.lastRandomAssignedDate ? formatIsoDate(row.lastRandomAssignedDate) : "-",
+      }));
+  }
+
   const rowMap = new Map<
     string,
     {
+      officerId: string;
       name: string;
-      totalAssignments: number;
       pstAssignments: number;
-      wfoAssignments: number;
-      fridayAssignments: number;
-      lastAssignedIso: string | null;
+      randomWfoAssignments: number;
     }
   >();
 
   for (const officer of activeOfficers) {
     rowMap.set(officer.id, {
+      officerId: officer.id,
       name: officer.name,
-      totalAssignments: 0,
       pstAssignments: 0,
-      wfoAssignments: 0,
-      fridayAssignments: 0,
-      lastAssignedIso: null,
+      randomWfoAssignments: 0,
     });
   }
 
   for (const record of assignedRecords) {
     const bucket = rowMap.get(record.officerId) ?? {
+      officerId: record.officerId,
       name: record.officerName,
-      totalAssignments: 0,
       pstAssignments: 0,
-      wfoAssignments: 0,
-      fridayAssignments: 0,
-      lastAssignedIso: null,
+      randomWfoAssignments: 0,
     };
-
-    bucket.totalAssignments += 1;
     if (record.role === "PST") {
       bucket.pstAssignments += 1;
     } else {
-      bucket.wfoAssignments += 1;
-    }
-    if (record.dayName === "Jumat") {
-      bucket.fridayAssignments += 1;
-    }
-
-    if (!bucket.lastAssignedIso || bucket.lastAssignedIso < record.date) {
-      bucket.lastAssignedIso = record.date;
+      bucket.randomWfoAssignments += 1;
     }
     rowMap.set(record.officerId, bucket);
   }
 
   return Array.from(rowMap.values())
     .sort((left, right) => {
-      if (left.totalAssignments !== right.totalAssignments) {
-        return right.totalAssignments - left.totalAssignments;
+      const leftTotal = left.pstAssignments + left.randomWfoAssignments;
+      const rightTotal = right.pstAssignments + right.randomWfoAssignments;
+      if (leftTotal !== rightTotal) {
+        return rightTotal - leftTotal;
       }
       return left.name.localeCompare(right.name, "id");
     })
     .map((row) => ({
       name: row.name,
-      totalAssignments: String(row.totalAssignments),
-      pstAssignments: String(row.pstAssignments),
-      wfoAssignments: String(row.wfoAssignments),
-      fridayAssignments: String(row.fridayAssignments),
-      lastAssignedLabel: row.lastAssignedIso ? formatIsoDate(row.lastAssignedIso) : "-",
+      poolPstLabel: "Normal",
+      statusWfoFriday: "Random",
+      pstCurrentMonth: String(row.pstAssignments),
+      pstFridayCurrentMonth: "0",
+      randomWfoFridayCurrentMonth: String(row.randomWfoAssignments),
+      fixedWfoFridayCurrentMonth: "-",
+      fridayRandomBurdenCurrentMonth: "0",
+      totalOperationalPresence: String(row.pstAssignments + row.randomWfoAssignments),
+      previousMonthFridayBurden: "0",
+      totalCurrentMonthForRandomFairness: String(row.pstAssignments + row.randomWfoAssignments),
+      previousMonthRandomTotal: String(historyByOfficerId.get(row.officerId)?.previousMonthTotal ?? 0),
+      historyWindowFridayBurden: "0",
+      historyWindowTotalRandomAssignments: String(
+        historyByOfficerId.get(row.officerId)?.historyWindowTotal ?? 0
+      ),
+      cumulativeRandomFairnessTotal: String(
+        (historyByOfficerId.get(row.officerId)?.historyWindowTotal ?? 0) +
+          row.pstAssignments +
+          row.randomWfoAssignments
+      ),
+      fairnessStatus: "Audit Legacy",
+      nextPriorityRole: "-",
+      priorityReason: "Menggunakan fallback karena summary fairness detail tidak tersedia",
+      lastRandomAssignedDate: "-",
     }));
 };
 
@@ -883,10 +1028,21 @@ const buildSchedulePdfViewModel = async (
 ): Promise<PstSchedulePdfViewModel> => {
   const summary = (schedule.summary ?? null) as MonthlyScheduleSummary | null;
   const generatedAtDate = asDate(schedule.generatedAt);
-  const generatedAtLabel = format(generatedAtDate, "dd MMMM yyyy HH:mm:ss", { locale: localeId });
+  const generatedAtLabel = formatDateTimeWithZoneLabel(generatedAtDate);
   const monthYearText = monthLabel(schedule.month, schedule.year);
   const wfoStartDateOverride = getWfoStartDateOverride(schedule.year, schedule.month);
   const calendarState = await buildScheduleCalendarState(schedule);
+  const summaryFairness = summary?.fairness;
+  const historyWindowMonths = Math.max(1, summaryFairness?.historyWindowMonths ?? 3);
+  const currentMonthPeriod: MonthPeriod = { year: schedule.year, month: schedule.month };
+  const previousMonthPeriod = shiftMonthPeriod(schedule.year, schedule.month, -1);
+  const historyWindowStartPeriod = shiftMonthPeriod(
+    schedule.year,
+    schedule.month,
+    -historyWindowMonths
+  );
+  const currentMonthStartDate = getMonthStartDate(currentMonthPeriod);
+  const historyWindowStartDate = getMonthStartDate(historyWindowStartPeriod);
 
   const activeOfficers = await prisma.pstOfficerCandidate.findMany({
     where: {
@@ -900,6 +1056,79 @@ const buildSchedulePdfViewModel = async (
     },
     orderBy: [{ priorityNextMonth: "desc" }, { name: "asc" }],
   });
+  const fairnessHistoryRecords = await prisma.scheduleDetail.findMany({
+    where: {
+      officerId: { not: null },
+      scheduleDate: {
+        gte: historyWindowStartDate,
+        lt: currentMonthStartDate,
+      },
+      status: {
+        in: [
+          PstScheduleDetailStatus.ASSIGNED,
+          PstScheduleDetailStatus.REPLACED,
+          PstScheduleDetailStatus.SWAPPED,
+        ],
+      },
+      monthlySchedule: {
+        status: {
+          not: PstScheduleStatus.CANCELLED,
+        },
+      },
+    },
+    select: {
+      officerId: true,
+      slotRole: true,
+      monthlySchedule: {
+        select: {
+          month: true,
+          year: true,
+        },
+      },
+    },
+  });
+  const historyByOfficerId = new Map<string, OfficerHistoryAggregate>();
+  for (const officer of activeOfficers) {
+    historyByOfficerId.set(officer.id, {
+      historyWindowTotal: 0,
+      historyWindowPst: 0,
+      historyWindowWfo: 0,
+      previousMonthTotal: 0,
+      previousMonthPst: 0,
+      previousMonthWfo: 0,
+    });
+  }
+  for (const record of fairnessHistoryRecords) {
+    if (!record.officerId) {
+      continue;
+    }
+
+    const bucket = historyByOfficerId.get(record.officerId) ?? {
+      historyWindowTotal: 0,
+      historyWindowPst: 0,
+      historyWindowWfo: 0,
+      previousMonthTotal: 0,
+      previousMonthPst: 0,
+      previousMonthWfo: 0,
+    };
+    bucket.historyWindowTotal += 1;
+    if (record.slotRole === "PST") {
+      bucket.historyWindowPst += 1;
+    } else {
+      bucket.historyWindowWfo += 1;
+    }
+    const sourceMonth = record.monthlySchedule?.month;
+    const sourceYear = record.monthlySchedule?.year;
+    if (sourceMonth === previousMonthPeriod.month && sourceYear === previousMonthPeriod.year) {
+      bucket.previousMonthTotal += 1;
+      if (record.slotRole === "PST") {
+        bucket.previousMonthPst += 1;
+      } else {
+        bucket.previousMonthWfo += 1;
+      }
+    }
+    historyByOfficerId.set(record.officerId, bucket);
+  }
 
   const selectedOfficerIdSet = new Set(calendarState.assignedRecords.map((record) => record.officerId));
   const selectedOfficerNameSet = new Set(
@@ -926,6 +1155,14 @@ const buildSchedulePdfViewModel = async (
     .filter((officer) => officer.priorityNextMonth)
     .map((officer) => officer.name)
     .sort((left, right) => left.localeCompare(right, "id"));
+  const priorityPstNames =
+    summaryFairness?.nextMonthPriority?.pst?.map((item) => item.name) ?? [];
+  const priorityWfoRandomNames =
+    summaryFairness?.nextMonthPriority?.wfoFridayRandom?.map((item) => item.name) ?? [];
+  const priorityFridayBurdenNames =
+    summaryFairness?.nextMonthPriority?.fridayBurden?.map((item) => item.name) ?? [];
+  const priorityRandomTotalNames =
+    summaryFairness?.nextMonthPriority?.randomTotal?.map((item) => item.name) ?? priorityOfficerNames;
 
   const fairnessNote =
     summary?.fairness?.note ??
@@ -936,9 +1173,16 @@ const buildSchedulePdfViewModel = async (
   const validationItems = resolveValidationItems(summary, calendarState.validation);
   const auditMeta = extractAuditMeta(summary);
   const revisionCode = formatRevisionCode(auditMeta.documentVersion);
-  const fairnessOfficerRows = buildFairnessOfficerRows(activeOfficers, calendarState.assignedRecords);
-  const assignmentTotals = fairnessOfficerRows.map((row) => Number(row.totalAssignments));
-  const fridayTotals = fairnessOfficerRows.map((row) => Number(row.fridayAssignments));
+  const fairnessOfficerRows = buildFairnessOfficerRows(
+    summary,
+    activeOfficers,
+    calendarState.assignedRecords,
+    historyByOfficerId
+  );
+  const assignmentTotals = fairnessOfficerRows.map(
+    (row) => Number(row.totalCurrentMonthForRandomFairness)
+  );
+  const fridayTotals = fairnessOfficerRows.map((row) => Number(row.fridayRandomBurdenCurrentMonth));
   const dynamicDistributionSpread =
     assignmentTotals.length > 0 ? Math.max(...assignmentTotals) - Math.min(...assignmentTotals) : 0;
   const dynamicFridaySpread =
@@ -950,11 +1194,65 @@ const buildSchedulePdfViewModel = async (
           fairnessOfficerRows.length
         ).toFixed(2)
       : "0.00";
-  const summaryFairness = summary?.fairness;
+  const historyWindowTotalAssignments = Array.from(historyByOfficerId.values()).reduce(
+    (sum, item) => sum + item.historyWindowTotal,
+    0
+  );
+  const currentMonthAssignedCount =
+    summary?.totalAssigned ?? calendarState.assignedRecords.length;
+  const previousMonthTotalAssignments = Array.from(historyByOfficerId.values()).reduce(
+    (sum, item) => sum + item.previousMonthTotal,
+    0
+  );
+  const previousMonthLabel = formatMonthPeriodLabel(previousMonthPeriod);
   const fairnessSummaryRows = [
     {
       label: "Window histori fairness",
-      value: `${summaryFairness?.historyWindowMonths ?? 3} bulan`,
+      value: `${historyWindowMonths} bulan`,
+    },
+    {
+      label: "Rentang histori fairness",
+      value: formatHistoryRangeLabel(historyWindowStartPeriod, previousMonthPeriod),
+    },
+    {
+      label: "Riwayat Bulan Lalu",
+      value: String(previousMonthTotalAssignments),
+    },
+    {
+      label: "Histori Window",
+      value: String(historyWindowTotalAssignments),
+    },
+    {
+      label: "Total slot PST",
+      value: String(summaryFairness?.monthlyOperationalSummary?.totalPstSlots ?? 0),
+    },
+    {
+      label: "Total slot WFO Jumat Random",
+      value: String(summaryFairness?.monthlyOperationalSummary?.totalWfoFridayRandomSlots ?? 0),
+    },
+    {
+      label: "Total slot random bulan ini",
+      value: String(
+        summaryFairness?.monthlyOperationalSummary?.totalRandomSlots ?? currentMonthAssignedCount
+      ),
+    },
+    {
+      label: "Total WFO Jumat Tetap",
+      value: String(summaryFairness?.monthlyOperationalSummary?.totalWfoFridayFixed ?? 0),
+    },
+    {
+      label: "Total Kehadiran Operasional",
+      value: String(
+        summaryFairness?.monthlyOperationalSummary?.totalOperationalPresence ??
+          (summaryFairness?.officerDetails?.reduce(
+            (sum, row) => sum + row.totalOperationalPresence,
+            0
+          ) ?? currentMonthAssignedCount)
+      ),
+    },
+    {
+      label: "Total Kumulatif Fairness Random",
+      value: String(historyWindowTotalAssignments + currentMonthAssignedCount),
     },
     {
       label: "Cakupan petugas terjadwal",
@@ -963,11 +1261,15 @@ const buildSchedulePdfViewModel = async (
       } (${summaryFairness?.coverageRate ?? 0}%)`,
     },
     {
+      label: "Denominator cakupan random",
+      value: `${summaryFairness?.denominator?.randomEligibleOfficerCount ?? 0} eligible random`,
+    },
+    {
       label: "Spread penugasan total",
       value: String(summaryFairness?.distributionSpread ?? dynamicDistributionSpread),
     },
     {
-      label: "Spread slot Jumat",
+      label: "Spread beban Jumat random",
       value: String(summaryFairness?.fridaySpread ?? dynamicFridaySpread),
     },
     {
@@ -997,7 +1299,7 @@ const buildSchedulePdfViewModel = async (
   ];
 
   return {
-    title: `JADWAL PETUGAS PST BULAN ${monthYearText.toUpperCase()}`,
+    title: `JADWAL PETUGAS PST DAN WFO BULAN ${monthYearText.toUpperCase()}`,
     monthYearLabel: monthYearText,
     generatedAtLabel,
     generatedByLabel:
@@ -1012,34 +1314,62 @@ const buildSchedulePdfViewModel = async (
     selectedOfficerNames,
     unselectedOfficerNames,
     priorityOfficerNames,
+    priorityPstNames,
+    priorityWfoRandomNames,
+    priorityFridayBurdenNames,
+    priorityRandomTotalNames,
+    poolSummaryRows: summaryFairness?.poolSummary ?? [],
     fairnessNote,
     fairnessSummaryRows,
     fairnessOfficerRows,
+    historyWindowColumnLabel: "Riwayat bulan sebelumnya",
+    previousMonthColumnLabel: `Histori ${previousMonthLabel}`,
     rules: scheduleRules,
   };
 };
 
-const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
+const buildPdfBufferFromViewModel = async (
+  view: PstSchedulePdfViewModel,
+  options?: { outputPath?: string; collectBuffer?: boolean }
+) => {
+  const collectBuffer = options?.collectBuffer ?? true;
+  const outputPath = options?.outputPath;
   const doc = new PDFDocument({
     size: "A4",
     layout: "portrait",
-    margin: 40,
+    margin: 44,
     font: PST_PDF_FONT_PATH,
   });
   // Map standard PDFKit font names to bundled TTF so runtime doesn't depend on .afm files.
   doc.registerFont("Helvetica", PST_PDF_FONT_PATH);
   doc.registerFont("Helvetica-Bold", PST_PDF_FONT_PATH);
 
+  const fileStream = outputPath ? createWriteStream(outputPath) : null;
+  if (fileStream) {
+    doc.pipe(fileStream);
+  }
+
   const chunks: Buffer[] = [];
   const done = new Promise<Buffer>((resolve, reject) => {
-    doc.on("data", (chunk) => chunks.push(chunk as Buffer));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    if (collectBuffer) {
+      doc.on("data", (chunk) => chunks.push(chunk as Buffer));
+    }
+    doc.on("end", () => resolve(collectBuffer ? Buffer.concat(chunks) : Buffer.alloc(0)));
     doc.on("error", reject);
+  });
+
+  const fileDone = new Promise<void>((resolve, reject) => {
+    if (!fileStream) {
+      resolve();
+      return;
+    }
+    fileStream.on("finish", () => resolve());
+    fileStream.on("error", reject);
   });
 
   const marginLeft = doc.page.margins.left;
   const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const bodyBottomLimit = doc.page.height - doc.page.margins.bottom - 52;
+  const bodyBottomLimit = doc.page.height - doc.page.margins.bottom - 56;
   let pageNumber = 1;
   let y = doc.page.margins.top;
 
@@ -1085,7 +1415,7 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
   };
 
   const addPage = (continuationTitle?: string) => {
-    doc.addPage({ size: "A4", layout: "portrait", margin: 40 });
+    doc.addPage({ size: "A4", layout: "portrait", margin: 44 });
     pageNumber += 1;
     y = doc.page.margins.top;
     drawFooter();
@@ -1127,9 +1457,7 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
       align: "center",
       valign: "center",
     });
-    doc.rect(logoX, logoY, logoBoxSize, logoBoxSize).strokeColor(palette.border).lineWidth(0.7).stroke();
   } else {
-    doc.rect(logoX, logoY, logoBoxSize, logoBoxSize).strokeColor(palette.border).lineWidth(1).stroke();
     doc.font("Helvetica").fontSize(8).fillColor(palette.soft).text("LOGO", logoX, logoY + 22, {
       width: logoBoxSize,
       align: "center",
@@ -1145,28 +1473,26 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
   });
 
   y = logoY + logoBoxSize + 12;
-  doc.moveTo(marginLeft, y).lineTo(marginLeft + contentWidth, y).strokeColor(palette.ink).lineWidth(1).stroke();
-  y += 6;
-  doc.moveTo(marginLeft, y).lineTo(marginLeft + contentWidth, y).strokeColor(palette.border).lineWidth(0.8).stroke();
+  doc.moveTo(marginLeft, y).lineTo(marginLeft + contentWidth, y).strokeColor("#94A3B8").lineWidth(0.55).stroke();
   y += 18;
 
   doc.font("Helvetica-Bold").fontSize(14.5).fillColor(palette.ink).text(view.title, marginLeft, y, {
     width: contentWidth,
     align: "center",
   });
-  y = doc.y + 14;
+  y = doc.y + 18;
 
   const metadataRows = [`Generate : ${view.generatedAtLabel}`];
 
   doc.font(PST_PDF_FONT_PATH).fontSize(9.5).fillColor(palette.muted);
   for (const row of metadataRows) {
-    ensureSpace(20);
-    doc.save().rect(marginLeft, y - 2, contentWidth, 18).fill(palette.panelStrong).restore();
+    ensureSpace(24);
+    doc.save().rect(marginLeft, y - 2, contentWidth, 20).fill(palette.panelStrong).restore();
     doc.text(row, marginLeft + 8, y + 2, { width: contentWidth - 16 });
-    y = doc.y + 1;
+    y = doc.y + 3;
   }
 
-  y += 4;
+  y += 10;
 
   ensureSpace(26);
   doc.moveTo(marginLeft, y).lineTo(marginLeft + contentWidth, y).strokeColor(palette.border).lineWidth(0.8).stroke();
@@ -1175,7 +1501,7 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
   doc.font("Helvetica-Bold").fontSize(11.5).fillColor(palette.ink).text("Ringkasan", marginLeft, y, {
     width: contentWidth,
   });
-  y = doc.y + 6;
+  y = doc.y + 10;
 
   const summaryCols = [marginLeft, marginLeft + contentWidth / 2];
   const summaryLabelWidth = 148;
@@ -1183,9 +1509,9 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
   const leftSummary = view.executiveSummaryRows.slice(0, halfIndex);
   const rightSummary = view.executiveSummaryRows.slice(halfIndex);
   const rowCount = Math.max(leftSummary.length, rightSummary.length);
-  ensureSpace(rowCount * 16 + 16);
+  ensureSpace(rowCount * 20 + 22);
 
-  doc.save().rect(marginLeft, y - 2, contentWidth, rowCount * 16 + 10).fill(palette.panel).restore();
+  doc.save().rect(marginLeft, y - 2, contentWidth, rowCount * 20 + 14).fill(palette.panel).restore();
 
   const drawSummaryRow = (
     rows: Array<{ label: string; value: string }>,
@@ -1196,7 +1522,7 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
     if (!row) {
       return;
     }
-    const lineY = y + 2 + index * 16;
+    const lineY = y + 3 + index * 20;
     doc.font("Helvetica").fontSize(9.5).fillColor(palette.muted).text(row.label, startX + 8, lineY, {
       width: summaryLabelWidth,
     });
@@ -1209,139 +1535,171 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
     drawSummaryRow(leftSummary, summaryCols[0]!, index);
     drawSummaryRow(rightSummary, summaryCols[1]!, index);
   }
-  y += rowCount * 16 + 14;
-  y += 8;
+  y += rowCount * 20 + 18;
+  y += 14;
 
-  const tableColumns = [
-    { key: "dayName", label: "Hari", width: 72, align: "center" as const },
-    { key: "dateLabel", label: "Tanggal", width: 92, align: "center" as const },
-    { key: "pstOfficer", label: "Petugas PST", width: 128, align: "left" as const },
-    { key: "wfoOfficer", label: "Petugas WFO", width: 128, align: "left" as const },
-    { key: "note", label: "Keterangan", width: contentWidth - (72 + 92 + 128 + 128), align: "left" as const },
-  ] as const;
+  const renderScheduleTable = () => {
+    const tableColumns = [
+      { key: "dayName", label: "Hari", width: 62, align: "center" as const },
+      { key: "dateLabel", label: "Tanggal", width: 80, align: "center" as const },
+      { key: "pstOfficer", label: "Petugas PST", width: 120, align: "left" as const },
+      {
+        key: "wfoRandomOfficer",
+        label: "Petugas WFO Jumat",
+        width: 110,
+        align: "left" as const,
+      },
+      {
+        key: "note",
+        label: "Keterangan",
+        width: contentWidth - (62 + 80 + 120 + 110),
+        align: "left" as const,
+      },
+    ] as const;
 
-  const headerHeight = 22;
+    const headerHeight = 26;
 
-  const drawTableHeader = () => {
-    doc.save();
-    doc.rect(marginLeft, y, contentWidth, headerHeight).fill(palette.header);
-    doc.restore();
-
-    let x = marginLeft;
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(palette.ink);
-    for (const column of tableColumns) {
-      doc.rect(x, y, column.width, headerHeight).strokeColor(palette.border).lineWidth(0.8).stroke();
-      doc.text(column.label, x + 4, y + 6, {
-        width: column.width - 8,
-        align: column.align,
-        ellipsis: true,
-      });
-      x += column.width;
-    }
-    y += headerHeight;
-  };
-
-  ensureSpace(30, "Tabel Jadwal (lanjutan)");
-  doc.font("Helvetica-Bold").fontSize(11.5).fillColor(palette.ink).text("Tabel Jadwal", marginLeft, y, {
-    width: contentWidth,
-  });
-  y = doc.y + 6;
-
-  const weekRanges = buildWeekRangeLabels(view.weekRows);
-  const weekRangeMap = new Map(weekRanges.map((item) => [item.week, item.label]));
-  const weekNumbers = Array.from(new Set(view.weekRows.map((row) => row.week))).sort((a, b) => a - b);
-  for (const week of weekNumbers) {
-    const rows = view.weekRows.filter((row) => row.week === week);
-    const weekTitle = `Minggu ${week} (${weekRangeMap.get(week) ?? "-"})`;
-    ensureSpace(22 + headerHeight + 18, "Tabel Jadwal (lanjutan)");
-    doc
-      .save()
-      .rect(marginLeft, y - 1, contentWidth, 18)
-      .fill(palette.panelStrong)
-      .restore();
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(10)
-      .fillColor(palette.ink)
-      .text(weekTitle, marginLeft + 8, y + 3, { width: contentWidth - 16 });
-    y = doc.y + 4;
-    drawTableHeader();
-
-    rows.forEach((row, rowIndex) => {
-      const rowValues: Record<(typeof tableColumns)[number]["key"], string> = {
-        dayName: row.dayName,
-        dateLabel: row.dateLabel,
-        pstOfficer: row.pstOfficer,
-        wfoOfficer: row.wfoOfficer,
-        note: row.note,
-      };
-
-      doc.font(PST_PDF_FONT_PATH).fontSize(9);
-      const rowHeight = Math.max(
-        22,
-        ...tableColumns.map((column) =>
-          Math.ceil(
-            doc.heightOfString(rowValues[column.key], {
-              width: column.width - 8,
-              align: column.align,
-            }) + 8
-          )
-        )
-      );
-
-      if (ensureSpace(rowHeight, `Tabel Jadwal ${weekTitle} (lanjutan)`)) {
-        drawTableHeader();
-      }
-
-      const rowColor = row.isHoliday
-        ? palette.holiday
-        : row.hasIssue
-          ? palette.issue
-          : rowIndex % 2 === 1
-            ? palette.panel
-            : palette.white;
+    const drawTableHeader = () => {
       doc.save();
-      doc.rect(marginLeft, y, contentWidth, rowHeight).fill(rowColor);
+      doc.rect(marginLeft, y, contentWidth, headerHeight).fill(palette.header);
       doc.restore();
 
       let x = marginLeft;
-      doc.font(PST_PDF_FONT_PATH).fontSize(9).fillColor(palette.ink);
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(palette.ink);
       for (const column of tableColumns) {
-        doc.rect(x, y, column.width, rowHeight).strokeColor(palette.border).lineWidth(0.7).stroke();
-        doc.text(rowValues[column.key], x + 4, y + 5, {
+        doc.rect(x, y, column.width, headerHeight).strokeColor(palette.border).lineWidth(0.8).stroke();
+        doc.text(column.label, x + 4, y + 8, {
           width: column.width - 8,
-          height: rowHeight - 8,
           align: column.align,
+          ellipsis: true,
         });
         x += column.width;
       }
+      y += headerHeight;
+    };
 
-      y += rowHeight;
+    ensureSpace(36, "Tabel Jadwal (lanjutan)");
+    doc.font("Helvetica-Bold").fontSize(11.5).fillColor(palette.ink).text("Tabel Jadwal", marginLeft, y, {
+      width: contentWidth,
     });
+    y = doc.y + 10;
 
-    y += 6;
-  }
+    const weekRanges = buildWeekRangeLabels(view.weekRows);
+    const weekRangeMap = new Map(weekRanges.map((item) => [item.week, item.label]));
+    const weekNumbers = Array.from(new Set(view.weekRows.map((row) => row.week))).sort((a, b) => a - b);
+    for (const week of weekNumbers) {
+      const rows = view.weekRows.filter((row) => row.week === week);
+      const weekTitle = `Minggu ${week} (${weekRangeMap.get(week) ?? "-"})`;
+      ensureSpace(26 + headerHeight + 22, "Tabel Jadwal (lanjutan)");
+      doc
+        .save()
+        .rect(marginLeft, y - 1, contentWidth, 20)
+        .fill(palette.panelStrong)
+        .restore();
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(10)
+        .fillColor(palette.ink)
+        .text(weekTitle, marginLeft + 8, y + 4, { width: contentWidth - 16 });
+      y = doc.y + 6;
+      drawTableHeader();
 
-  y += 8;
+      rows.forEach((row, rowIndex) => {
+        const rowValues: Record<(typeof tableColumns)[number]["key"], string> = {
+          dayName: row.dayName,
+          dateLabel: row.dateLabel,
+          pstOfficer: row.pstOfficer,
+          wfoRandomOfficer: row.wfoRandomOfficer,
+          note: row.note,
+        };
+
+        doc.font(PST_PDF_FONT_PATH).fontSize(9);
+        const rowHeight = Math.max(
+          28,
+          ...tableColumns.map((column) =>
+            Math.ceil(
+              doc.heightOfString(rowValues[column.key], {
+                width: column.width - 8,
+                align: column.align,
+              }) + 12
+            )
+          )
+        );
+
+        if (ensureSpace(rowHeight, `Tabel Jadwal ${weekTitle} (lanjutan)`)) {
+          drawTableHeader();
+        }
+
+        const rowColor = row.isHoliday
+          ? palette.holiday
+          : row.hasIssue
+            ? palette.issue
+            : rowIndex % 2 === 1
+              ? palette.panel
+              : palette.white;
+        doc.save();
+        doc.rect(marginLeft, y, contentWidth, rowHeight).fill(rowColor);
+        doc.restore();
+
+        let x = marginLeft;
+        doc.font(PST_PDF_FONT_PATH).fontSize(9).fillColor(palette.ink);
+        for (const column of tableColumns) {
+          doc.rect(x, y, column.width, rowHeight).strokeColor(palette.border).lineWidth(0.7).stroke();
+          doc.text(rowValues[column.key], x + 4, y + 7, {
+            width: column.width - 8,
+            height: rowHeight - 12,
+            align: column.align,
+          });
+          x += column.width;
+        }
+
+        y += rowHeight;
+      });
+
+      y += 10;
+    }
+
+  };
+
+  y += 10;
   ensureSpace(26, "Ringkasan Petugas (lanjutan)");
   doc.moveTo(marginLeft, y).lineTo(marginLeft + contentWidth, y).strokeColor(palette.border).lineWidth(0.8).stroke();
-  y += 8;
+  y += 12;
 
   doc.font("Helvetica-Bold").fontSize(11.5).fillColor(palette.ink).text("Ringkasan Petugas", marginLeft, y, {
     width: contentWidth,
   });
-  y = doc.y + 6;
+  y = doc.y + 10;
 
   const drawOfficerSummaryRow = (label: string, value: string) => {
-    ensureSpace(26, "Ringkasan Petugas (lanjutan)");
-    doc.save().rect(marginLeft, y - 1, contentWidth, 20).fill(palette.panel).restore();
-    doc.font("Helvetica-Bold").fontSize(9.3).fillColor(palette.ink).text(label, marginLeft + 8, y + 4, {
-      width: 180,
+    const labelWidth = 180;
+    const valueWidth = contentWidth - 196;
+
+    doc.font("Helvetica-Bold").fontSize(9.5);
+    const labelHeight = doc.heightOfString(label, {
+      width: labelWidth,
+      align: "left",
     });
-    doc.font(PST_PDF_FONT_PATH).fontSize(9.3).fillColor(palette.muted).text(value, marginLeft + 188, y + 4, {
-      width: contentWidth - 196,
+
+    doc.font(PST_PDF_FONT_PATH).fontSize(9.5);
+    const valueHeight = doc.heightOfString(value, {
+      width: valueWidth,
+      align: "left",
     });
-    y += 22;
+
+    const rowHeight = Math.max(28, Math.ceil(Math.max(labelHeight, valueHeight) + 14));
+    ensureSpace(rowHeight + 6, "Ringkasan Petugas (lanjutan)");
+
+    doc.save().rect(marginLeft, y - 1, contentWidth, rowHeight).fill(palette.panel).restore();
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(palette.ink).text(label, marginLeft + 8, y + 6, {
+      width: labelWidth,
+      height: rowHeight - 10,
+    });
+    doc.font(PST_PDF_FONT_PATH).fontSize(9.5).fillColor(palette.muted).text(value, marginLeft + 188, y + 6, {
+      width: valueWidth,
+      height: rowHeight - 10,
+    });
+    y += rowHeight + 4;
   };
 
   drawOfficerSummaryRow(
@@ -1353,45 +1711,199 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
     view.unselectedOfficerNames.length > 0 ? view.unselectedOfficerNames.join(", ") : "-"
   );
   drawOfficerSummaryRow(
-    `Prioritas Bulan Berikutnya (${view.priorityOfficerNames.length})`,
-    view.priorityOfficerNames.length > 0 ? view.priorityOfficerNames.join(", ") : "-"
+    `Prioritas PST Bulan Berikutnya (${(view.priorityPstNames ?? []).length})`,
+    (view.priorityPstNames ?? []).length > 0 ? (view.priorityPstNames ?? []).join(", ") : "-"
   );
-  drawOfficerSummaryRow("Catatan fairness", view.fairnessNote);
+  drawOfficerSummaryRow(
+    `Prioritas WFO Jumat Random Bulan Berikutnya (${(view.priorityWfoRandomNames ?? []).length})`,
+    (view.priorityWfoRandomNames ?? []).length > 0
+      ? (view.priorityWfoRandomNames ?? []).join(", ")
+      : "-"
+  );
+  drawOfficerSummaryRow(
+    `Prioritas Beban Jumat Bulan Berikutnya (${(view.priorityFridayBurdenNames ?? []).length})`,
+    (view.priorityFridayBurdenNames ?? []).length > 0
+      ? (view.priorityFridayBurdenNames ?? []).join(", ")
+      : "-"
+  );
+  drawOfficerSummaryRow(
+    `Prioritas Beban Random Total Bulan Berikutnya (${(view.priorityRandomTotalNames ?? []).length})`,
+    (view.priorityRandomTotalNames ?? []).length > 0
+      ? (view.priorityRandomTotalNames ?? []).join(", ")
+      : "-"
+  );
 
-  doc.font("Helvetica-Bold").fontSize(12.5).fillColor(palette.ink).text("Ringkasan Fairness (Audit)", marginLeft, y, {
+  addPage();
+  y += 4;
+  renderScheduleTable();
+
+  // Keep fairness audit in one dedicated page so it is presentation-friendly.
+  addPage();
+  y += 4;
+  doc.font("Helvetica-Bold").fontSize(12.5).fillColor(palette.ink).text("Lampiran Fairness", marginLeft, y, {
     width: contentWidth,
+    align: "center",
   });
-  y = doc.y + 6;
+  y = doc.y + 8;
 
   const fairnessMetaLabelWidth = 180;
+  const fairnessMetaRowHeight = 18;
   for (const row of view.fairnessSummaryRows) {
-    ensureSpace(20, "Ringkasan Fairness (lanjutan)");
-    doc.save().rect(marginLeft, y - 1, contentWidth, 18).fill(palette.panel).restore();
-    doc.font("Helvetica").fontSize(9.2).fillColor(palette.muted).text(row.label, marginLeft + 8, y + 3, {
+    doc.save().rect(marginLeft, y - 1, contentWidth, fairnessMetaRowHeight).fill(palette.panel).restore();
+    doc.font("Helvetica").fontSize(9).fillColor(palette.muted).text(row.label, marginLeft + 8, y + 3, {
       width: fairnessMetaLabelWidth,
     });
-    doc.font("Helvetica-Bold").fontSize(9.2).fillColor(palette.ink).text(`: ${row.value}`, marginLeft + fairnessMetaLabelWidth + 8, y + 3, {
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(palette.ink).text(`: ${row.value}`, marginLeft + fairnessMetaLabelWidth + 8, y + 3, {
       width: contentWidth - fairnessMetaLabelWidth - 16,
     });
-    y += 20;
+    y += fairnessMetaRowHeight + 2;
   }
 
-  y += 4;
-  ensureSpace(24, "Detail Fairness per Petugas (lanjutan)");
-  doc.font("Helvetica-Bold").fontSize(10.5).fillColor(palette.ink).text("Detail Fairness per Petugas", marginLeft, y, {
-    width: contentWidth,
-  });
-  y = doc.y + 6;
+  y += 6;
+  if ((view.poolSummaryRows ?? []).length > 0) {
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10.5)
+      .fillColor(palette.ink)
+      .text("Ringkasan Aturan Pool", marginLeft, y, {
+        width: contentWidth,
+      });
+    y = doc.y + 6;
+
+    const poolColumns = [
+      { key: "pool", label: "Pool", width: 140, align: "left" as const },
+      { key: "meaning", label: "Arti", width: 190, align: "left" as const },
+      { key: "officers", label: "Petugas", width: contentWidth - (140 + 190), align: "left" as const },
+    ] as const;
+
+    const poolHeaderHeight = 18;
+    let x = marginLeft;
+    doc.save().rect(marginLeft, y, contentWidth, poolHeaderHeight).fill(palette.header).restore();
+    doc.font("Helvetica-Bold").fontSize(8).fillColor(palette.ink);
+    for (const column of poolColumns) {
+      doc.rect(x, y, column.width, poolHeaderHeight).strokeColor(palette.border).lineWidth(0.8).stroke();
+      doc.text(column.label, x + 4, y + 5, {
+        width: column.width - 8,
+        align: column.align,
+      });
+      x += column.width;
+    }
+    y += poolHeaderHeight;
+
+    (view.poolSummaryRows ?? []).forEach((row, index) => {
+      const values = {
+        pool: row.pool,
+        meaning: row.meaning,
+        officers: row.officers,
+      };
+      doc.font(PST_PDF_FONT_PATH).fontSize(7.6).fillColor(palette.ink);
+      const rowHeight = Math.max(
+        24,
+        ...poolColumns.map((column) =>
+          Math.ceil(
+            doc.heightOfString(values[column.key], {
+              width: column.width - 8,
+              align: column.align,
+            }) + 10
+          )
+        )
+      );
+      doc
+        .save()
+        .rect(marginLeft, y, contentWidth, rowHeight)
+        .fill(index % 2 === 1 ? palette.panel : palette.white)
+        .restore();
+      let colX = marginLeft;
+      for (const column of poolColumns) {
+        doc.rect(colX, y, column.width, rowHeight).strokeColor(palette.border).lineWidth(0.7).stroke();
+        doc.text(values[column.key], colX + 4, y + 4, {
+          width: column.width - 8,
+          height: rowHeight - 8,
+          align: column.align,
+        });
+        colX += column.width;
+      }
+      y += rowHeight;
+    });
+    y += 8;
+  }
 
   const fairnessColumns = [
-    { key: "name", label: "Petugas", width: 180, align: "left" as const },
-    { key: "totalAssignments", label: "Total", width: 52, align: "center" as const },
-    { key: "pstAssignments", label: "PST", width: 48, align: "center" as const },
-    { key: "wfoAssignments", label: "WFO", width: 48, align: "center" as const },
-    { key: "fridayAssignments", label: "Jumat", width: 52, align: "center" as const },
-    { key: "lastAssignedLabel", label: "Terakhir Bertugas", width: contentWidth - (180 + 52 + 48 + 48 + 52), align: "center" as const },
+    { key: "name", label: "Petugas", width: 112, align: "left" as const },
+    { key: "poolPstLabel", label: "Pool PST", width: 54, align: "center" as const },
+    { key: "pstCurrentMonth", label: "PST Senin-Kamis", width: 40, align: "center" as const },
+    {
+      key: "randomWfoFridayCurrentMonth",
+      label: "WFO Jumat Random",
+      width: 46,
+      align: "center" as const,
+    },
+    {
+      key: "fridayRandomBurdenCurrentMonth",
+      label: "Beban Jumat Random",
+      width: 46,
+      align: "center" as const,
+    },
+    {
+      key: "totalCurrentMonthForRandomFairness",
+      label: "Total Random Bulan Ini",
+      width: 46,
+      align: "center" as const,
+    },
+    {
+      key: "fairnessStatus",
+      label: "Status Fairness",
+      width: 54,
+      align: "center" as const,
+    },
+    {
+      key: "nextPriorityRole",
+      label: "Prioritas Berikutnya",
+      width: contentWidth - (112 + 54 + 40 + 46 + 46 + 46 + 54),
+      align: "left" as const,
+    },
   ] as const;
-  const fairnessHeaderHeight = 20;
+  const fairnessAuditColumns = [
+    { key: "name", label: "Petugas", width: 110, align: "left" as const },
+    {
+      key: "previousMonthRandomTotal",
+      label: "Riwayat Bulan Lalu Total Random",
+      width: 60,
+      align: "center" as const,
+    },
+    {
+      key: "previousMonthFridayBurden",
+      label: "Riwayat Bulan Lalu Beban Jumat",
+      width: 60,
+      align: "center" as const,
+    },
+    {
+      key: "historyWindowTotalRandomAssignments",
+      label: "Histori Window Random (PST+WFO Random)",
+      width: 65,
+      align: "center" as const,
+    },
+    {
+      key: "historyWindowFridayBurden",
+      label: "Histori Window Beban Jumat",
+      width: 65,
+      align: "center" as const,
+    },
+    {
+      key: "cumulativeRandomFairnessTotal",
+      label: "Total Kumulatif Fairness Random",
+      width: 70,
+      align: "center" as const,
+    },
+    {
+      key: "lastRandomAssignedDate",
+      label: "Terakhir Bertugas Random",
+      width: contentWidth - (110 + 60 + 60 + 65 + 65 + 70),
+      align: "center" as const,
+    },
+  ] as const;
+  const fairnessHeaderHeight = 18;
+  const fairnessAuditHeaderHeight = 34;
 
   const drawFairnessHeader = () => {
     doc.save();
@@ -1399,41 +1911,71 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
     doc.restore();
 
     let x = marginLeft;
-    doc.font("Helvetica-Bold").fontSize(8.2).fillColor(palette.ink);
+    doc.font("Helvetica-Bold").fontSize(7.8).fillColor(palette.ink);
     for (const column of fairnessColumns) {
       doc.rect(x, y, column.width, fairnessHeaderHeight).strokeColor(palette.border).lineWidth(0.8).stroke();
-      doc.text(column.label, x + 4, y + 6, { width: column.width - 8, align: column.align, ellipsis: true });
+      doc.text(column.label, x + 4, y + 5, {
+        width: column.width - 8,
+        align: column.align,
+        ellipsis: true,
+        lineBreak: false,
+      });
       x += column.width;
     }
     y += fairnessHeaderHeight;
   };
 
-  ensureSpace(30, "Detail Fairness per Petugas (lanjutan)");
+  const drawFairnessAuditHeader = () => {
+    doc.save().rect(marginLeft, y, contentWidth, fairnessAuditHeaderHeight).fill(palette.header).restore();
+    let auditX = marginLeft;
+    doc.font("Helvetica-Bold").fontSize(6.9).fillColor(palette.ink);
+    for (const column of fairnessAuditColumns) {
+      doc
+        .rect(auditX, y, column.width, fairnessAuditHeaderHeight)
+        .strokeColor(palette.border)
+        .lineWidth(0.8)
+        .stroke();
+      doc.text(column.label, auditX + 4, y + 5, {
+        width: column.width - 8,
+        align: column.align,
+        lineBreak: true,
+      });
+      auditX += column.width;
+    }
+    y += fairnessAuditHeaderHeight;
+  };
+
+  const drawFairnessTableTitle = (title: string) => {
+    ensureSpace(22);
+    doc.font("Helvetica-Bold").fontSize(10.5).fillColor(palette.ink).text(title, marginLeft, y, {
+      width: contentWidth,
+    });
+    y = doc.y + 8;
+  };
+
+  // Dedicated page for "Detail Fairness per Petugas"
+  addPage();
+  y += 4;
+  drawFairnessTableTitle("Detail Fairness per Petugas");
+  ensureSpace(fairnessHeaderHeight + 2);
   drawFairnessHeader();
   view.fairnessOfficerRows.forEach((row, rowIndex) => {
     const rowValues: Record<(typeof fairnessColumns)[number]["key"], string> = {
       name: row.name,
-      totalAssignments: row.totalAssignments,
-      pstAssignments: row.pstAssignments,
-      wfoAssignments: row.wfoAssignments,
-      fridayAssignments: row.fridayAssignments,
-      lastAssignedLabel: row.lastAssignedLabel,
+      poolPstLabel: row.poolPstLabel,
+      pstCurrentMonth: row.pstCurrentMonth,
+      randomWfoFridayCurrentMonth: row.randomWfoFridayCurrentMonth,
+      fridayRandomBurdenCurrentMonth: row.fridayRandomBurdenCurrentMonth,
+      totalCurrentMonthForRandomFairness: row.totalCurrentMonthForRandomFairness,
+      fairnessStatus: row.fairnessStatus,
+      nextPriorityRole: row.nextPriorityRole,
     };
 
-    doc.font(PST_PDF_FONT_PATH).fontSize(8.5);
-    const rowHeight = Math.max(
-      18,
-        ...fairnessColumns.map((column) =>
-          Math.ceil(
-            doc.heightOfString(rowValues[column.key], {
-              width: column.width - 8,
-              align: column.align,
-            }) + 7
-          )
-        )
-      );
-
-    if (ensureSpace(rowHeight, "Detail Fairness per Petugas (lanjutan)")) {
+    const rowHeight = 16;
+    if (y + rowHeight > bodyBottomLimit) {
+      addPage();
+      y += 4;
+      drawFairnessTableTitle("Detail Fairness per Petugas");
       drawFairnessHeader();
     }
 
@@ -1444,36 +1986,204 @@ const buildPdfBufferFromViewModel = async (view: PstSchedulePdfViewModel) => {
       .restore();
 
     let x = marginLeft;
+    doc.font(PST_PDF_FONT_PATH).fontSize(6.1).fillColor(palette.ink);
     for (const column of fairnessColumns) {
       doc.rect(x, y, column.width, rowHeight).strokeColor(palette.border).lineWidth(0.7).stroke();
-      doc.text(rowValues[column.key], x + 4, y + 4, {
+      doc.text(rowValues[column.key], x + 4, y + 3, {
         width: column.width - 8,
-        height: rowHeight - 6,
+        height: rowHeight - 4,
         align: column.align,
+        ellipsis: true,
+        lineBreak: false,
       });
       x += column.width;
     }
     y += rowHeight;
   });
 
+  // Dedicated page for "Audit Histori Fairness"
+  addPage();
+  y += 4;
+  drawFairnessTableTitle("Audit Histori Fairness");
+  ensureSpace(fairnessHeaderHeight + 2);
+  drawFairnessAuditHeader();
+
+  view.fairnessOfficerRows.forEach((row, index) => {
+    const values: Record<(typeof fairnessAuditColumns)[number]["key"], string> = {
+      name: row.name,
+      previousMonthRandomTotal: row.previousMonthRandomTotal,
+      previousMonthFridayBurden: row.previousMonthFridayBurden,
+      historyWindowTotalRandomAssignments: row.historyWindowTotalRandomAssignments,
+      historyWindowFridayBurden: row.historyWindowFridayBurden,
+      cumulativeRandomFairnessTotal: row.cumulativeRandomFairnessTotal,
+      lastRandomAssignedDate: row.lastRandomAssignedDate,
+    };
+    const rowHeight = 16;
+    if (y + rowHeight > bodyBottomLimit) {
+      addPage();
+      y += 4;
+      drawFairnessTableTitle("Audit Histori Fairness");
+      drawFairnessAuditHeader();
+    }
+    doc
+      .save()
+      .rect(marginLeft, y, contentWidth, rowHeight)
+      .fill(index % 2 === 1 ? palette.panel : palette.white)
+      .restore();
+    let cellX = marginLeft;
+    doc.font(PST_PDF_FONT_PATH).fontSize(6.8).fillColor(palette.ink);
+    for (const column of fairnessAuditColumns) {
+      doc.rect(cellX, y, column.width, rowHeight).strokeColor(palette.border).lineWidth(0.7).stroke();
+      doc.text(values[column.key], cellX + 4, y + 3, {
+        width: column.width - 8,
+        height: rowHeight - 4,
+        align: column.align,
+        lineBreak: false,
+      });
+      cellX += column.width;
+    }
+    y += rowHeight;
+  });
+
+  // Dedicated guide page so long explanations and examples remain readable.
+  addPage();
+  y += 4;
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(12)
+    .fillColor(palette.ink)
+    .text("Panduan Membaca Fairness", marginLeft, y, {
+      width: contentWidth,
+      align: "center",
+    });
+  y = doc.y + 10;
+
+  const guideIntro =
+    "Halaman ini menjelaskan arti kolom fairness agar pembaca mudah memahami perhitungan beban random dan prioritas bulan berikutnya.";
+  doc.font("Helvetica").fontSize(9).fillColor(palette.muted).text(guideIntro, marginLeft, y, {
+    width: contentWidth,
+    lineGap: 2,
+  });
+  y = doc.y + 10;
+  const findRowByNames = (names: string[]) =>
+    view.fairnessOfficerRows.find((row) =>
+      names.some((name) => row.name.toLowerCase().includes(name.toLowerCase()))
+    );
+
+  const exampleMainOfficer =
+    findRowByNames(["Novanni Indi Pradana", "Novanni", "Anuar", "Jusman"]) ??
+    view.fairnessOfficerRows[0];
+  const exampleSecondaryOfficer =
+    view.fairnessOfficerRows.find((row) => row.name !== exampleMainOfficer?.name) ??
+    exampleMainOfficer;
+  const exampleDashOfficer =
+    view.fairnessOfficerRows.find((row) =>
+      [
+        row.pstCurrentMonth,
+        row.randomWfoFridayCurrentMonth,
+        row.fridayRandomBurdenCurrentMonth,
+        row.totalCurrentMonthForRandomFairness,
+      ].some((value) => value.includes("-"))
+    ) ??
+    findRowByNames(["Ari Susilowati", "Idhamsyah"]) ??
+    exampleSecondaryOfficer;
+
+  const detectDashColumns = (row: PstSchedulePdfFairnessOfficerRow | undefined) => {
+    if (!row) return "-";
+    const columns: string[] = [];
+    if (row.pstCurrentMonth.includes("-")) columns.push("PST Senin-Kamis");
+    if (row.randomWfoFridayCurrentMonth.includes("-")) columns.push("WFO Jumat Random");
+    if (row.fridayRandomBurdenCurrentMonth.includes("-")) columns.push("Beban Jumat Random");
+    if (row.totalCurrentMonthForRandomFairness.includes("-")) {
+      columns.push("Total Random Bulan Ini");
+    }
+    return columns.length > 0 ? columns.join(", ") : "-";
+  };
+
+  const drawGuideSection = (title: string, items: string[]) => {
+    const headingHeight = 22;
+    if (y + headingHeight > bodyBottomLimit) {
+      addPage();
+      y += 4;
+    }
+
+    doc.save().rect(marginLeft, y - 1, contentWidth, 18).fill(palette.panelStrong).restore();
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .fillColor(palette.ink)
+      .text(title, marginLeft + 8, y + 3, { width: contentWidth - 16 });
+    y += headingHeight;
+
+    doc.font("Helvetica").fontSize(8.8).fillColor(palette.muted);
+    for (const item of items) {
+      const estimated = doc.heightOfString(`• ${item}`, {
+        width: contentWidth - 12,
+        lineGap: 2,
+      });
+      if (y + estimated + 4 > bodyBottomLimit) {
+        addPage();
+        y += 4;
+        doc.save().rect(marginLeft, y - 1, contentWidth, 18).fill(palette.panelStrong).restore();
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(10)
+          .fillColor(palette.ink)
+          .text(title, marginLeft + 8, y + 3, { width: contentWidth - 16 });
+        y += headingHeight;
+        doc.font("Helvetica").fontSize(8.8).fillColor(palette.muted);
+      }
+      doc.text(`• ${item}`, marginLeft + 6, y, {
+        width: contentWidth - 12,
+        lineGap: 2,
+      });
+      y = doc.y + 3;
+    }
+    y += 6;
+  };
+
+  drawGuideSection("1) Arti Kolom Utama", [
+    "PST Senin-Kamis: jumlah tugas PST pada hari Senin sampai Kamis.",
+    "WFO Jumat Random: jumlah tugas WFO Jumat yang dipilih sistem (bukan WFO tetap).",
+    "Beban Jumat Random: total beban tugas Jumat random = PST Jumat + WFO Jumat Random.",
+    "Total Random Bulan Ini: total semua tugas random pada bulan aktif.",
+    "Status Fairness: ringkasan pemerataan beban saat ini (misalnya: Sesuai/Kurang).",
+    "Histori Window Random: total random pada window histori (PST Senin-Kamis + PST Jumat + WFO Jumat Random), bukan hanya PST.",
+    "Simbol '-': petugas tidak eligible pada role tersebut, sehingga bukan angka 0.",
+  ]);
+
+  drawGuideSection("2) Catatan Penting", [
+    "WFO Jumat Tetap bersifat operasional/non-random dan tidak menambah fairness random.",
+    "Riwayat fairness dihitung dari snapshot jadwal final, bukan log event mentah.",
+    "Prioritas bulan berikutnya dihitung setelah jadwal bulan aktif final terbentuk.",
+  ]);
+
+  drawGuideSection("3) Contoh Nyata (Berdasarkan Data Bulan Ini)", [
+    `Contoh A (${exampleMainOfficer?.name ?? "-"}): pada baris tabel tercatat PST Senin-Kamis = ${exampleMainOfficer?.pstCurrentMonth ?? "-"}, WFO Jumat Random = ${exampleMainOfficer?.randomWfoFridayCurrentMonth ?? "-"}, Beban Jumat Random = ${exampleMainOfficer?.fridayRandomBurdenCurrentMonth ?? "-"}, Total Random Bulan Ini = ${exampleMainOfficer?.totalCurrentMonthForRandomFairness ?? "-"}, Status Fairness = ${exampleMainOfficer?.fairnessStatus ?? "-"}.`,
+    `Contoh B (${exampleSecondaryOfficer?.name ?? "-"}): pada baris tabel tercatat PST Senin-Kamis = ${exampleSecondaryOfficer?.pstCurrentMonth ?? "-"}, WFO Jumat Random = ${exampleSecondaryOfficer?.randomWfoFridayCurrentMonth ?? "-"}, Beban Jumat Random = ${exampleSecondaryOfficer?.fridayRandomBurdenCurrentMonth ?? "-"}, Total Random Bulan Ini = ${exampleSecondaryOfficer?.totalCurrentMonthForRandomFairness ?? "-"}, Prioritas Berikutnya = ${exampleSecondaryOfficer?.nextPriorityRole ?? "-"}.`,
+    `Contoh C (${exampleDashOfficer?.name ?? "-"}): pada baris tabel kolom ${detectDashColumns(exampleDashOfficer)} dapat berisi '-' yang berarti petugas tidak eligible untuk role tersebut (bukan nilai 0).`,
+  ]);
+
   doc.end();
-  return done;
+  const body = await done;
+  await fileDone;
+  return body;
 };
 
 const writePdfArtifacts = async (
   schedule: MonthlyScheduleResponse,
   generatedById: string | null,
-  pdfBody: Buffer,
-  htmlBody: string
+  htmlBody: string,
+  filePaths?: PstSchedulePdfFilePaths
 ): Promise<PersistedPstSchedulePdfMeta> => {
-  const filePaths = toSchedulePdfFilePaths(schedule.id, schedule.month, schedule.year);
+  const resolvedPaths = filePaths ?? toSchedulePdfFilePaths(schedule.month, schedule.year);
   const generatedAtIso = new Date().toISOString();
   const metadata: PersistedPstSchedulePdfMeta = {
     scheduleId: schedule.id,
-    fileName: filePaths.fileName,
-    path: filePaths.relativePath,
-    htmlPath: filePaths.htmlRelativePath,
-    metadataPath: filePaths.metadataRelativePath,
+    fileName: resolvedPaths.fileName,
+    path: resolvedPaths.relativePath,
+    htmlPath: resolvedPaths.htmlRelativePath,
+    metadataPath: resolvedPaths.metadataRelativePath,
     month: schedule.month,
     year: schedule.year,
     generatedAt: generatedAtIso,
@@ -1481,11 +2191,10 @@ const writePdfArtifacts = async (
     downloadUrl: toDownloadUrl(schedule.id),
   };
 
-  await fs.mkdir(path.dirname(filePaths.absolutePath), { recursive: true });
+  await fs.mkdir(path.dirname(resolvedPaths.absolutePath), { recursive: true });
   await Promise.all([
-    fs.writeFile(filePaths.absolutePath, pdfBody),
-    fs.writeFile(filePaths.htmlAbsolutePath, htmlBody, "utf-8"),
-    fs.writeFile(filePaths.metadataAbsolutePath, JSON.stringify(metadata, null, 2), "utf-8"),
+    fs.writeFile(resolvedPaths.htmlAbsolutePath, htmlBody, "utf-8"),
+    fs.writeFile(resolvedPaths.metadataAbsolutePath, JSON.stringify(metadata, null, 2), "utf-8"),
   ]);
 
   return metadata;
@@ -1498,11 +2207,21 @@ const generatePdfArtifacts = async (params: BuildAndStoreParams) => {
     params.generatedByName ?? null
   );
   const html = buildPstSchedulePdfHtmlTemplate(view);
-  const pdf = await buildPdfBufferFromViewModel(view);
-  const metadata = await writePdfArtifacts(params.schedule, params.generatedById ?? null, pdf, html);
+  const filePaths = toSchedulePdfFilePaths(params.schedule.month, params.schedule.year);
+  await fs.mkdir(path.dirname(filePaths.absolutePath), { recursive: true });
+  const pdf = await buildPdfBufferFromViewModel(view, {
+    outputPath: filePaths.absolutePath,
+    collectBuffer: params.includeBody === true,
+  });
+  const metadata = await writePdfArtifacts(
+    params.schedule,
+    params.generatedById ?? null,
+    html,
+    filePaths
+  );
 
   return {
-    body: pdf,
+    body: params.includeBody === true ? pdf : null,
     html,
     metadata,
   };
@@ -1555,7 +2274,7 @@ export async function getStoredOrCreatePstSchedulePdf(scheduleId: string) {
   }
 
   try {
-    const filePaths = toSchedulePdfFilePaths(schedule.id, schedule.month, schedule.year);
+    const filePaths = toSchedulePdfFilePaths(schedule.month, schedule.year);
     const existingPdf = await readFileOrNull(filePaths.absolutePath);
 
     if (existingPdf) {
@@ -1573,9 +2292,28 @@ export async function getStoredOrCreatePstSchedulePdf(scheduleId: string) {
       schedule,
       generatedById: null,
       generatedByName: null,
+      includeBody: true,
     });
     if (!generated.ok) {
       return generated;
+    }
+
+    if (!generated.body) {
+      const storedPdf = await readFileOrNull(filePaths.absolutePath);
+      if (!storedPdf) {
+        return {
+          ok: false as const,
+          status: 500,
+          error: "PDF berhasil dibuat tetapi tidak dapat dibaca ulang",
+        };
+      }
+      return {
+        ok: true as const,
+        body: storedPdf,
+        contentType: generated.contentType,
+        fileName: generated.fileName,
+        metadata: generated.metadata,
+      };
     }
 
     return generated;
@@ -1587,4 +2325,3 @@ export async function getStoredOrCreatePstSchedulePdf(scheduleId: string) {
     };
   }
 }
-

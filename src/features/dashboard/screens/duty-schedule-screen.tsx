@@ -108,6 +108,13 @@ const getErrorStatus = (error: unknown) => {
   return null;
 };
 
+const getErrorDetails = (error: unknown) => {
+  if (typeof error === "object" && error !== null && "details" in error) {
+    return (error as { details?: unknown }).details;
+  }
+  return undefined;
+};
+
 const triggerFileDownload = (blob: Blob, fileName: string) => {
   const objectUrl = window.URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -117,6 +124,16 @@ const triggerFileDownload = (blob: Blob, fileName: string) => {
   anchor.click();
   document.body.removeChild(anchor);
   window.URL.revokeObjectURL(objectUrl);
+};
+
+const triggerUrlDownload = (url: string) => {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
 };
 
 type PstGenerateMode = "MONTHLY" | "WEEKLY";
@@ -188,7 +205,7 @@ const toFallbackPstMonthlyPdfMeta = (
   schedule: MonthlyScheduleResponse
 ): MonthlySchedulePdfMeta => ({
   scheduleId: schedule.id,
-  fileName: `jadwal-petugas-pst-${schedule.year}-${String(schedule.month).padStart(2, "0")}-${schedule.id}.pdf`,
+  fileName: `Jadwal_PST_WFO_${String(schedule.month).padStart(2, "0")}_${schedule.year}.pdf`,
   path: "",
   htmlPath: "",
   metadataPath: "",
@@ -765,13 +782,36 @@ export default function DutySchedulePage() {
     }
   };
 
-  const handleDownloadLastPstPdf = () => {
-    if (!pstMonthlyPdfMeta?.downloadUrl) {
+  const handleDownloadLastPstPdf = async () => {
+    if (!pstMonthlyPdfMeta?.scheduleId) {
       toast.error("PDF belum tersedia. Silakan generate jadwal bulanan dulu.");
       return;
     }
+    if (process.env.NODE_ENV === "development") {
+      triggerUrlDownload(pstScheduleApi.getMonthlyPdfDownloadUrl(pstMonthlyPdfMeta.scheduleId));
+      toast.info("Mode development: download langsung lewat endpoint PDF.");
+      return;
+    }
 
-    window.open(pstMonthlyPdfMeta.downloadUrl, "_blank", "noopener,noreferrer");
+    try {
+      const result = await pstScheduleApi.downloadMonthlyPdf(pstMonthlyPdfMeta.scheduleId);
+      triggerFileDownload(result.blob, result.fileName);
+      toast.success("Download PDF jadwal bulanan berhasil.");
+    } catch (error) {
+      const serialized = serializeErrorForLog(error);
+      console.error("Error downloading latest PST monthly PDF:", {
+        raw: error,
+        serialized,
+        status: getErrorStatus(error),
+        details: getErrorDetails(error),
+      });
+      if (getErrorStatus(error) === 408) {
+        triggerUrlDownload(pstScheduleApi.getMonthlyPdfDownloadUrl(pstMonthlyPdfMeta.scheduleId));
+        toast.info("Timeout di client. Download dialihkan langsung ke endpoint PDF.");
+        return;
+      }
+      toast.error(getErrorMessage(error, "Gagal mengunduh PDF jadwal bulanan"));
+    }
   };
 
   const handleOpenPstGeneratedHistory = (schedule: MonthlyScheduleResponse) => {
@@ -781,12 +821,37 @@ export default function DutySchedulePage() {
     setPstMonthlyPdfMeta(toFallbackPstMonthlyPdfMeta(schedule));
   };
 
-  const handleDownloadPstHistoryPdf = (scheduleId: string) => {
-    window.open(
-      pstScheduleApi.getMonthlyPdfDownloadUrl(scheduleId),
-      "_blank",
-      "noopener,noreferrer"
-    );
+  const handleDownloadPstHistoryPdf = async (scheduleId: string) => {
+    if (process.env.NODE_ENV === "development") {
+      triggerUrlDownload(pstScheduleApi.getMonthlyPdfDownloadUrl(scheduleId));
+      toast.info("Mode development: download langsung lewat endpoint PDF.");
+      return;
+    }
+
+    try {
+      const result = await pstScheduleApi.downloadMonthlyPdf(scheduleId);
+      triggerFileDownload(result.blob, result.fileName);
+      toast.success("Download PDF jadwal bulanan berhasil.");
+    } catch (error) {
+      const serialized = serializeErrorForLog(error);
+      console.error("Error downloading PST monthly history PDF:", {
+        raw: error,
+        serialized,
+        status: getErrorStatus(error),
+        details: getErrorDetails(error),
+      });
+      const status = getErrorStatus(error);
+      if (status === 401 || status === 403) {
+        toast.error("Akses download ditolak. Silakan login ulang sebagai admin.");
+        return;
+      }
+      if (status === 408) {
+        triggerUrlDownload(pstScheduleApi.getMonthlyPdfDownloadUrl(scheduleId));
+        toast.info("Timeout di client. Download dialihkan langsung ke endpoint PDF.");
+        return;
+      }
+      toast.error(getErrorMessage(error, "Gagal mengunduh PDF jadwal bulanan"));
+    }
   };
 
   const handleRunReminder = async (force = false) => {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
+import { getServerSession } from "next-auth";
 import "./globals.css";
 import "@/styles/theme-tokens.css";
 import AuthProvider from "@/components/auth/auth-provider";
@@ -10,6 +11,7 @@ import { Suspense } from "react";
 import SiteFooter from "@/components/shared/site-footer";
 import AppLoadingScreen from "@/components/shared/app-loading-screen";
 import { APP_NAME, APP_TAGLINE } from "@/constants/app";
+import { authOptions } from "@/lib/auth";
 
 const poppins = Poppins({
   weight: ["100", "300", "400", "700", "900"],
@@ -36,11 +38,13 @@ export const metadata: Metadata = {
   description: `${APP_NAME} - ${APP_TAGLINE}`,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getServerSession(authOptions);
+
   return (
     <html lang="id" suppressHydrationWarning>
       <head>
@@ -51,7 +55,7 @@ export default function RootLayout({
       </head>
       <body className={`${poppins.variable} font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <AuthProvider>
+          <AuthProvider session={session}>
             <Suspense fallback={<AppLoadingScreen />}>
               <LoadingTransition>
                 <div className="flex min-h-screen flex-col">
