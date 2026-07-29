@@ -42,6 +42,7 @@ import {
 } from "@/features/guest/utils/last-queue";
 import { markNavigationPending } from "@/lib/navigation-pending";
 import { serializeErrorForLog } from "@/lib/error-log";
+import { getErrorMessage } from "@/lib/error-message";
 import type { ErrorResponse } from "@shared/types/api";
 
 type GuestFormValues = z.output<typeof guestSchema>;
@@ -83,19 +84,7 @@ const queueStatusText: Record<QueueStatusType, string> = {
   CANCELED: "Dibatalkan",
 };
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 export default function GuestForm() {
   const router = useRouter();

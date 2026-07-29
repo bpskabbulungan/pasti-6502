@@ -8,6 +8,7 @@ import { NextQueuePanel } from "@/features/queue-display/components/next-queue-p
 import { QueueDisplayControls } from "@/features/queue-display/components/queue-display-controls";
 import { ServingQueuesPanel } from "@/features/queue-display/components/serving-queues-panel";
 import { useQueueDisplay } from "@/features/queue-display/hooks/use-queue-display";
+import { useQueueVoice } from "@/features/queue-display/hooks/use-queue-voice";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import { serializeErrorForLog } from "@/lib/error-log";
 import { cn } from "@/lib/utils";
@@ -22,10 +23,11 @@ const dummyNextQueue: NonNullable<QueueDisplayResponse["nextQueue"]> = {
   status: "WAITING",
   queueType: "OFFLINE",
   service: { name: "Konsultasi Statistik" },
-  visitor: { name: "Andi Saputra" },
-  admin: { name: "Sinta" },
+  visitor: { name: "Budi Santoso" },
+  admin: { name: "Admin" },
   dutyStaff: null,
   createdAt: new Date(),
+  updatedAt: new Date(),
   startTime: null,
   endTime: null,
 };
@@ -33,27 +35,29 @@ const dummyNextQueue: NonNullable<QueueDisplayResponse["nextQueue"]> = {
 const dummyServingQueues: QueueDisplayResponse["servingQueues"] = [
   {
     id: "dummy-serving-1",
-    queueNumber: 11,
+    queueNumber: 10,
     status: "SERVING",
     queueType: "OFFLINE",
-    service: { name: "Perpustakaan" },
-    visitor: { name: "Budi Santoso" },
-    admin: { name: "Budi" },
-    dutyStaff: null,
+    service: { name: "Pengaduan" },
+    visitor: { name: "Siti Aminah" },
+    admin: { name: "Admin" },
+    dutyStaff: { name: "Petugas 1" },
     createdAt: new Date(),
+    updatedAt: new Date(),
     startTime: new Date(),
     endTime: null,
   },
   {
     id: "dummy-serving-2",
-    queueNumber: 10,
+    queueNumber: 11,
     status: "SERVING",
-    queueType: "OFFLINE",
-    service: { name: "Rekomendasi Statistik" },
-    visitor: { name: "Nadia Putri" },
-    admin: { name: "Nadia" },
-    dutyStaff: null,
+    queueType: "ONLINE",
+    service: { name: "Konsultasi Statistik" },
+    visitor: { name: "Andi Darmawan" },
+    admin: { name: "Admin" },
+    dutyStaff: { name: "Petugas 2" },
     createdAt: new Date(),
+    updatedAt: new Date(),
     startTime: new Date(),
     endTime: null,
   },
@@ -64,7 +68,13 @@ export default function QueueDisplayPage() {
     useQueueDisplay({ adminId: "all", dateFilter: "today" });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const hideTimerRef = useRef<number | null>(null);
+
+  useQueueVoice({
+    servingQueues,
+    enabled: isAudioEnabled,
+  });
 
   const enableDummy =
     process.env.NEXT_PUBLIC_QUEUE_DISPLAY_DUMMY === "true" ||
@@ -161,7 +171,7 @@ export default function QueueDisplayPage() {
   return (
     <div
       className={cn(
-        "relative isolate overflow-hidden px-4 pb-3 pt-4 md:px-8 md:pb-4 md:pt-5",
+        "relative isolate flex min-h-dvh flex-col overflow-hidden px-4 pb-3 pt-4 md:px-8 md:pb-4 md:pt-5",
         isFullscreen && "px-4 py-4 md:px-6 md:py-5"
       )}
       aria-busy={isValidating}
@@ -173,7 +183,7 @@ export default function QueueDisplayPage() {
         <div className="absolute -right-16 bottom-24 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-[1700px] flex-col gap-4 md:gap-5">
+      <div className="relative z-10 mx-auto flex w-full max-w-[1700px] flex-1 flex-col gap-4 md:gap-5">
         {isFullscreen ? (
           <div
             className={cn(
@@ -188,6 +198,8 @@ export default function QueueDisplayPage() {
               isLoading={isLoading}
               isValidating={isValidating}
               lastUpdatedText={lastUpdatedText}
+              isAudioEnabled={isAudioEnabled}
+              onToggleAudio={() => setIsAudioEnabled((prev) => !prev)}
               onRefresh={handleRefresh}
               onToggleFullscreen={() => {
                 void handleFullscreenToggle();
@@ -214,6 +226,8 @@ export default function QueueDisplayPage() {
                 isLoading={isLoading}
                 isValidating={isValidating}
                 lastUpdatedText={lastUpdatedText}
+                isAudioEnabled={isAudioEnabled}
+                onToggleAudio={() => setIsAudioEnabled((prev) => !prev)}
                 onRefresh={handleRefresh}
                 onToggleFullscreen={() => {
                   void handleFullscreenToggle();
@@ -225,7 +239,7 @@ export default function QueueDisplayPage() {
 
         <section
           className={cn(
-            "grid items-stretch gap-4 lg:gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]",
+            "grid flex-1 items-stretch gap-4 lg:gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]",
             isFullscreen && "pt-14 md:pt-16"
           )}
         >

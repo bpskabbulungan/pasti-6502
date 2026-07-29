@@ -19,8 +19,11 @@ export function EmptyState({ title, description, icon: Icon, action, className }
       )}
     >
       {Icon ? (
-        <div className="rounded-full border border-border/80 bg-background/80 p-2.5">
-          <Icon className="h-5 w-5 text-primary" />
+        <div className="relative mb-2 mt-1">
+          <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10" />
+          <div className="relative rounded-full border border-border/80 bg-background/80 p-3 shadow-sm transition-transform hover:scale-110">
+            <Icon className="h-6 w-6 text-primary" />
+          </div>
         </div>
       ) : null}
       <div className="space-y-1.5">

@@ -15,8 +15,8 @@ import { useLiveQuery } from "@/hooks/use-live-query";
 import { dashboardApi } from "@/services/api/dashboard";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import { serializeErrorForLog } from "@/lib/error-log";
+import { getErrorMessage } from "@/lib/error-message";
 import type { DashboardStatsResponse } from "@shared/types/dashboard";
-import type { ErrorResponse } from "@shared/types/api";
 
 type DashboardStats = DashboardStatsResponse;
 type DashboardPageProps = {
@@ -25,19 +25,7 @@ type DashboardPageProps = {
   initialFetchedAt: string;
 };
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 export default function DashboardPage({
   currentUser,
@@ -204,6 +192,7 @@ export default function DashboardPage({
               icon={card.icon}
               iconClassName={card.iconClassName}
               iconBadgeClassName={card.iconBadgeClassName}
+              valueClassName="md:text-4xl"
               footer={
                 <Button
                   asChild
@@ -235,6 +224,7 @@ export default function DashboardPage({
               icon={card.icon}
               iconClassName={card.iconClassName}
               iconBadgeClassName={card.iconBadgeClassName}
+              cardClassName="bg-muted/20"
               titleClassName="text-sm normal-case tracking-normal text-primary-color"
               badgeClassName="h-9 w-9"
               iconSizeClassName="h-4 w-4"

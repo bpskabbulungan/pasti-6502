@@ -1,3 +1,4 @@
+name: pasti
 services:
   # Next.js Application
   pasti_app:
@@ -38,6 +39,15 @@ services:
       pasti_redis:
         condition: service_started
     restart: unless-stopped
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pasti_app.rule=Host(`${TRAEFIK_HOST:-pasti.databenuanta.id}`)"
+      - "traefik.http.routers.pasti_app.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.services.pasti_app.loadbalancer.server.port=3000"
+      - "traefik.http.routers.pasti_app.tls=${TRAEFIK_TLS:-true}"
 
   # MySQL Database
   pasti_db:
@@ -92,6 +102,11 @@ services:
     depends_on:
       pasti_app:
         condition: service_started
+
+networks:
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-proxy}
 
 volumes:
   pasti_mysql_data:

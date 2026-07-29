@@ -49,8 +49,8 @@ import { getOfficerPerformanceStatus } from "@/features/dashboard/components/ana
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { formatDisplayDateTimeWithSeconds } from "@/lib/date-format";
 import { serializeErrorForLog } from "@/lib/error-log";
+import { getErrorMessage } from "@/lib/error-message";
 import { analyticsApi } from "@/services/api/analytics";
-import type { ErrorResponse } from "@shared/types/api";
 import type {
   AnalyticsDistributionItem,
   AnalyticsOfficerDetail,
@@ -177,19 +177,7 @@ const SERVICE_CARD_ACCENTS = [
 ] as const;
 const FEEDBACK_API_ENABLED = process.env.NEXT_PUBLIC_ENABLE_ANALYTICS_FEEDBACK_API === "true";
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 const formatNumber = (value: number) => numberFormatter.format(value);
 const formatPercentage = (value: number) => `${percentFormatter.format(value)}%`;
@@ -984,7 +972,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
   if (!analyticsData) {
     return (
       <PageContainer maxWidth="6xl">
-        <Card className="border-border/80 bg-card/95 p-6 text-center shadow-none">
+        <Card className="border-border/80 bg-card/95 p-6 text-center shadow-sm">
           <CardTitle className="text-base text-primary-color">Data analitik tidak tersedia</CardTitle>
           <CardDescription className="mt-2">
             Coba muat ulang atau periksa koneksi Anda.
@@ -1458,10 +1446,10 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
       {/* Filter panel */}
       <div className="dashboard-filter-panel">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="grid grid-cols-2 md:flex md:flex-wrap items-end gap-3">
             <FilterField label="Periode">
               <Select value={periodType} onValueChange={(value) => setPeriodType(value as PeriodType)}>
-                <SelectTrigger className="w-36 bg-background/80">
+                <SelectTrigger className="w-full md:w-36 bg-background/80">
                   <SelectValue placeholder="Pilih periode" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1479,7 +1467,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                   value={toSelectValue(selectedMonth)}
                   onValueChange={(value) => setSelectedMonth(Number(value))}
                 >
-                  <SelectTrigger className="w-36 bg-background/80">
+                  <SelectTrigger className="w-full md:w-36 bg-background/80">
                     <SelectValue placeholder="Pilih bulan" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1499,7 +1487,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                   value={toSelectValue(selectedQuarter)}
                   onValueChange={(value) => setSelectedQuarter(Number(value))}
                 >
-                  <SelectTrigger className="w-40 bg-background/80">
+                  <SelectTrigger className="w-full md:w-40 bg-background/80">
                     <SelectValue placeholder="Pilih triwulan" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1519,7 +1507,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                   value={toSelectValue(selectedSemester)}
                   onValueChange={(value) => setSelectedSemester(Number(value))}
                 >
-                  <SelectTrigger className="w-40 bg-background/80">
+                  <SelectTrigger className="w-full md:w-40 bg-background/80">
                     <SelectValue placeholder="Pilih semester" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1538,7 +1526,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                 value={toSelectValue(selectedYear)}
                 onValueChange={(value) => setSelectedYear(Number(value))}
               >
-                <SelectTrigger className="w-28 bg-background/80">
+                <SelectTrigger className="w-full md:w-28 bg-background/80">
                   <SelectValue placeholder="Pilih tahun" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1607,7 +1595,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
             </section>
 
             <section className="grid gap-4 xl:grid-cols-2">
-              <Card ref={serviceChartCardRef} className="border-border/80 bg-card shadow-none">
+              <Card ref={serviceChartCardRef} className="border-border/80 bg-card shadow-sm">
                 <CardHeader className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <CardTitle className="text-base text-primary-color">Distribusi Layanan</CardTitle>
@@ -1629,7 +1617,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                 </CardContent>
               </Card>
 
-              <Card ref={genderChartCardRef} className="border-border/80 bg-card shadow-none">
+              <Card ref={genderChartCardRef} className="border-border/80 bg-card shadow-sm">
                 <CardHeader className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <CardTitle className="text-base text-primary-color">Jenis Kelamin Pengunjung</CardTitle>
@@ -1651,7 +1639,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                 </CardContent>
               </Card>
 
-              <Card ref={educationChartCardRef} className="border-border/80 bg-card shadow-none">
+              <Card ref={educationChartCardRef} className="border-border/80 bg-card shadow-sm">
                 <CardHeader className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <CardTitle className="text-base text-primary-color">Pendidikan Pengunjung</CardTitle>
@@ -1673,7 +1661,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                 </CardContent>
               </Card>
 
-              <Card ref={occupationChartCardRef} className="border-border/80 bg-card shadow-none">
+              <Card ref={occupationChartCardRef} className="border-border/80 bg-card shadow-sm">
                 <CardHeader className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <CardTitle className="text-base text-primary-color">Pekerjaan Pengunjung</CardTitle>
@@ -1710,7 +1698,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
             </section>
 
             <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-              <Card className="border-border/80 bg-card shadow-none">
+              <Card className="border-border/80 bg-card shadow-sm">
                 <CardHeader className="space-y-2">
                   <CardTitle className="text-base text-primary-color">Ringkasan Performa Petugas</CardTitle>
                   <CardDescription>
@@ -1805,7 +1793,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
                 </CardContent>
               </Card>
 
-              <Card className="border-border/80 bg-card shadow-none">
+              <Card className="border-border/80 bg-card shadow-sm">
                 <CardHeader className="space-y-2">
                   <CardTitle className="text-base text-primary-color">Ringkasan Petugas Terpilih</CardTitle>
                   <CardDescription>
@@ -1909,7 +1897,7 @@ export default function AnalyticsPageV2({ initialAnalytics, initialFetchedAt }: 
             </section>
 
             <section>
-              <Card className="border-border/80 bg-card shadow-none">
+              <Card className="border-border/80 bg-card shadow-sm">
                 <CardHeader className="space-y-2">
                   <CardTitle className="text-base text-primary-color">Detail Ulasan & Komentar</CardTitle>
                   <CardDescription>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, Maximize2, Minimize2, RefreshCw } from "lucide-react";
+import { Clock3, Maximize2, Minimize2, RefreshCw, Volume2, VolumeX } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,9 +11,11 @@ type QueueDisplayControlsProps = {
   isFullscreen: boolean;
   isLoading: boolean;
   isValidating: boolean;
+  isAudioEnabled?: boolean;
   lastUpdatedText: string;
   onRefresh: () => void;
   onToggleFullscreen: () => void;
+  onToggleAudio?: () => void;
 };
 
 export function QueueDisplayControls({
@@ -22,9 +24,11 @@ export function QueueDisplayControls({
   isFullscreen,
   isLoading,
   isValidating,
+  isAudioEnabled = false,
   lastUpdatedText,
   onRefresh,
   onToggleFullscreen,
+  onToggleAudio,
 }: QueueDisplayControlsProps) {
   const buttonSizeClass = compact ? "h-8 px-2.5 text-xs" : "h-9 px-3.5";
 
@@ -64,6 +68,20 @@ export function QueueDisplayControls({
         <span className="hidden text-secondary-color sm:inline">Pembaruan:</span>
         <span className="font-semibold text-primary-color">{lastUpdatedText}</span>
       </div>
+
+      {onToggleAudio && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn("gap-2", buttonSizeClass, isAudioEnabled && "text-emerald-600 border-emerald-500/50 bg-emerald-500/10")}
+          onClick={onToggleAudio}
+          title={isAudioEnabled ? "Matikan Suara" : "Nyalakan Suara"}
+        >
+          {isAudioEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+          <span className={cn(compact && "sr-only")}>{isAudioEnabled ? "Suara Nyala" : "Suara Mati"}</span>
+        </Button>
+      )}
 
       <Button
         type="button"

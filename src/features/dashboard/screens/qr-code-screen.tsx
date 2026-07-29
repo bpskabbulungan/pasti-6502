@@ -11,21 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import QRCodeSkeleton from "@/features/dashboard/components/skeletons/qr-code-skeleton";
 import { qrApi } from "@/services/api/qrcode";
-import type { ErrorResponse } from "@shared/types/api";
+import { getErrorMessage } from "@/lib/error-message";
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 export default function QRCodePage() {
   const [isLoading, setIsLoading] = useState(true);

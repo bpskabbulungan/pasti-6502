@@ -38,24 +38,13 @@ import { DEFAULT_SERVICE_CATALOG, normalizeServiceCode } from "@/shared/constant
 import { ServiceStatus } from "@/shared/constants/enums";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { serializeErrorForLog } from "@/lib/error-log";
+import { getErrorMessage } from "@/lib/error-message";
 import type { ErrorResponse } from "@shared/types/api";
 import type { ServiceSummary } from "@shared/types/service";
 
 type StatusFilter = "ALL" | ServiceStatus;
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 const isServiceCodeConflictError = (error: unknown) => {
   if (typeof error !== "object" || !error) {

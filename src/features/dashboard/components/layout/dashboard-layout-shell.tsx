@@ -203,28 +203,32 @@ export default function DashboardLayoutShell({ children, user }: DashboardLayout
           </div>
 
           <div className="border-t border-sidebar-border/80 p-4">
-            <div className="rounded-lg border border-sidebar-border/80 bg-background p-3">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{user.name}</p>
-                  <p className="text-[11px] text-sidebar-foreground/70">
-                    {user.role === Role.ADMIN ? "Admin" : "Petugas"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <NotificationsDropdown userId={user.id} />
-                  <ThemeToggle />
-                </div>
+            <div className="flex items-center justify-between mb-4 px-1">
+              <div className="flex items-center gap-2">
+                <NotificationsDropdown userId={user.id} />
+                <ThemeToggle />
               </div>
               <Button
-                variant="outline"
-                className="w-full justify-start gap-2 border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-sidebar-accent/55"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent/55 hover:text-destructive transition-colors"
                 onClick={() => setShowLogoutDialog(true)}
                 disabled={isSigningOut}
+                title="Logout"
               >
-                <LogOut size={16} className="text-destructive" />
-                <span>Logout</span>
+                <LogOut size={16} />
               </Button>
+            </div>
+            <div className="flex items-center gap-3 rounded-xl border border-sidebar-border/60 bg-sidebar-accent/20 p-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary shadow-sm">
+                {user.name ? user.name.substring(0, 2).toUpperCase() : "U"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-sidebar-foreground">{user.name}</p>
+                <p className="truncate text-[11px] text-sidebar-foreground/70">
+                  {user.role === Role.ADMIN ? "Administrator" : "Petugas Layanan"}
+                </p>
+              </div>
             </div>
           </div>
         </div>

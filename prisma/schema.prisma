@@ -225,6 +225,8 @@ model Queue {
   @@index([dutyStaffId])
   @@index([createdAt])
   @@index([status, createdAt])
+  @@index([queueDate])
+  @@index([startTime])
 }
 
 model QueueCounter {

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import { getServerSession } from "next-auth";
 import "./globals.css";
-import "@/styles/theme-tokens.css";
 import AuthProvider from "@/components/auth/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme/theme-provider";

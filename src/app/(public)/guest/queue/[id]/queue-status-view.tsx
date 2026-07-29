@@ -11,6 +11,7 @@ import { RefreshCcw, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { markNavigationPending } from "@/lib/navigation-pending";
 import { queuesApi } from "@/services/api/queues";
 import { serializeErrorForLog } from "@/lib/error-log";
+import { getErrorMessage } from "@/lib/error-message";
 import type { ErrorResponse } from "@shared/types/api";
 import type { QueueDetail } from "@shared/types/queue";
 
@@ -32,19 +33,7 @@ type QueueData = {
   filledSKD: boolean;
 };
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 const mapQueueDetail = (detail: QueueDetail): QueueData => ({
   queueId: detail.id,

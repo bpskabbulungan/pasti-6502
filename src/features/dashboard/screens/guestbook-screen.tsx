@@ -18,6 +18,7 @@ import {
   Pencil,
   MessageCircle,
   AlertCircle,
+  Filter,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
   const [templateEditOpen, setTemplateEditOpen] = useState(false);
   const [editableTemplate, setEditableTemplate] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const previewRequestSeqRef = useRef(0);
 
   const {
@@ -448,7 +450,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {summaryCards.map((card) => {
           return (
-            <Card key={card.title} className="border-border/80 bg-card shadow-none">
+            <Card key={card.title} className="border-border/80 bg-card shadow-sm transition-shadow hover:shadow-md">
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wide text-secondary-color">
                   {card.title}
@@ -463,7 +465,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
         })}
       </section>
 
-      <Card className="border-border/80 bg-card shadow-none">
+      <Card className="border-border/80 bg-card shadow-sm">
         <CardHeader className="gap-2">
           <CardTitle className="text-xl font-semibold text-primary-color">
             Daftar Buku Tamu PST
@@ -472,10 +474,10 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
             Daftar catatan akhir layanan beserta detail pengunjung dan layanan.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="dashboard-filter-panel space-y-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="relative w-full lg:w-96">
+        <CardContent className="space-y-3">
+          <div className="dashboard-filter-panel space-y-2">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative w-full lg:w-80">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary-color" />
                 <Input
                   value={searchTerm}
@@ -496,12 +498,12 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                   </Button>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
                 <Select
                   value={dateFilter}
                   onValueChange={(value) => setDateFilter(value as DateFilter)}
                 >
-                  <SelectTrigger className="w-full sm:w-[190px]">
+                  <SelectTrigger className="w-[180px] lg:w-[160px]">
                     <SelectValue placeholder="Filter tanggal" />
                   </SelectTrigger>
                   <SelectContent>
@@ -512,90 +514,17 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                     ))}
                   </SelectContent>
                 </Select>
-                {dateFilter === "year" ||
-                dateFilter === "month" ||
-                dateFilter === "quarter" ||
-                dateFilter === "semester" ? (
-                  <Select
-                    value={filterYear.toString()}
-                    onValueChange={(value) => setFilterYear(Number(value))}
-                  >
-                    <SelectTrigger className="w-full sm:w-[145px]">
-                      <SelectValue placeholder="Tahun" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {yearOptions.map((year) => (
-                        <SelectItem key={year} value={year.toString()}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-                {dateFilter === "month" ? (
-                  <Select
-                    value={filterMonth.toString()}
-                    onValueChange={(value) => setFilterMonth(Number(value))}
-                  >
-                    <SelectTrigger className="w-full sm:w-[185px]">
-                      <SelectValue placeholder="Bulan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {monthOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value.toString()}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-                {dateFilter === "quarter" ? (
-                  <Select
-                    value={filterQuarter.toString()}
-                    onValueChange={(value) => setFilterQuarter(Number(value))}
-                  >
-                    <SelectTrigger className="w-full sm:w-[185px]">
-                      <SelectValue placeholder="Triwulan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {quarterOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value.toString()}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-                {dateFilter === "semester" ? (
-                  <Select
-                    value={filterSemester.toString()}
-                    onValueChange={(value) => setFilterSemester(Number(value))}
-                  >
-                    <SelectTrigger className="w-full sm:w-[185px]">
-                      <SelectValue placeholder="Semester" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {semesterOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value.toString()}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-                <Select
-                  value={pageSize.toString()}
-                  onValueChange={(value) => setPageSize(Number(value))}
+
+                <Button
+                  variant={showAdvancedFilters ? "secondary" : "outline"}
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className="gap-2 border-border"
                 >
-                  <SelectTrigger className="w-full sm:w-[160px]">
-                    <SelectValue placeholder="Tampil per halaman" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 / Halaman</SelectItem>
-                    <SelectItem value="25">25 / Halaman</SelectItem>
-                    <SelectItem value="50">50 / Halaman</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <Filter className="h-4 w-4" />
+                  <span className="hidden sm:inline">Filter Lanjutan</span>
+                  <span className="sm:hidden">Filter</span>
+                </Button>
+
                 <Button
                   variant="outline"
                   size="icon"
@@ -624,6 +553,97 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
                 </Button>
               </div>
             </div>
+
+            {showAdvancedFilters && (
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-3 mt-2 animate-in fade-in slide-in-from-top-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {dateFilter === "year" ||
+                  dateFilter === "month" ||
+                  dateFilter === "quarter" ||
+                  dateFilter === "semester" ? (
+                    <Select
+                      value={filterYear.toString()}
+                      onValueChange={(value) => setFilterYear(Number(value))}
+                    >
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue placeholder="Tahun" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {yearOptions.map((year) => (
+                          <SelectItem key={year} value={year.toString()}>
+                            {year}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  {dateFilter === "month" ? (
+                    <Select
+                      value={filterMonth.toString()}
+                      onValueChange={(value) => setFilterMonth(Number(value))}
+                    >
+                      <SelectTrigger className="w-[160px]">
+                        <SelectValue placeholder="Bulan" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {monthOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value.toString()}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  {dateFilter === "quarter" ? (
+                    <Select
+                      value={filterQuarter.toString()}
+                      onValueChange={(value) => setFilterQuarter(Number(value))}
+                    >
+                      <SelectTrigger className="w-[160px]">
+                        <SelectValue placeholder="Triwulan" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {quarterOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value.toString()}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  {dateFilter === "semester" ? (
+                    <Select
+                      value={filterSemester.toString()}
+                      onValueChange={(value) => setFilterSemester(Number(value))}
+                    >
+                      <SelectTrigger className="w-[160px]">
+                        <SelectValue placeholder="Semester" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {semesterOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value.toString()}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  <Select
+                    value={pageSize.toString()}
+                    onValueChange={(value) => setPageSize(Number(value))}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Tampil per halaman" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 / Halaman</SelectItem>
+                      <SelectItem value="25">25 / Halaman</SelectItem>
+                      <SelectItem value="50">50 / Halaman</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 text-xs text-secondary-color">
@@ -737,7 +757,7 @@ export default function GuestbookPage({ initialData, initialFetchedAt }: Guestbo
       </Card>
 
       <Dialog open={detailOpen} onOpenChange={handleDetailOpenChange}>
-        <DialogContent className="max-w-4xl pr-4 sm:pr-6 max-h-[calc(100vh-6rem)] overflow-y-auto">
+        <DialogContent className="max-w-2xl pr-4 sm:pr-6 max-h-[calc(100vh-6rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detail Buku Tamu</DialogTitle>
           </DialogHeader>

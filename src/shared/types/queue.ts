@@ -66,6 +66,7 @@ export type QueueDisplayResponse = {
 		visitor?: { name: string } | null;
 		guest?: { fullName: string } | null;
 		createdAt: Date;
+		updatedAt: Date;
 		startTime: Date | null;
 		endTime: Date | null;
 	}>;
@@ -80,6 +81,7 @@ export type QueueDisplayResponse = {
 		visitor?: { name: string } | null;
 		guest?: { fullName: string } | null;
 		createdAt: Date;
+		updatedAt: Date;
 		startTime: Date | null;
 		endTime: Date | null;
 	} | null;

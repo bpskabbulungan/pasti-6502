@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Ban, CheckCircle2, ExternalLink, MoreVertical, PlayCircle, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,21 +20,10 @@ type QueueTableRowProps = {
   onComplete: (queue: QueueDetail) => void;
   onOpenCancel: (queue: QueueDetail) => void;
   onRevert: (queue: QueueDetail) => void;
+  onRecall?: (queueId: string) => void;
 };
 
-const queueStatusLabel = {
-  WAITING: "Menunggu",
-  SERVING: "Sedang Dilayani",
-  COMPLETED: "Selesai",
-  CANCELED: "Dibatalkan",
-} as const;
 
-const queueStatusClass = {
-  WAITING: "border-amber-500/30 bg-amber-500/10 text-amber-700",
-  SERVING: "border-sky-500/30 bg-sky-500/10 text-sky-700",
-  COMPLETED: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
-  CANCELED: "border-red-500/30 bg-red-500/10 text-red-700",
-} as const;
 
 type QueueActionMenuProps = {
   queue: QueueDetail;
@@ -42,9 +31,10 @@ type QueueActionMenuProps = {
   onComplete: (queue: QueueDetail) => void;
   onOpenCancel: (queue: QueueDetail) => void;
   onRevert: (queue: QueueDetail) => void;
+  onRecall?: (queueId: string) => void;
 };
 
-function QueueActionMenu({ queue, onServe, onComplete, onOpenCancel, onRevert }: QueueActionMenuProps) {
+function QueueActionMenu({ queue, onServe, onComplete, onOpenCancel, onRevert, onRecall }: QueueActionMenuProps) {
   if (
     queue.status !== "WAITING" &&
     queue.status !== "SERVING" &&
@@ -84,6 +74,12 @@ function QueueActionMenu({ queue, onServe, onComplete, onOpenCancel, onRevert }:
         ) : null}
         {queue.status === "SERVING" ? (
           <>
+            {onRecall && (
+              <DropdownMenuItem className="gap-2" onSelect={() => onRecall(queue.id)}>
+                <PlayCircle className="h-4 w-4 text-emerald-600" />
+                <span>Panggil Ulang</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem className="gap-2" onSelect={() => onComplete(queue)}>
               <CheckCircle2 className="h-4 w-4 text-sky-600" />
               <span>Selesaikan</span>
@@ -115,6 +111,7 @@ function QueueTableRowComponent({
   onComplete,
   onOpenCancel,
   onRevert,
+  onRecall,
 }: QueueTableRowProps) {
   const queueCode = formatGuestQueueCode(
     {
@@ -170,6 +167,7 @@ function QueueTableRowComponent({
               onComplete={onComplete}
               onOpenCancel={onOpenCancel}
               onRevert={onRevert}
+              onRecall={onRecall}
             />
           </div>
         </TableCell>
@@ -186,9 +184,7 @@ function QueueTableRowComponent({
                 <p className="break-words text-xs text-muted-foreground">{queue.service.name}</p>
               </div>
               <div className="flex flex-col items-end gap-1.5 text-right">
-                <Badge variant="outline" className={queueStatusClass[queue.status]}>
-                  {queueStatusLabel[queue.status]}
-                </Badge>
+                <StatusBadge status={queue.status} />
               </div>
             </div>
 
@@ -237,6 +233,7 @@ function QueueTableRowComponent({
                 onComplete={onComplete}
                 onOpenCancel={onOpenCancel}
                 onRevert={onRevert}
+                onRecall={onRecall}
               />
             </div>
           </div>

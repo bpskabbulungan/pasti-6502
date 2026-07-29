@@ -29,7 +29,7 @@ function QueueInfoItem({ label, value }: QueueInfoItemProps) {
 
 export function NextQueuePanel({ isFullscreen, queue }: NextQueuePanelProps) {
   return (
-    <Card className="h-full border border-border/80 bg-gradient-to-br from-card via-card to-primary/5 shadow-[var(--shadow-soft)]">
+    <Card className="flex h-full flex-col border border-border/80 bg-gradient-to-br from-card via-card to-primary/5 shadow-[var(--shadow-soft)]">
       <CardHeader className="pb-2 md:pb-3">
         <CardTitle className="text-2xl font-bold text-primary-color sm:text-[1.75rem]">
           Nomor Berikutnya
@@ -38,9 +38,9 @@ export function NextQueuePanel({ isFullscreen, queue }: NextQueuePanelProps) {
           Nomor antrean berikutnya yang siap dipanggil.
         </CardDescription>
       </CardHeader>
-      <CardContent className="pb-4 sm:pb-5 md:pb-6">
+      <CardContent className="flex flex-1 flex-col pb-4 sm:pb-5 md:pb-6">
         {queue ? (
-          <div className="rounded-3xl border border-border/75 bg-background/82 p-6 text-center shadow-md dark:bg-background/35 sm:p-7 md:p-9">
+          <div className="flex flex-1 flex-col justify-center rounded-3xl border border-border/75 bg-background/82 p-6 text-center shadow-md dark:bg-background/35 sm:p-7 md:p-9">
             <p className="text-sm font-medium text-secondary-color">Antrean Selanjutnya</p>
             <p
               className={cn(
@@ -59,7 +59,7 @@ export function NextQueuePanel({ isFullscreen, queue }: NextQueuePanelProps) {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border/80 bg-background/70 p-10 text-center shadow-sm dark:bg-background/35">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border/80 bg-background/70 p-10 text-center shadow-sm dark:bg-background/35">
             <ArrowRight className="h-10 w-10 text-primary" />
             <p className="text-lg font-semibold text-primary-color">Belum ada antrean berikutnya</p>
             <p className="max-w-lg text-sm text-secondary-color">

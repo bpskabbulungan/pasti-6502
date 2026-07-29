@@ -70,35 +70,19 @@ export async function getDashboardStats(clientHash?: string | null) {
     };
   }
 
-  const completedQueues = await prisma.queue.findMany({
-    where: {
-      ...whereRange,
-      status: {
-        in: [QueueStatus.COMPLETED, QueueStatus.SERVING],
-      },
-      startTime: {
-        not: null,
-      },
-    },
-    select: {
-      createdAt: true,
-      startTime: true,
-    },
-  });
+  const waitTimeResult = await prisma.$queryRaw<{ avgWaitTimeSec: number | null }[]>`
+    SELECT AVG(TIMESTAMPDIFF(SECOND, createdAt, startTime)) as avgWaitTimeSec
+    FROM Queue
+    WHERE queueDate >= ${startOfToday} 
+      AND queueDate < ${endOfToday}
+      AND status IN ('COMPLETED', 'SERVING')
+      AND startTime IS NOT NULL
+  `;
 
-  let totalWaitTimeMs = 0;
-  let waitCount = 0;
-
-  completedQueues.forEach((queue) => {
-    if (queue.startTime) {
-      const waitTimeMs = new Date(queue.startTime).getTime() - new Date(queue.createdAt).getTime();
-      totalWaitTimeMs += waitTimeMs;
-      waitCount++;
-    }
-  });
+  const avgWaitTimeSec = waitTimeResult[0]?.avgWaitTimeSec;
 
   const averages = {
-    waitTimeMinutes: waitCount > 0 ? Math.round(totalWaitTimeMs / waitCount / (1000 * 60)) : 0,
+    waitTimeMinutes: avgWaitTimeSec ? Math.round(Number(avgWaitTimeSec) / 60) : 0,
     serviceTimeMinutes: 0, // Service time calculation removed since endTime field was removed
   };
 

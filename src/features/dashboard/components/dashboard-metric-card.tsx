@@ -43,7 +43,7 @@ export function DashboardMetricCard({
   iconSizeClassName,
 }: DashboardMetricCardProps) {
   return (
-    <Card className={cn("h-full border-border/80 bg-card shadow-none", cardClassName)}>
+    <Card className={cn("h-full border-border/80 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md", cardClassName)}>
       <CardHeader
         className={cn("flex flex-row items-start justify-between space-y-0 pb-2", headerClassName)}
       >
@@ -57,7 +57,7 @@ export function DashboardMetricCard({
             {title}
           </CardTitle>
           {typeof value !== "undefined" ? (
-            <div className={cn("text-2xl font-bold text-primary-color md:text-3xl", valueClassName)}>
+            <div className={cn("text-2xl font-bold bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-transparent md:text-3xl", valueClassName)}>
               {value}
             </div>
           ) : null}

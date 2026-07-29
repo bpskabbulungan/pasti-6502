@@ -38,6 +38,7 @@ import { usersApi } from "@/services/api/users";
 import { pstOfficersApi } from "@/services/api/pst-officers";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { serializeErrorForLog } from "@/lib/error-log";
+import { getErrorMessage } from "@/lib/error-message";
 import type { ErrorResponse } from "@shared/types/api";
 import type { PstOfficerCandidateSummary, SigapSyncSummary } from "@shared/types/pst-officers";
 import type { UserSummary } from "@shared/types/users";
@@ -93,19 +94,7 @@ const MANUAL_USERNAME_BY_NAME: Record<string, string> = {
 
 const normalizeNameKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails?.error) {
-    return errorDetails.error;
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 export default function UsersManagementPage() {
   const [users, setUsers] = useState<User[]>([]);

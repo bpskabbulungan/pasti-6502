@@ -6,18 +6,18 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, RefreshCcw, Star } from "lucide-react";
 import { ConfirmActionDialog } from "@/components/shared/dialogs/confirm-action-dialog";
 import PageBackground from "@/components/shared/page-background";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { cn } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/error-message";
 import { markNavigationPending } from "@/lib/navigation-pending";
 import { guestApi } from "@/services/api/guest";
 import { saveLastGuestQueue } from "@/features/guest/utils/last-queue";
 import { QueueStatus } from "@/shared/constants/enums";
-import type { ErrorResponse } from "@shared/types/api";
 import type { GuestQueueDetail } from "@shared/types/guest";
 
 const statusLabels: Record<QueueStatus, string> = {
@@ -27,16 +27,7 @@ const statusLabels: Record<QueueStatus, string> = {
   CANCELED: "Dibatalkan",
 };
 
-const statusBadgeClass: Record<QueueStatus, string> = {
-  WAITING:
-    "border-amber-400/40 bg-amber-100 text-amber-900 dark:border-amber-500/40 dark:bg-amber-900/30 dark:text-amber-100",
-  SERVING:
-    "border-sky-400/40 bg-sky-100 text-sky-900 dark:border-sky-500/40 dark:bg-sky-900/30 dark:text-sky-100",
-  COMPLETED:
-    "border-emerald-400/40 bg-emerald-100 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-900/30 dark:text-emerald-100",
-  CANCELED:
-    "border-red-400/40 bg-red-100 text-red-900 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-100",
-};
+
 
 const statusPanelClass: Record<QueueStatus, string> = {
   WAITING:
@@ -77,22 +68,7 @@ const ratingCopy: Record<number, string> = {
   5: "Sangat puas",
 };
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (typeof error !== "object" || !error) {
-    return fallback;
-  }
 
-  const errorDetails = (error as { details?: ErrorResponse }).details;
-  if (errorDetails && typeof errorDetails === "object" && "error" in errorDetails) {
-    const message = (errorDetails as { error?: string }).error;
-    if (message) {
-      return message;
-    }
-  }
-
-  const message = (error as { message?: string }).message;
-  return message || fallback;
-};
 
 type GuestQueuePageProps = {
   queueId?: string;
@@ -253,9 +229,7 @@ export default function GuestQueuePage({
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">
                       Status Antrean
                     </p>
-                    <Badge variant="outline" className={cn("text-xs", statusBadgeClass[queue.status])}>
-                      {statusLabels[queue.status]}
-                    </Badge>
+                    <StatusBadge status={queue.status} className="text-xs" />
                   </div>
                   <div className="space-y-5 p-5 sm:p-6">
                     <div className="rounded-2xl border border-border/70 bg-background/75 px-4 py-5 text-center sm:px-6">

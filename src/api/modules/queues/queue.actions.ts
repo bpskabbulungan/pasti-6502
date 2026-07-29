@@ -691,3 +691,39 @@ export async function triggerSkdReminderBot(queueId: string, message?: string) {
 
 	return { ok: true as const, data: result.data };
 }
+
+export async function recallQueue(queueId: string, userId: string, role: Role) {
+	const queue = await prisma.queue.findUnique({
+		where: { id: queueId },
+		select: { id: true, status: true, adminId: true },
+	});
+
+	if (!queue) {
+		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+
+	if (queue.status !== PrismaQueueStatus.SERVING) {
+		return { ok: false as const, status: 400, error: "Queue is not currently being served" };
+	}
+
+	if (!canUserManageServingQueue(role, queue.adminId, userId)) {
+		return {
+			ok: false as const,
+			status: 403,
+			error: "You are not authorized to recall this queue",
+		};
+	}
+
+	const updatedQueue = await prisma.queue.update({
+		where: { id: queueId },
+		data: { updatedAt: new Date() },
+	});
+
+	const finalQueue = await loadQueueDetail(prisma, queueId);
+
+	if (!finalQueue) {
+		return { ok: false as const, status: 404, error: "Queue not found" };
+	}
+
+	return { ok: true as const, queue: finalQueue as any };
+}

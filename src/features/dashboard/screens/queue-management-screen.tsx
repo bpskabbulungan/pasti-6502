@@ -144,6 +144,20 @@ export default function QueueManagementPage({
     [refresh]
   );
 
+  const handleRecallQueue = useCallback(
+    async (queueId: string) => {
+      try {
+        await queuesApi.recall(queueId);
+        toast.success("Pemanggilan ulang antrean dikirim");
+        await refresh();
+      } catch (error) {
+        console.error("Error recalling queue:", serializeErrorForLog(error));
+        toast.error("Terjadi kesalahan saat memanggil ulang antrean");
+      }
+    },
+    [refresh]
+  );
+
   const handleCancelQueue = async (queueId: string) => {
     try {
       setIsCancelingQueue(true);
@@ -361,7 +375,7 @@ export default function QueueManagementPage({
           </div>
         }
       />
-      <Card className="border-border/80 bg-card shadow-none">
+      <Card className="border-border/80 bg-card shadow-sm">
         <CardHeader className="gap-2">
           <CardTitle className="text-xl font-semibold text-primary-color">Daftar Antrean</CardTitle>
           <CardDescription>
@@ -428,6 +442,7 @@ export default function QueueManagementPage({
                       onComplete={openCompleteDialog}
                       onOpenCancel={openCancelDialog}
                       onRevert={openRevertDialog}
+                      onRecall={handleRecallQueue}
                     />
                   ))}
                 </TableBody>

@@ -1,20 +1,18 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import {
+  ArrowRight,
   CalendarClock,
   ClipboardList,
   ListOrdered,
   QrCode,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { APP_NAME, APP_TAGLINE } from "@/constants/app";
 import PublicHomeHeader from "./public-home-header";
 
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["700", "800"],
-});
+
 
 export const metadata: Metadata = {
   title: "Beranda",
@@ -22,6 +20,7 @@ export const metadata: Metadata = {
 
 type MenuItem = {
   title: string;
+  href: string;
   description: string;
   Icon: LucideIcon;
   accentBarClass: string;
@@ -32,6 +31,7 @@ type MenuItem = {
 const menuItems: MenuItem[] = [
   {
     title: "Manajemen Petugas",
+    href: "/dashboard/duty-schedule",
     description:
       "Kelola petugas terdaftar, atur penjadwalan layanan otomatis setiap minggu, dan kirim notifikasi pengingat pada petugas terkait.",
     Icon: CalendarClock,
@@ -41,6 +41,7 @@ const menuItems: MenuItem[] = [
   },
   {
     title: "Buku Tamu",
+    href: "/dashboard/guestbook",
     description:
       "Kelola pencatatan pengunjung secara digital untuk mendukung proses layanan yang lebih praktis dan terdokumentasi.",
     Icon: QrCode,
@@ -50,6 +51,7 @@ const menuItems: MenuItem[] = [
   },
   {
     title: "Sistem Antrean",
+    href: "/dashboard/queue",
     description:
       "Kelola antrean layanan secara real-time untuk mendukung proses yang lebih teratur dan mudah dipantau.",
     Icon: ListOrdered,
@@ -59,6 +61,7 @@ const menuItems: MenuItem[] = [
   },
   {
     title: "Survei Kebutuhan Data (SKD)",
+    href: "/dashboard/analytics",
     description:
       "Monitoring pengisian Survei Kebutuhan Data (SKD) serta pengingat tindak lanjut kepada pengguna layanan.",
     Icon: ClipboardList,
@@ -70,18 +73,23 @@ const menuItems: MenuItem[] = [
 
 function MenuCard({ item }: { item: MenuItem }) {
   return (
-    <article className="relative overflow-hidden rounded-2xl border border-border/95 bg-card px-5 py-5 transition-colors hover:border-primary/45 sm:p-6">
-      <span className={`absolute inset-y-0 left-0 w-1 ${item.accentBarClass}`} aria-hidden />
-      <div className="relative flex h-full items-start gap-4">
-        <div className={`rounded-xl p-2.5 ${item.iconWrapClass}`}>
-          <item.Icon className={`h-5 w-5 ${item.iconClass}`} />
+    <Link href={item.href} className="group block h-full">
+      <article className="relative overflow-hidden rounded-2xl border border-border/95 bg-card px-5 py-5 transition-all duration-200 hover:border-primary/45 hover:shadow-md sm:p-6 h-full flex flex-col">
+        <span className={`absolute inset-y-0 left-0 w-1 ${item.accentBarClass}`} aria-hidden />
+        <div className="relative flex flex-1 items-start gap-4">
+          <div className={`rounded-xl p-2.5 ${item.iconWrapClass}`}>
+            <item.Icon className={`h-5 w-5 ${item.iconClass}`} />
+          </div>
+          <div className="space-y-2 flex-1">
+            <h3 className="text-base font-semibold text-primary-color group-hover:text-primary transition-colors">{item.title}</h3>
+            <p className="text-sm leading-relaxed text-secondary-color">{item.description}</p>
+          </div>
         </div>
-        <div className="space-y-2">
-          <h3 className="text-base font-semibold text-primary-color">{item.title}</h3>
-          <p className="text-sm leading-relaxed text-secondary-color">{item.description}</p>
+        <div className="mt-4 flex items-center justify-end">
+          <ArrowRight className="h-5 w-5 text-muted-foreground transition-all duration-300 group-hover:translate-x-1 group-hover:text-primary" />
         </div>
-      </div>
-    </article>
+      </article>
+    </Link>
   );
 }
 
@@ -97,15 +105,15 @@ export default function Home() {
             <div className="relative grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
               <div className="mx-auto w-full max-w-3xl text-center lg:mx-0 lg:text-left">
                 <h1
-                  className={`${plusJakarta.className} text-3xl font-extrabold leading-tight text-primary-color sm:text-4xl lg:text-5xl`}
+                  className="text-3xl font-extrabold leading-tight text-primary-color sm:text-4xl lg:text-5xl"
                 >
                   {APP_NAME}
                 </h1>
                 <p className="mt-3 text-base font-semibold text-secondary-color sm:text-lg">{APP_TAGLINE}</p>
                 <p className="mx-auto mt-6 max-w-2xl text-sm leading-relaxed text-secondary-color sm:text-base lg:mx-0">
-                PASTI merupakan inovasi layanan yang dikembangkan untuk mendukung Pelayanan
-                Statistik Terpadu BPS Kabupaten Bulungan. Layanan ini mencakup manajemen petugas, buku tamu, sistem antrean, hingga monitoring
-                pengisian Survei Kebutuhan Data (SKD).
+                  PASTI merupakan inovasi layanan yang dikembangkan untuk mendukung Pelayanan
+                  Statistik Terpadu BPS Kabupaten Bulungan. Layanan ini mencakup manajemen petugas, buku tamu, sistem antrean, hingga monitoring
+                  pengisian Survei Kebutuhan Data (SKD).
                 </p>
               </div>
               <div className="mx-auto hidden h-44 w-44 items-center justify-center rounded-full border border-border/80 bg-background/70 lg:flex">

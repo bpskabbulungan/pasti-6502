@@ -24,6 +24,8 @@ export const queuesApi = {
 		apiFetch<QueueActionResponse>(`/api/queue/${id}/serve`, { method: "POST" }),
 	complete: (id: string) =>
 		apiFetch<QueueActionResponse>(`/api/queue/${id}/complete`, { method: "POST" }),
+	recall: (id: string) =>
+		apiFetch<QueueActionResponse>(`/api/queue/${id}/recall`, { method: "POST" }),
 	cancel: (id: string) =>
 		apiFetch<QueueActionResponse>(`/api/queue/${id}/cancel`, { method: "POST" }),
 	revert: (id: string) =>

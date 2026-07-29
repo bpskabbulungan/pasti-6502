@@ -10,6 +10,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="group toaster"
+      position="top-right"
       style={
         {
           "--normal-bg": "var(--surface)",

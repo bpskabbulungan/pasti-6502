@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { formatDisplayDate } from "@/lib/date-format";
@@ -19,23 +20,7 @@ const getSkdBadgeClass = (filledSKD: boolean) =>
     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/35 dark:bg-emerald-400/10 dark:text-emerald-200"
     : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-amber-300/35 dark:bg-amber-400/10 dark:text-amber-200";
 
-const serviceStatusLabel = {
-  WAITING: "Menunggu",
-  SERVING: "Sedang Dilayani",
-  COMPLETED: "Selesai",
-  CANCELED: "Dibatalkan",
-} as const;
 
-const serviceStatusClass = {
-  WAITING:
-    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-amber-300/35 dark:bg-amber-400/10 dark:text-amber-200",
-  SERVING:
-    "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:border-sky-300/35 dark:bg-sky-400/10 dark:text-sky-200",
-  COMPLETED:
-    "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/35 dark:bg-emerald-400/10 dark:text-emerald-200",
-  CANCELED:
-    "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-300/35 dark:bg-rose-400/10 dark:text-rose-200",
-} as const;
 
 function GuestbookTableRowComponent({
   rowNumber,
@@ -44,8 +29,6 @@ function GuestbookTableRowComponent({
 }: GuestbookTableRowProps) {
   const arrivedAtLabel = getArrivedAtLabel(entry);
   const skdBadgeClass = getSkdBadgeClass(entry.filledSKD);
-  const statusLabel = serviceStatusLabel[entry.status];
-  const statusClass = serviceStatusClass[entry.status];
 
   return (
     <>
@@ -64,9 +47,7 @@ function GuestbookTableRowComponent({
         <TableCell className="align-middle text-center">
           <div className="space-y-1.5">
             <p className="break-words font-medium text-primary-color">{entry.serviceName}</p>
-            <Badge variant="outline" className={statusClass}>
-              {statusLabel}
-            </Badge>
+            <StatusBadge status={entry.status} />
           </div>
         </TableCell>
         <TableCell className="align-middle text-center text-xs">{arrivedAtLabel}</TableCell>
@@ -113,9 +94,7 @@ function GuestbookTableRowComponent({
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Status layanan</span>
-                <Badge variant="outline" className={statusClass}>
-                  {statusLabel}
-                </Badge>
+                <StatusBadge status={entry.status} />
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Tanggal datang</span>

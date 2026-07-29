@@ -9,7 +9,7 @@ type ServingQueuesPanelProps = {
 
 export function ServingQueuesPanel({ queues }: ServingQueuesPanelProps) {
   return (
-    <Card className="flex h-full border border-border/80 bg-card/90 shadow-[var(--shadow-soft)]">
+    <Card className="flex h-full flex-col border border-border/80 bg-card/90 shadow-[var(--shadow-soft)]">
       <CardHeader className="pb-2 md:pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>

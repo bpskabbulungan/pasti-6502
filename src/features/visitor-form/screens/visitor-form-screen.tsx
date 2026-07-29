@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 
+import { StatusBadge } from "@/components/shared/status-badge";
 import {
   Card,
   CardContent,
@@ -59,36 +60,7 @@ export default function VisitorFormPage() {
   } = useVisitorFormController();
   const activeServices = useMemo(() => services, [services]);
 
-  const getQueueStatusBadge = (status: string) => {
-    switch (status) {
-      case "WAITING":
-        return (
-          <Badge variant="outline" className="bg-yellow-100 ml-2 text-yellow-800">
-            Menunggu
-          </Badge>
-        );
-      case "SERVING":
-        return (
-          <Badge variant="outline" className="bg-blue-100 ml-2 text-blue-800">
-            Sedang Dilayani
-          </Badge>
-        );
-      case "COMPLETED":
-        return (
-          <Badge variant="outline" className="bg-green-100 ml-2 text-green-800">
-            Selesai
-          </Badge>
-        );
-      case "CANCELED":
-        return (
-          <Badge variant="outline" className="bg-red-100 ml-2 text-red-800">
-            Dibatalkan
-          </Badge>
-        );
-      default:
-        return null;
-    }
-  };
+
   const openSKD2025Form = () => {
     window.open("/api/visitor-form/skd/open", "_blank", "noopener,noreferrer");
   };
@@ -121,27 +93,24 @@ export default function VisitorFormPage() {
             </Button>
           </div>
           <Card className="w-full max-w-md">
-            {" "}
             <CardHeader>
               <CardTitle className="text-center text-primary-color">Status Antrean</CardTitle>
               <CardDescription className="text-center">BPS Kabupaten Bulungan</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {" "}
               <div className="flex flex-col justify-center items-center space-y-2">
-                {" "}
                 <p className="font-bold text-accent text-4xl">
                   {trackingInfo.queueNumber}-{formatQueueTime(trackingInfo.createdAt)}
                 </p>
                 <p className="text-lg">Nomor Antrean Anda</p>
                 <div className="flex items-center gap-2">
-                  {getQueueStatusBadge(trackingInfo.status)}
+                  <StatusBadge status={trackingInfo.status} className="ml-2" />
                   <Badge
                     variant="outline"
                     className={`${
                       trackingInfo.queueType === "ONLINE"
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-green-100 text-green-800"
+                        ? "border-sky-400/40 bg-sky-100 text-sky-900 dark:border-sky-500/40 dark:bg-sky-900/30 dark:text-sky-100"
+                        : "border-emerald-400/40 bg-emerald-100 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-900/30 dark:text-emerald-100"
                     }`}
                   >
                     {trackingInfo.queueType === "ONLINE" ? "Online" : "Offline"}
@@ -149,7 +118,6 @@ export default function VisitorFormPage() {
                 </div>
               </div>
               <div className="space-y-3">
-                {" "}
                 <div className="bg-muted p-3 rounded-md">
                   <p className="mb-1 font-semibold text-sm">Informasi Pengunjung</p>
                   <p className="text-muted-foreground text-sm">Nama: {trackingInfo.visitorName}</p>
@@ -161,26 +129,26 @@ export default function VisitorFormPage() {
                   </p>
                 </div>
                 {trackingInfo.status === "WAITING" && (
-                  <div className="flex items-start space-x-3 bg-yellow-50 p-3 rounded-md">
-                    <Clock className="mt-0.5 w-5 h-5 text-yellow-500" />
+                  <div className="flex items-start space-x-3 rounded-md border border-amber-200/60 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-900/20">
+                    <Clock className="mt-0.5 h-5 w-5 text-amber-500 dark:text-amber-300" />
                     <div>
-                      <p className="font-medium text-yellow-800 text-sm">Menunggu Giliran</p>
-                      <p className="text-yellow-700 text-sm">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-100">Menunggu Giliran</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-200">
                         Ada {trackingInfo.waitingBefore} antrean sebelum Anda
                       </p>
-                      <p className="text-yellow-700 text-sm">
+                      <p className="text-sm text-amber-700 dark:text-amber-200">
                         Estimasi waktu tunggu: ~{trackingInfo.estimated} menit
                       </p>
                     </div>
                   </div>
                 )}
                 {trackingInfo.status === "SERVING" && (
-                  <div className="flex items-start space-x-3 bg-blue-50 p-3 rounded-md">
-                    <AppLoader size="md" className="mt-0.5 text-blue-500" />
+                  <div className="flex items-start space-x-3 rounded-md border border-sky-200/60 bg-sky-50 p-3 dark:border-sky-500/30 dark:bg-sky-900/20">
+                    <AppLoader size="md" className="mt-0.5 text-sky-500 dark:text-sky-300" />
                     <div>
-                      <p className="font-medium text-blue-800 text-sm">Sedang Dilayani</p>
-                      <p className="text-blue-700 text-sm">Anda sedang dalam proses pelayanan</p>
-                      <p className="text-blue-700 text-sm">
+                      <p className="text-sm font-medium text-sky-800 dark:text-sky-100">Sedang Dilayani</p>
+                      <p className="text-sm text-sky-700 dark:text-sky-200">Anda sedang dalam proses pelayanan</p>
+                      <p className="text-sm text-sky-700 dark:text-sky-200">
                         Mulai dilayani:{" "}
                         <ClientTimestamp
                           timestamp={trackingInfo.startTime}
@@ -192,12 +160,12 @@ export default function VisitorFormPage() {
                   </div>
                 )}
                 {trackingInfo.status === "COMPLETED" && (
-                  <div className="flex items-start space-x-3 bg-green-50 p-3 rounded-md">
-                    <CheckCircle className="mt-0.5 w-5 h-5 text-green-500" />
+                  <div className="flex items-start space-x-3 rounded-md border border-emerald-200/60 bg-emerald-50 p-3 dark:border-emerald-500/30 dark:bg-emerald-900/20">
+                    <CheckCircle className="mt-0.5 h-5 w-5 text-emerald-500 dark:text-emerald-300" />
                     <div>
-                      <p className="font-medium text-green-800 text-sm">Pelayanan Selesai</p>
-                      <p className="text-green-700 text-sm">Antrean Anda telah selesai dilayani</p>
-                      <p className="text-green-700 text-sm">
+                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-100">Pelayanan Selesai</p>
+                      <p className="text-sm text-emerald-700 dark:text-emerald-200">Antrean Anda telah selesai dilayani</p>
+                      <p className="text-sm text-emerald-700 dark:text-emerald-200">
                         Selesai pada:{" "}
                         {trackingInfo.endTime
                           ? new Date(trackingInfo.endTime).toLocaleTimeString("id-ID")
@@ -207,21 +175,21 @@ export default function VisitorFormPage() {
                   </div>
                 )}
                 {trackingInfo.status === "CANCELED" && (
-                  <div className="flex items-start space-x-3 bg-red-50 p-3 rounded-md">
-                    <AlertCircle className="mt-0.5 w-5 h-5 text-red-500" />
+                  <div className="flex items-start space-x-3 rounded-md border border-red-200/60 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-900/20">
+                    <AlertCircle className="mt-0.5 h-5 w-5 text-red-500 dark:text-red-300" />
                     <div>
-                      <p className="font-medium text-red-800 text-sm">Antrean Dibatalkan</p>
-                      <p className="text-red-700 text-sm">
+                      <p className="text-sm font-medium text-red-800 dark:text-red-100">Antrean Dibatalkan</p>
+                      <p className="text-sm text-red-700 dark:text-red-200">
                         Antrean Anda telah dibatalkan oleh admin
                       </p>
                     </div>
                   </div>
-                )}{" "}
+                )}
                 {/* SKD Form section - show for all queue statuses */}
-                <Alert className="bg-blue-50 text-blue-900">
-                  <AlertCircle className="border-blue-900 w-5 h-5" />
-                  <AlertTitle className="text-blue-800">Survei Kebutuhan Data</AlertTitle>
-                  <AlertDescription className="text-blue-700">
+                <Alert className="border-sky-200/60 bg-sky-50 text-sky-900 dark:border-sky-500/30 dark:bg-sky-900/20 dark:text-sky-100">
+                  <AlertCircle className="h-5 w-5 text-sky-600 dark:text-sky-300" />
+                  <AlertTitle className="text-sky-800 dark:text-sky-100">Survei Kebutuhan Data</AlertTitle>
+                  <AlertDescription className="text-sky-700 dark:text-sky-200">
                     Mohon luangkan waktu sejenak untuk mengisi Survei Kebutuhan Data.
                   </AlertDescription>
                   <div className="mx-0 mt-4 space-y-2">
@@ -230,7 +198,7 @@ export default function VisitorFormPage() {
                     </Button>
                     {!trackingInfo.filledSKD && (
                       <Button
-                        variant={"secondary"}
+                        variant="secondary"
                         className="w-full"
                         onClick={markSKDFilled}
                         disabled={isLoading}
@@ -239,15 +207,15 @@ export default function VisitorFormPage() {
                       </Button>
                     )}
                     {trackingInfo.filledSKD && (
-                      <div className="mt-1 flex w-full items-center space-x-2 rounded-md bg-green-100 px-3 py-2 text-green-800">
-                        <CheckCircle className="w-4 h-4" />
+                      <div className="mt-1 flex w-full items-center space-x-2 rounded-md border border-emerald-300/60 bg-emerald-100 px-3 py-2 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-900/30 dark:text-emerald-100">
+                        <CheckCircle className="h-4 w-4" />
                         <span>Survei sudah diisi, terima kasih!</span>
                       </div>
                     )}
                   </div>
                 </Alert>
               </div>
-            </CardContent>{" "}
+            </CardContent>
             <CardFooter className="flex justify-center">
               <p className="text-muted-foreground text-xs text-center">
                 Status antrean diperbarui otomatis saat ada perubahan. Klik &quot;Perbarui&quot;
@@ -313,8 +281,8 @@ export default function VisitorFormPage() {
                     variant="outline"
                     className={`${
                       queueInfo.queueType === "ONLINE"
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-green-100 text-green-800"
+                        ? "border-sky-400/40 bg-sky-100 text-sky-900 dark:border-sky-500/40 dark:bg-sky-900/30 dark:text-sky-100"
+                        : "border-emerald-400/40 bg-emerald-100 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-900/30 dark:text-emerald-100"
                     }`}
                   >
                     {queueInfo.queueType === "ONLINE" ? "Online" : "Offline"}
@@ -328,10 +296,10 @@ export default function VisitorFormPage() {
               <div className="bg-muted p-4 rounded-md text-sm">
                 <p>Silakan tunggu sampai nomor antrean Anda dilayani oleh petugas.</p>
               </div>
-              <Alert className="bg-blue-50 border-blue-200">
-                <AlertCircle className="w-5 h-5 text-blue-600" />
-                <AlertTitle className="text-blue-800">Simpan Link Ini</AlertTitle>
-                <AlertDescription className="text-blue-700">
+              <Alert className="border-sky-200/60 bg-sky-50 dark:border-sky-500/30 dark:bg-sky-900/20">
+                <AlertCircle className="h-5 w-5 text-sky-600 dark:text-sky-300" />
+                <AlertTitle className="text-sky-800 dark:text-sky-100">Simpan Link Ini</AlertTitle>
+                <AlertDescription className="text-sky-700 dark:text-sky-200">
                   Anda dapat melihat status antrean dengan membuka link ini kembali. Bookmark link
                   ini untuk kemudahan akses.
                 </AlertDescription>
